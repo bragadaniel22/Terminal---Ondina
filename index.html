@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terminal Ondina</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #08080f;
+      --bg-card: #0c0c18;
+      --border: #181828;
+      --border-hi: #252540;
+      --orange: #ff6600;
+      --green: #00cc77;
+      --red: #ff3344;
+      --text: #a8b4cc;
+      --dim: #485068;
+      --bright: #dde4f8;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', Consolas, Monaco, monospace;
+      min-height: 100vh;
+      padding: 16px 18px 48px;
+    }
+
+    /* HEADER */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-hi);
+      margin-bottom: 14px;
+    }
+    .brand { color: var(--orange); font-size: 18px; font-weight: bold; letter-spacing: 5px; }
+    .brand small { display: block; font-size: 9px; color: var(--dim); letter-spacing: 3px; margin-top: 3px; }
+    .hright { text-align: right; }
+    .clock { font-size: 26px; color: var(--bright); letter-spacing: 2px; }
+    .today { font-size: 9px; color: var(--dim); margin-top: 2px; }
+    .live {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 9px; color: var(--green); letter-spacing: 2px; margin-bottom: 3px;
+    }
+    .live::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green); display: inline-block;
+      animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+    /* GRID */
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+    /* CARD */
+    .card { background: var(--bg-card); border: 1px solid var(--border); }
+    .card-head {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      background: rgba(255,102,0,.03);
+    }
+    .card-head h2 { font-size: 9px; color: var(--orange); letter-spacing: 3px; text-transform: uppercase; }
+    .card-head span { font-size: 8px; color: var(--dim); background: var(--border-hi); padding: 2px 5px; }
+
+    /* METRIC ROW */
+    .row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 9px 12px; border-bottom: 1px solid var(--border);
+    }
+    .row:last-child { border-bottom: none; }
+    .row:hover { background: rgba(255,255,255,.015); }
+    .rname { font-size: 11px; color: var(--text); letter-spacing: .5px; }
+    .rsub  { font-size: 9px; color: var(--dim); margin-top: 2px; }
+    .rright { text-align: right; }
+    .rval  { font-size: 14px; font-weight: bold; color: var(--bright); }
+    .rchg  { font-size: 10px; margin-top: 2px; color: var(--dim); }
+
+    .pos { color: var(--green) !important; }
+    .neg { color: var(--red)   !important; }
+    .hl  { color: var(--orange)!important; }
+    .dim2{ color: var(--dim)   !important; }
+    .err { color: var(--red); font-size: 11px; }
+
+    /* FOOTER */
+    footer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--bg-card); border-top: 1px solid var(--border);
+      padding: 7px 18px; display: flex; justify-content: space-between;
+      align-items: center; font-size: 9px; color: var(--dim);
+    }
+    .prog-wrap { display: inline-flex; align-items: center; gap: 6px; }
+    .prog { width: 80px; height: 2px; background: var(--border-hi); display: inline-block; }
+    .prog-fill { height: 100%; background: var(--orange); transition: width 1s linear; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    TERMINAL ONDINA
+    <small>MERCADOS · TAXAS · ÍNDICES</small>
+  </div>
+  <div class="hright">
+    <div class="live">AO VIVO</div>
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="today" id="today"></div>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- ── BRASIL ── -->
+  <div class="card">
+    <div class="card-head"><h2>🇧🇷 Brasil</h2><span>BCB · Yahoo Finance</span></div>
+
+    <div class="row">
+      <div><div class="rname">CDI 12M</div><div class="rsub" id="cdi-sub">carregando…</div></div>
+      <div class="rright"><div class="rval hl" id="cdi-val">…</div><div class="rchg dim2">acumulado</div></div>
+    </div>
+
+    <div class="row">
+      <div><div class="rname">SELIC</div><div class="rsub" id="selic-sub">carregando…</div></div>
+      <div class="rright"><div class="rval hl" id="selic-val">…</div><div class="rchg">% a.a.</div></div>
+    </div>
+
+    <div class="row">
+      <div><div class="rname">IBOVESPA</div><div class="rsub" id="ibov-sub">^BVSP · pontos</div></div>
+      <div class="rright"><div class="rval" id="ibov-val">…</div><div class="rchg" id="ibov-chg">—</div></div>
+    </div>
+  </div>
+
+  <!-- ── BOLSAS ── -->
+  <div class="card">
+    <div class="card-head"><h2>📊 Bolsas Globais</h2><span>Yahoo Finance</span></div>
+
+    <div class="row">
+      <div><div class="rname">S&amp;P 500</div><div class="rsub" id="sp-sub">^GSPC · EUA</div></div>
+      <div class="rright"><div class="rval" id="sp-val">…</div><div class="rchg" id="sp-chg">—</div></div>
+    </div>
+
+    <div class="row">
+      <div><div class="rname">DOW JONES</div><div class="rsub" id="dow-sub">^DJI · EUA</div></div>
+      <div class="rright"><div class="rval" id="dow-val">…</div><div class="rchg" id="dow-chg">—</div></div>
+    </div>
+
+    <div class="row">
+      <div><div class="rname">NASDAQ</div><div class="rsub" id="nasdaq-sub">^IXIC · EUA</div></div>
+      <div class="rright"><div class="rval" id="nasdaq-val">…</div><div class="rchg" id="nasdaq-chg">—</div></div>
+    </div>
+
+    <div class="row">
+      <div><div class="rname">EURO STOXX 50</div><div class="rsub" id="stoxx-sub">^STOXX50E · EUR</div></div>
+      <div class="rright"><div class="rval" id="stoxx-val">…</div><div class="rchg" id="stoxx-chg">—</div></div>
+    </div>
+  </div>
+
+  <!-- ── JUROS ── -->
+  <div class="card">
+    <div class="card-head"><h2>📈 Juros Globais</h2><span>BCB · ECB · Yahoo Finance</span></div>
+
+    <div class="row">
+      <div><div class="rname">FED FUNDS RATE</div><div class="rsub" id="fed-sub">Banco Central EUA</div></div>
+      <div class="rright"><div class="rval hl" id="fed-val">…</div><div class="rchg">% a.a.</div></div>
+    </div>
+
+    <div class="row">
+      <div><div class="rname">TAXA BCE</div><div class="rsub" id="bce-sub">Banco Central Europeu</div></div>
+      <div class="rright"><div class="rval hl" id="bce-val">…</div><div class="rchg">% a.a.</div></div>
+    </div>
+
+    <div class="row">
+      <div><div class="rname">T-NOTE 10 ANOS</div><div class="rsub" id="tnx-sub">^TNX · Tesouro EUA</div></div>
+      <div class="rright"><div class="rval" id="tnx-val">…</div><div class="rchg" id="tnx-chg">—</div></div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>Fontes: Banco Central do Brasil · Yahoo Finance · European Central Bank</span>
+  <div class="prog-wrap">
+    Próxima atualização: <span id="cd">60</span>s
+    <div class="prog"><div class="prog-fill" id="prog" style="width:100%"></div></div>
+  </div>
+  <span>Última: <span id="last">—</span></span>
+</footer>
+
+<script>
+// ── Cache (localStorage) ──────────────────────────────────────────────────────
+function cacheGet(k) {
+  try { return JSON.parse(localStorage.getItem('tf_' + k) || 'null'); } catch { return null; }
+}
+function cachePut(k, v) {
+  try { localStorage.setItem('tf_' + k, JSON.stringify(v)); } catch {}
+}
+
+// ── Formatadores ─────────────────────────────────────────────────────────────
+function num(n, d = 2) {
+  if (n == null || isNaN(n)) return 'N/D';
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function pct(n) {
+  if (n == null || isNaN(n)) return '';
+  return (n >= 0 ? '+' : '') + num(n) + '%';
+}
+function fmtShortDate(d) {
+  if (!d) return '';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+function isToday(d) {
+  if (!d) return true;
+  const t = new Date();
+  return d.getDate() === t.getDate() && d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear();
+}
+function bcbDateStr(d) {
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+function setV(id, text, extra = '') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'rval' + (extra ? ' ' + extra : '');
+}
+function setC(id, text, cls = '') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'rchg' + (cls ? ' ' + cls : '');
+}
+function setSub(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+// ── APIs ──────────────────────────────────────────────────────────────────────
+async function bcbLast(serie) {
+  const r = await fetch(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${serie}/dados/ultimos/1?formato=json`);
+  if (!r.ok) throw new Error(`BCB ${serie}: ${r.status}`);
+  const d = await r.json();
+  if (!d.length) throw new Error('BCB: vazio');
+  return { v: parseFloat(d[0].valor.replace(',', '.')), date: d[0].data };
+}
+
+async function bcbRange(serie, from, to) {
+  const url = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.${serie}/dados?dataInicial=${from}&dataFinal=${to}&formato=json`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`BCB range ${serie}: ${r.status}`);
+  const d = await r.json();
+  if (!d.length) throw new Error('BCB range: vazio');
+  return d;
+}
+
+async function yahooFetch(ticker) {
+  const t = encodeURIComponent(ticker);
+  const r = await fetch(`/api/yahoo?t=${t}&range=5d`);
+  if (!r.ok) throw new Error(`Yahoo ${ticker}: ${r.status}`);
+  const d = await r.json();
+  if (d.error) throw new Error(`Yahoo proxy: ${d.error}`);
+  const m = d?.chart?.result?.[0]?.meta;
+  if (!m) throw new Error(`Yahoo ${ticker}: sem dados`);
+  const price = m.regularMarketPrice;
+  const prev  = m.chartPreviousClose ?? m.previousClose ?? m.regularMarketPreviousClose;
+  const chg   = prev ? (price - prev) / prev * 100 : null;
+  const date  = m.regularMarketTime ? new Date(m.regularMarketTime * 1000) : null;
+  return { price, chg, date };
+}
+
+async function yahoo(ticker) {
+  try {
+    const data = await yahooFetch(ticker);
+    cachePut('yh_' + ticker, { price: data.price, chg: data.chg, dateMs: data.date?.getTime() ?? null });
+    return data;
+  } catch (e) {
+    const c = cacheGet('yh_' + ticker);
+    if (c && c.price != null) {
+      return { price: c.price, chg: c.chg, date: c.dateMs ? new Date(c.dateMs) : null, fromCache: true };
+    }
+    throw e;
+  }
+}
+
+async function ecbRate() {
+  const r = await fetch(
+    'https://data-api.ecb.europa.eu/service/data/FM/B.U2.EUR.4F.KR.MRR_FR.LEV?format=jsondata&lastNObservations=1'
+  );
+  if (!r.ok) throw new Error(`ECB: ${r.status}`);
+  const d = await r.json();
+  const sid  = Object.keys(d.dataSets[0].series)[0];
+  const obs  = d.dataSets[0].series[sid].observations;
+  const key  = Object.keys(obs)[0];
+  const val  = obs[key][0];
+  const dim  = d.structure.dimensions.observation[0];
+  const date = dim?.values?.[parseInt(key)]?.id ?? '—';
+  return { v: val, date };
+}
+
+// ── Render mercado (com cache e indicador de data) ────────────────────────────
+function renderMkt(valId, chgId, subId, data, decimals, baseSub, suffix = '') {
+  const { price, chg, date, fromCache } = data;
+  const cls = chg > 0 ? 'pos' : chg < 0 ? 'neg' : '';
+  setV(valId, num(price, decimals) + suffix, cls);
+  setC(chgId, pct(chg), cls);
+  if (subId) {
+    let tag = '';
+    if (fromCache)         tag = ' · cache';
+    else if (!isToday(date)) tag = ` · ${fmtShortDate(date)}`;
+    setSub(subId, baseSub + tag);
+  }
+}
+
+// ── Loaders ───────────────────────────────────────────────────────────────────
+async function loadBrasil() {
+  // CDI 12M — compõe todas as taxas diárias do último ano
+  try {
+    const today   = new Date();
+    const yearAgo = new Date(today);
+    yearAgo.setFullYear(today.getFullYear() - 1);
+    const rows = await bcbRange(11, bcbDateStr(yearAgo), bcbDateStr(today));
+    const prod = rows.reduce((acc, row) => acc * (1 + parseFloat(row.valor.replace(',', '.')) / 100), 1.0);
+    const cdi12m  = (prod - 1) * 100;
+    const lastDate = rows[rows.length - 1]?.data ?? '';
+    setV('cdi-val', num(cdi12m) + '%', 'hl');
+    setSub('cdi-sub', `BCB · 12 meses · último: ${lastDate}`);
+  } catch (e) {
+    setV('cdi-val', 'ERRO', 'err'); console.error('CDI12M', e);
+  }
+
+  // Selic — série 432
+  try {
+    const { v, date } = await bcbLast(432);
+    setV('selic-val', num(v) + '%', 'hl');
+    setSub('selic-sub', `BCB série 432 · ${date}`);
+  } catch (e) {
+    setV('selic-val', 'ERRO', 'err'); console.error('Selic', e);
+  }
+
+  // IBOV
+  try {
+    const data = await yahoo('^BVSP');
+    renderMkt('ibov-val', 'ibov-chg', 'ibov-sub', data, 0, '^BVSP · pontos');
+  } catch (e) {
+    setV('ibov-val', 'ERRO', 'err'); console.error('IBOV', e);
+  }
+}
+
+async function loadMarkets() {
+  const list = [
+    { t: '^GSPC',     val: 'sp-val',     chg: 'sp-chg',     sub: 'sp-sub',     base: '^GSPC · EUA',     d: 2 },
+    { t: '^DJI',      val: 'dow-val',    chg: 'dow-chg',    sub: 'dow-sub',    base: '^DJI · EUA',      d: 2 },
+    { t: '^IXIC',     val: 'nasdaq-val', chg: 'nasdaq-chg', sub: 'nasdaq-sub', base: '^IXIC · EUA',     d: 2 },
+    { t: '^STOXX50E', val: 'stoxx-val',  chg: 'stoxx-chg',  sub: 'stoxx-sub',  base: '^STOXX50E · EUR', d: 2 },
+  ];
+  await Promise.all(list.map(async ({ t, val, chg, sub, base, d }) => {
+    try {
+      const data = await yahoo(t);
+      renderMkt(val, chg, sub, data, d, base);
+    } catch (e) {
+      setV(val, 'ERRO', 'err'); console.error(t, e);
+    }
+  }));
+}
+
+async function loadJuros() {
+  // Fed Funds — T-Bill 3M como proxy
+  try {
+    const data = await yahoo('^IRX');
+    const { price, date, fromCache } = data;
+    setV('fed-val', num(price) + '%', 'hl');
+    const tag = fromCache ? ' · cache' : (!isToday(date) ? ` · ${fmtShortDate(date)}` : '');
+    setSub('fed-sub', 'T-Bill 3M · Yahoo Finance' + tag);
+  } catch (e) {
+    setV('fed-val', 'ERRO', 'err'); console.error('Fed', e);
+  }
+
+  // BCE
+  try {
+    const { v, date } = await ecbRate();
+    setV('bce-val', num(v) + '%', 'hl');
+    setSub('bce-sub', `ECB · MRR · ${date}`);
+  } catch (e) {
+    setV('bce-val', 'ERRO', 'err'); console.error('BCE', e);
+  }
+
+  // T-Note 10Y
+  try {
+    const data = await yahoo('^TNX');
+    renderMkt('tnx-val', 'tnx-chg', 'tnx-sub', data, 2, '^TNX · Tesouro EUA', '%');
+  } catch (e) {
+    setV('tnx-val', 'ERRO', 'err'); console.error('TNX', e);
+  }
+}
+
+// ── Relógio ───────────────────────────────────────────────────────────────────
+function tick() {
+  const n = new Date();
+  document.getElementById('clock').textContent = n.toLocaleTimeString('pt-BR');
+  document.getElementById('today').textContent = n.toLocaleDateString('pt-BR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+}
+
+// ── Contador de refresh ───────────────────────────────────────────────────────
+const INTERVAL = 60;
+let cd = INTERVAL, timer;
+
+function startTimer() {
+  clearInterval(timer);
+  cd = INTERVAL;
+  timer = setInterval(() => {
+    cd--;
+    document.getElementById('cd').textContent = cd;
+    document.getElementById('prog').style.width = (cd / INTERVAL * 100) + '%';
+    if (cd <= 0) { cd = INTERVAL; loadAll(); }
+  }, 1000);
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+async function loadAll() {
+  await Promise.allSettled([loadBrasil(), loadMarkets(), loadJuros()]);
+  document.getElementById('last').textContent = new Date().toLocaleTimeString('pt-BR');
+}
+
+tick();
+setInterval(tick, 1000);
+loadAll();
+startTimer();
+</script>
+</body>
+</html>
