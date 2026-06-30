@@ -104,6 +104,7 @@
     .ntnb-cell .rval { font-size: 15px; margin: 6px 0 4px; }
     .ntnb-cell .rname { font-size: 11px; }
     .ntnb-cell .rsub { font-size: 9px; }
+    .ntnb-cell .rtgt { font-size: 9px; margin-top: 5px; color: var(--dim); min-height: 12px; }
     /* TABS */
     .tabs {
       display: flex; gap: 0; margin-bottom: 14px;
@@ -371,60 +372,70 @@
         <div class="rval" id="sn-amzn-val">…</div>
         <div class="rchg" id="sn-amzn-chg">—</div>
         <div class="rsub" id="sn-amzn-sub">AMZN</div>
+        <div class="rtgt" id="sn-amzn-tgt"></div>
       </div>
       <div class="ntnb-cell">
         <div class="rname">MICROSOFT</div>
         <div class="rval" id="sn-msft-val">…</div>
         <div class="rchg" id="sn-msft-chg">—</div>
         <div class="rsub" id="sn-msft-sub">MSFT</div>
+        <div class="rtgt" id="sn-msft-tgt"></div>
       </div>
       <div class="ntnb-cell">
         <div class="rname">NVIDIA</div>
         <div class="rval" id="sn-nvda-val">…</div>
         <div class="rchg" id="sn-nvda-chg">—</div>
         <div class="rsub" id="sn-nvda-sub">NVDA</div>
+        <div class="rtgt" id="sn-nvda-tgt"></div>
       </div>
       <div class="ntnb-cell">
         <div class="rname">SALESFORCE</div>
         <div class="rval" id="sn-crm-val">…</div>
         <div class="rchg" id="sn-crm-chg">—</div>
         <div class="rsub" id="sn-crm-sub">CRM</div>
+        <div class="rtgt" id="sn-crm-tgt"></div>
       </div>
       <div class="ntnb-cell">
         <div class="rname">THERMO FISHER</div>
         <div class="rval" id="sn-tmo-val">…</div>
         <div class="rchg" id="sn-tmo-chg">—</div>
         <div class="rsub" id="sn-tmo-sub">TMO</div>
+        <div class="rtgt" id="sn-tmo-tgt"></div>
       </div>
       <div class="ntnb-cell">
         <div class="rname">DANAHER</div>
         <div class="rval" id="sn-dhr-val">…</div>
         <div class="rchg" id="sn-dhr-chg">—</div>
         <div class="rsub" id="sn-dhr-sub">DHR</div>
+        <div class="rtgt" id="sn-dhr-tgt"></div>
       </div>
       <div class="ntnb-cell">
         <div class="rname">VISA</div>
         <div class="rval" id="sn-v-val">…</div>
         <div class="rchg" id="sn-v-chg">—</div>
         <div class="rsub" id="sn-v-sub">V</div>
+        <div class="rtgt" id="sn-v-tgt"></div>
       </div>
       <div class="ntnb-cell">
         <div class="rname">VISTRA</div>
         <div class="rval" id="sn-vst-val">…</div>
         <div class="rchg" id="sn-vst-chg">—</div>
         <div class="rsub" id="sn-vst-sub">VST</div>
+        <div class="rtgt" id="sn-vst-tgt"></div>
       </div>
       <div class="ntnb-cell">
         <div class="rname">GOLD ETF</div>
         <div class="rval" id="sn-gld-val">…</div>
         <div class="rchg" id="sn-gld-chg">—</div>
         <div class="rsub" id="sn-gld-sub">GLD</div>
+        <div class="rtgt" id="sn-gld-tgt"></div>
       </div>
       <div class="ntnb-cell">
         <div class="rname">GOOGLE</div>
         <div class="rval" id="sn-googl-val">…</div>
         <div class="rchg" id="sn-googl-chg">—</div>
         <div class="rsub" id="sn-googl-sub">GOOGL</div>
+        <div class="rtgt" id="sn-googl-tgt"></div>
       </div>
     </div>
   </div>
@@ -856,21 +867,37 @@ function switchTab(btn) {
 
 // ── Single Names ──────────────────────────────────────────────────────────────
 const SINGLES = [
-  { t: 'AMZN',  val: 'sn-amzn-val',  chg: 'sn-amzn-chg',  sub: 'sn-amzn-sub',  base: 'AMZN · USD'  },
-  { t: 'MSFT',  val: 'sn-msft-val',  chg: 'sn-msft-chg',  sub: 'sn-msft-sub',  base: 'MSFT · USD'  },
-  { t: 'NVDA',  val: 'sn-nvda-val',  chg: 'sn-nvda-chg',  sub: 'sn-nvda-sub',  base: 'NVDA · USD'  },
-  { t: 'CRM',   val: 'sn-crm-val',   chg: 'sn-crm-chg',   sub: 'sn-crm-sub',   base: 'CRM · USD'   },
-  { t: 'TMO',   val: 'sn-tmo-val',   chg: 'sn-tmo-chg',   sub: 'sn-tmo-sub',   base: 'TMO · USD'   },
-  { t: 'DHR',   val: 'sn-dhr-val',   chg: 'sn-dhr-chg',   sub: 'sn-dhr-sub',   base: 'DHR · USD'   },
-  { t: 'V',     val: 'sn-v-val',     chg: 'sn-v-chg',     sub: 'sn-v-sub',     base: 'V · USD'     },
-  { t: 'VST',   val: 'sn-vst-val',   chg: 'sn-vst-chg',   sub: 'sn-vst-sub',   base: 'VST · USD'   },
-  { t: 'GLD',   val: 'sn-gld-val',   chg: 'sn-gld-chg',   sub: 'sn-gld-sub',   base: 'GLD · USD'   },
-  { t: 'GOOGL', val: 'sn-googl-val', chg: 'sn-googl-chg', sub: 'sn-googl-sub', base: 'GOOGL · USD' },
+  { t: 'AMZN',  val: 'sn-amzn-val',  chg: 'sn-amzn-chg',  sub: 'sn-amzn-sub',  tgt: 'sn-amzn-tgt',  base: 'AMZN · USD'  },
+  { t: 'MSFT',  val: 'sn-msft-val',  chg: 'sn-msft-chg',  sub: 'sn-msft-sub',  tgt: 'sn-msft-tgt',  base: 'MSFT · USD'  },
+  { t: 'NVDA',  val: 'sn-nvda-val',  chg: 'sn-nvda-chg',  sub: 'sn-nvda-sub',  tgt: 'sn-nvda-tgt',  base: 'NVDA · USD'  },
+  { t: 'CRM',   val: 'sn-crm-val',   chg: 'sn-crm-chg',   sub: 'sn-crm-sub',   tgt: 'sn-crm-tgt',   base: 'CRM · USD'   },
+  { t: 'TMO',   val: 'sn-tmo-val',   chg: 'sn-tmo-chg',   sub: 'sn-tmo-sub',   tgt: 'sn-tmo-tgt',   base: 'TMO · USD'   },
+  { t: 'DHR',   val: 'sn-dhr-val',   chg: 'sn-dhr-chg',   sub: 'sn-dhr-sub',   tgt: 'sn-dhr-tgt',   base: 'DHR · USD'   },
+  { t: 'V',     val: 'sn-v-val',     chg: 'sn-v-chg',     sub: 'sn-v-sub',     tgt: 'sn-v-tgt',     base: 'V · USD'     },
+  { t: 'VST',   val: 'sn-vst-val',   chg: 'sn-vst-chg',   sub: 'sn-vst-sub',   tgt: 'sn-vst-tgt',   base: 'VST · USD'   },
+  { t: 'GLD',   val: 'sn-gld-val',   chg: 'sn-gld-chg',   sub: 'sn-gld-sub',   tgt: 'sn-gld-tgt',   base: 'GLD · USD'   },
+  { t: 'GOOGL', val: 'sn-googl-val', chg: 'sn-googl-chg', sub: 'sn-googl-sub', tgt: 'sn-googl-tgt', base: 'GOOGL · USD' },
 ];
 async function loadSingleNames() {
-  await Promise.all(SINGLES.map(async ({ t, val, chg, sub, base }) => {
-    try { const data = await yahoo(t); renderMkt(val, chg, sub, data, 2, base); }
-    catch (e) { setV(val, 'ERRO', 'err'); console.error(t, e); }
+  await Promise.all(SINGLES.map(async ({ t, val, chg, sub, tgt, base }) => {
+    const [priceRes, targetRes] = await Promise.allSettled([
+      yahoo(t),
+      fetch(`/api/target?t=${encodeURIComponent(t)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    if (priceRes.status === 'fulfilled') {
+      renderMkt(val, chg, sub, priceRes.value, 2, base);
+      const d = targetRes.value;
+      const el = document.getElementById(tgt);
+      if (el && d?.targetMean) {
+        const upPct = ((d.targetMean - priceRes.value.price) / priceRes.value.price) * 100;
+        const sign = upPct >= 0 ? '+' : '';
+        const cls  = upPct >= 0 ? 'pos' : 'neg';
+        const analysts = d.numAnalysts ? ` · ${d.numAnalysts}` : '';
+        el.innerHTML = `Alvo: $${num(d.targetMean, 0)} <span class="${cls}">${sign}${num(upPct, 1)}%</span>${analysts}`;
+      }
+    } else {
+      setV(val, 'ERRO', 'err'); console.error(t, priceRes.reason);
+    }
   }));
 }
 
