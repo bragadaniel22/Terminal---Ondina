@@ -105,6 +105,28 @@
     .ntnb-cell .rname { font-size: 11px; }
     .ntnb-cell .rsub { font-size: 9px; }
     .ntnb-cell .rtgt { font-size: 9px; margin-top: 5px; color: var(--dim); min-height: 12px; }
+    /* PORTFOLIO */
+    .pf-range { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: rgba(255,102,0,.02); }
+    .range-btn {
+      padding: 3px 10px; font-family: inherit; font-size: 9px; letter-spacing: 2px;
+      color: var(--dim); background: transparent; border: 1px solid var(--border-hi);
+      cursor: pointer; text-transform: uppercase;
+    }
+    .range-btn.active { color: var(--orange); border-color: var(--orange); }
+    .range-btn:hover:not(.active) { color: var(--text); border-color: var(--text); }
+    .pf-cards { display: grid; grid-template-columns: repeat(6, 1fr); border-bottom: 1px solid var(--border); }
+    .pf-card { padding: 12px 14px; border-right: 1px solid var(--border); }
+    .pf-card:last-child { border-right: none; }
+    .pf-card .rname { font-size: 10px; letter-spacing: 2px; color: var(--orange); margin-bottom: 8px; }
+    .pf-card .pf-val { font-size: 16px; font-weight: bold; margin-bottom: 3px; }
+    .pf-card .pf-stat { font-size: 9px; color: var(--dim); margin-top: 2px; }
+    .pf-charts { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .pf-chart-box canvas { height: 340px !important; }
+    .pf-chart-title { font-size: 9px; letter-spacing: 2px; color: var(--orange); margin-bottom: 10px; text-transform: uppercase; }
+    .pf-card { cursor: pointer; transition: opacity .15s; }
+    .pf-card:hover { background: rgba(255,255,255,.02); }
+    .pf-card.pf-hidden { opacity: 0.22; }
+
     /* TABS */
     .tabs {
       display: flex; gap: 0; margin-bottom: 14px;
@@ -136,6 +158,7 @@
     .prog { width: 80px; height: 2px; background: var(--border-hi); display: inline-block; }
     .prog-fill { height: 100%; background: var(--orange); transition: width 1s linear; }
   </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -154,6 +177,7 @@
 <nav class="tabs">
   <button class="tab-btn active" data-tab="indices" onclick="switchTab(this)">ÍNDICES</button>
   <button class="tab-btn" data-tab="single-names" onclick="switchTab(this)">SINGLE NAMES</button>
+  <button class="tab-btn" data-tab="portfolio" onclick="switchTab(this)">PORTFÓLIO</button>
 </nav>
 
 <div id="tab-indices" class="tab-panel active">
@@ -441,6 +465,33 @@
   </div>
 </div>
 </div><!-- /tab-single-names -->
+
+<div id="tab-portfolio" class="tab-panel">
+  <div class="card">
+    <div class="card-head">
+      <h2>📊 Simulador de Portfólio · Single Names</h2>
+      <div class="pf-range">
+        <button class="range-btn active" data-r="3mo" onclick="loadPortfolio('3mo')">3M</button>
+        <button class="range-btn" data-r="6mo" onclick="loadPortfolio('6mo')">6M</button>
+        <button class="range-btn" data-r="1y"  onclick="loadPortfolio('1y')">1A</button>
+        <button class="range-btn" data-r="2y"  onclick="loadPortfolio('2y')">2A</button>
+      </div>
+    </div>
+    <div class="pf-cards" id="pf-cards">
+      <!-- preenchido por JS -->
+    </div>
+    <div class="pf-charts">
+      <div class="pf-chart-box">
+        <div class="pf-chart-title">Desempenho Relativo · base 100</div>
+        <canvas id="pf-line-chart"></canvas>
+      </div>
+      <div class="pf-chart-box">
+        <div class="pf-chart-title">Risco × Retorno · Sharpe</div>
+        <canvas id="pf-scatter-chart"></canvas>
+      </div>
+    </div>
+  </div>
+</div><!-- /tab-portfolio -->
 
 <footer>
   <span>Fontes: BCB · Yahoo Finance · ECB · ANBIMA · B3</span>
@@ -856,6 +907,7 @@ function startTimer() {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 let snLoaded = false;
+let pfLoaded = false;
 function switchTab(btn) {
   const name = btn.dataset.tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -863,6 +915,217 @@ function switchTab(btn) {
   btn.classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'single-names' && !snLoaded) { snLoaded = true; loadSingleNames(); }
+  if (name === 'portfolio'    && !pfLoaded) { pfLoaded = true; loadPortfolio('3mo'); }
+}
+
+// ── Portfolio Simulator ───────────────────────────────────────────────────────
+const PF_TICKERS = ['AMZN','MSFT','NVDA','CRM','TMO','DHR','V','VST','GLD','GOOGL'];
+const PF_COLORS  = ['#4488ff','#00cc77','#ffcc44','#ff66cc','#00cccc','#88ff44','#cc88ff','#ffaa44','#ff6688','#44ccff'];
+let pfLineChart = null, pfScatterChart = null, pfRange = '3mo';
+let pfTickerIdx = {}; // ticker → dataset index in both charts
+
+function togglePfTicker(card) {
+  const ticker = card.dataset.ticker;
+  card.classList.toggle('pf-hidden');
+  const visible = !card.classList.contains('pf-hidden');
+  const idx = pfTickerIdx[ticker];
+  if (idx == null) return;
+  [pfLineChart, pfScatterChart].forEach(ch => {
+    if (!ch) return;
+    ch.setDatasetVisibility(idx, visible);
+    ch.update();
+  });
+}
+
+async function yahooHistory(ticker, range) {
+  const r = await fetch(`/api/yahoo?t=${encodeURIComponent(ticker)}&range=${range}`);
+  if (!r.ok) throw new Error(`${ticker}: ${r.status}`);
+  const d = await r.json();
+  const res = d?.chart?.result?.[0];
+  if (!res) throw new Error(`sem dados: ${ticker}`);
+  const ts = res.timestamp;
+  const px = res.indicators.adjclose?.[0]?.adjclose ?? res.indicators.quote[0].close;
+  return ts.map((t, i) => ({ ts: t, p: px[i] })).filter(d => d.p != null);
+}
+
+function alignSeries(allSeries) {
+  const sets = allSeries.map(s => new Set(s.map(d => d.ts)));
+  const common = [...sets[0]].filter(ts => sets.every(s => s.has(ts))).sort((a,b) => a - b);
+  const maps = allSeries.map(s => new Map(s.map(d => [d.ts, d.p])));
+  return {
+    dates: common.map(ts => new Date(ts * 1000)),
+    series: maps.map(m => common.map(ts => m.get(ts))),
+  };
+}
+
+function calcStats(prices) {
+  const n = prices.length;
+  if (n < 5) return { totalRet: 0, annRet: 0, vol: 0, sharpe: 0 };
+  const totalRet = (prices[n-1] - prices[0]) / prices[0];
+  const dailyRets = prices.slice(1).map((p,i) => (p - prices[i]) / prices[i]);
+  const mean = dailyRets.reduce((a,b) => a+b, 0) / dailyRets.length;
+  const variance = dailyRets.reduce((a,b) => a + (b-mean)**2, 0) / dailyRets.length;
+  const dpy = dailyRets.length > 150 ? 252 : 52;
+  const vol = Math.sqrt(variance) * Math.sqrt(dpy);
+  const annRet = (1 + totalRet) ** (dpy / dailyRets.length) - 1;
+  const sharpe = vol > 0 ? annRet / vol : 0;
+  return { totalRet, annRet, vol, sharpe };
+}
+
+function sharpeColor(s) {
+  if (s < 0)   return 'rgba(255,51,68,.85)';
+  if (s < 0.5) return 'rgba(255,102,0,.85)';
+  if (s < 1)   return 'rgba(255,204,0,.85)';
+  return 'rgba(0,204,119,.85)';
+}
+
+function fmtDate(d) {
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
+}
+
+async function loadPortfolio(range) {
+  pfRange = range;
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === range));
+
+  const cardsEl = document.getElementById('pf-cards');
+  cardsEl.innerHTML = [...PF_TICKERS, 'PORTFÓLIO'].map(t =>
+    `<div class="pf-card"><div class="rname">${t}</div><div class="pf-val dim2">…</div><div class="pf-stat">carregando</div></div>`
+  ).join('');
+
+  const results = await Promise.allSettled(PF_TICKERS.map(t => yahooHistory(t, range)));
+
+  const validData = [], validTickers = [], validColors = [];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value.length > 4) {
+      validData.push(r.value);
+      validTickers.push(PF_TICKERS[i]);
+      validColors.push(PF_COLORS[i]);
+    }
+  });
+  if (!validData.length) return;
+
+  const { dates, series } = alignSeries(validData);
+  const normalized = series.map(s => s.map(p => (p / s[0]) * 100));
+  const portNorm   = dates.map((_, i) => normalized.reduce((a, n) => a + n[i], 0) / normalized.length);
+
+  // stats
+  const stats = validTickers.map((t, i) => ({ ticker: t, color: validColors[i], ...calcStats(normalized[i]) }));
+  const portStats = { ticker: 'PORTFÓLIO', color: '#ff6600', ...calcStats(portNorm) };
+  const allStats  = [...stats, portStats];
+
+  // build ticker→index map
+  pfTickerIdx = {};
+  allStats.forEach((s, i) => { pfTickerIdx[s.ticker] = i; });
+
+  // cards
+  cardsEl.innerHTML = allStats.map(s => `
+    <div class="pf-card" data-ticker="${s.ticker}" onclick="togglePfTicker(this)">
+      <div class="rname">${s.ticker}</div>
+      <div class="pf-val ${s.totalRet >= 0 ? 'pos' : 'neg'}">${s.totalRet >= 0 ? '+' : ''}${num(s.totalRet * 100, 1)}%</div>
+      <div class="pf-stat">Vol: ${num(s.vol * 100, 1)}%</div>
+      <div class="pf-stat">Sharpe: ${num(s.sharpe, 2)}</div>
+    </div>`
+  ).join('');
+
+  const labels = dates.map(fmtDate);
+
+  // line chart
+  if (pfLineChart) pfLineChart.destroy();
+  const lCtx = document.getElementById('pf-line-chart').getContext('2d');
+  pfLineChart = new Chart(lCtx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        ...validTickers.map((t, i) => ({
+          label: t, data: normalized[i],
+          borderColor: validColors[i], borderWidth: 1,
+          pointRadius: 0, tension: 0,
+        })),
+        { label: 'PORTFÓLIO', data: portNorm, borderColor: '#ff6600', borderWidth: 2.5, borderDash: [5,3], pointRadius: 0, tension: 0 },
+      ],
+    },
+    options: {
+      responsive: true, animation: false, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#485068', font: { family: 'Courier New', size: 8 }, boxWidth: 10, padding: 8 } },
+        tooltip: {
+          backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
+          titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
+          titleFont: { family: 'Courier New', size: 8 }, bodyFont: { family: 'Courier New', size: 8 },
+          callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)}` },
+        },
+      },
+      scales: {
+        x: { ticks: { color: '#485068', font: { family: 'Courier New', size: 7 }, maxTicksLimit: 8 }, grid: { color: '#181828' } },
+        y: { ticks: { color: '#485068', font: { family: 'Courier New', size: 7 }, callback: v => v.toFixed(0) }, grid: { color: '#181828' } },
+      },
+    },
+  });
+
+  // scatter chart
+  if (pfScatterChart) pfScatterChart.destroy();
+  const sCtx = document.getElementById('pf-scatter-chart').getContext('2d');
+  const labelPlugin = {
+    id: 'pf-labels',
+    afterDraw(chart) {
+      const ctx = chart.ctx;
+      chart.data.datasets.forEach((ds, i) => {
+        const meta = chart.getDatasetMeta(i);
+        if (!meta.visible) return;
+        const pt = meta.data[0];
+        if (!pt) return;
+        ctx.save();
+        ctx.fillStyle = '#dde4f8';
+        ctx.font = 'bold 8px Courier New';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(ds.label, pt.x, pt.y);
+        ctx.restore();
+      });
+    },
+  };
+  pfScatterChart = new Chart(sCtx, {
+    type: 'scatter',
+    data: {
+      datasets: allStats.map(s => ({
+        label: s.ticker,
+        data: [{ x: s.vol * 100, y: s.annRet * 100 }],
+        backgroundColor: sharpeColor(s.sharpe),
+        borderColor: 'transparent',
+        pointRadius: 14, pointHoverRadius: 16,
+      })),
+    },
+    options: {
+      responsive: true, animation: false, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
+          titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
+          titleFont: { family: 'Courier New', size: 9 }, bodyFont: { family: 'Courier New', size: 8 },
+          callbacks: {
+            title: c => c[0].dataset.label,
+            label: c => [`Retorno: ${c.parsed.y.toFixed(1)}%`, `Vol.: ${c.parsed.x.toFixed(1)}%`, `Sharpe: ${allStats[c.datasetIndex].sharpe.toFixed(2)}`],
+          },
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Volatilidade (anualizada)', color: '#485068', font: { family: 'Courier New', size: 8 } },
+          ticks: { color: '#485068', font: { family: 'Courier New', size: 7 }, callback: v => v.toFixed(0) + '%' },
+          grid: { color: '#181828' },
+        },
+        y: {
+          title: { display: true, text: 'Retorno (anualizado)', color: '#485068', font: { family: 'Courier New', size: 8 } },
+          ticks: { color: '#485068', font: { family: 'Courier New', size: 7 }, callback: v => v.toFixed(0) + '%' },
+          grid: { color: '#181828' },
+        },
+      },
+    },
+    plugins: [labelPlugin],
+  });
 }
 
 // ── Single Names ──────────────────────────────────────────────────────────────
