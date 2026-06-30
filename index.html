@@ -233,6 +233,11 @@
     </div>
 
     <div class="row">
+      <div><div class="rname">S&amp;P EQUAL WEIGHT</div><div class="rsub" id="spew-sub">^SPXEW · EUA</div></div>
+      <div class="rright"><div class="rval" id="spew-val">…</div><div class="rchg" id="spew-chg">—</div></div>
+    </div>
+
+    <div class="row">
       <div><div class="rname">DOW JONES</div><div class="rsub" id="dow-sub">^DJI · EUA</div></div>
       <div class="rright"><div class="rval" id="dow-val">…</div><div class="rchg" id="dow-chg">—</div></div>
     </div>
@@ -696,6 +701,7 @@ async function loadBrasil() {
 async function loadAmericas() {
   const list = [
     { t: '^GSPC', val: 'sp-val',     chg: 'sp-chg',     sub: 'sp-sub',     base: '^GSPC · EUA', d: 2 },
+    { t: '^SPXEW', val: 'spew-val', chg: 'spew-chg', sub: 'spew-sub', base: '^SPXEW · EUA', d: 2 },
     { t: '^DJI',  val: 'dow-val',    chg: 'dow-chg',    sub: 'dow-sub',    base: '^DJI · EUA',  d: 2 },
     { t: '^IXIC', val: 'nasdaq-val', chg: 'nasdaq-chg', sub: 'nasdaq-sub', base: '^IXIC · EUA', d: 2 },
   ];
