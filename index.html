@@ -84,6 +84,21 @@
     .dim2{ color: var(--dim)   !important; }
     .err { color: var(--red); font-size: 11px; }
 
+    .card-wide { grid-column: 1 / -1; }
+    .ntnb-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+    }
+    .ntnb-cell {
+      padding: 14px 12px;
+      border-right: 1px solid var(--border);
+      text-align: center;
+    }
+    .ntnb-cell:last-child { border-right: none; }
+    .ntnb-cell .rval { font-size: 15px; margin: 6px 0 4px; }
+    .ntnb-cell .rname { font-size: 11px; }
+    .ntnb-cell .rsub { font-size: 9px; }
+
     /* FOOTER */
     footer {
       position: fixed; bottom: 0; left: 0; right: 0;
@@ -129,6 +144,11 @@
     <div class="row">
       <div><div class="rname">IBOVESPA</div><div class="rsub" id="ibov-sub">^BVSP · pontos</div></div>
       <div class="rright"><div class="rval" id="ibov-val">…</div><div class="rchg" id="ibov-chg">—</div></div>
+    </div>
+
+    <div class="row">
+      <div><div class="rname">DI FUTURO JAN/30</div><div class="rsub" id="di-sub">B3 · DI1F30</div></div>
+      <div class="rright"><div class="rval hl" id="di-val">…</div><div class="rchg" id="di-chg">% a.a.</div></div>
     </div>
 
     <div class="row">
@@ -247,10 +267,47 @@
     </div>
   </div>
 
+  <!-- ── NTN-B ── -->
+  <div class="card card-wide">
+    <div class="card-head"><h2>📊 NTN-B · Curva Inflação (IPCA+)</h2><span id="ntnb-date">ANBIMA · merc. secundário</span></div>
+    <div class="ntnb-grid">
+      <div class="ntnb-cell">
+        <div class="rname">NTN-B 2028</div>
+        <div class="rval hl" id="ntnb-2028">…</div>
+        <div class="rsub" id="ntnb-2028-sub">ago/28</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">NTN-B 2029</div>
+        <div class="rval hl" id="ntnb-2029">…</div>
+        <div class="rsub" id="ntnb-2029-sub">mai/29</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">NTN-B 2030</div>
+        <div class="rval hl" id="ntnb-2030">…</div>
+        <div class="rsub" id="ntnb-2030-sub">ago/30</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">NTN-B 2032</div>
+        <div class="rval hl" id="ntnb-2032">…</div>
+        <div class="rsub" id="ntnb-2032-sub">ago/32</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">NTN-B 2035</div>
+        <div class="rval hl" id="ntnb-2035">…</div>
+        <div class="rsub" id="ntnb-2035-sub">mai/35</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">NTN-B 2045</div>
+        <div class="rval hl" id="ntnb-2045">…</div>
+        <div class="rsub" id="ntnb-2045-sub">mai/45</div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <footer>
-  <span>Fontes: Banco Central do Brasil · Yahoo Finance · European Central Bank</span>
+  <span>Fontes: BCB · Yahoo Finance · ECB · ANBIMA · B3</span>
   <div class="prog-wrap">
     Próxima atualização: <span id="cd">60</span>s
     <div class="prog"><div class="prog-fill" id="prog" style="width:100%"></div></div>
@@ -384,18 +441,11 @@ async function yahoo(ticker) {
 }
 
 async function ecbRate() {
-  const r = await fetch(
-    'https://data-api.ecb.europa.eu/service/data/FM/B.U2.EUR.4F.KR.MRR_FR.LEV?format=jsondata&lastNObservations=1'
-  );
-  if (!r.ok) throw new Error(`ECB: ${r.status}`);
+  const r = await fetch('/api/ecb');
+  if (!r.ok) throw new Error(`ECB proxy: ${r.status}`);
   const d = await r.json();
-  const sid  = Object.keys(d.dataSets[0].series)[0];
-  const obs  = d.dataSets[0].series[sid].observations;
-  const key  = Object.keys(obs)[0];
-  const val  = obs[key][0];
-  const dim  = d.structure.dimensions.observation[0];
-  const date = dim?.values?.[parseInt(key)]?.id ?? '—';
-  return { v: val, date };
+  if (d.error) throw new Error(d.error);
+  return { v: d.v, date: d.date };
 }
 
 // ── Render mercado (com cache e indicador de data) ────────────────────────────
@@ -510,10 +560,17 @@ async function loadJuros() {
   // BCE
   try {
     const { v, date } = await ecbRate();
+    cachePut('ecb_mrr', { v, date });
     setV('bce-val', num(v) + '%', 'hl');
     setSub('bce-sub', `ECB · MRR · ${date}`);
   } catch (e) {
-    setV('bce-val', 'ERRO', 'err'); console.error('BCE', e);
+    const c = cacheGet('ecb_mrr');
+    if (c) {
+      setV('bce-val', num(c.v) + '%', 'hl');
+      setSub('bce-sub', `ECB · MRR · ${c.date} · cache`);
+    } else {
+      setV('bce-val', 'ERRO', 'err'); console.error('BCE', e);
+    }
   }
 
   // T-Note 10Y
@@ -522,6 +579,73 @@ async function loadJuros() {
     renderMkt('tnx-val', 'tnx-chg', 'tnx-sub', data, 2, '^TNX · Tesouro EUA', '%');
   } catch (e) {
     setV('tnx-val', 'ERRO', 'err'); console.error('TNX', e);
+  }
+}
+
+// ── DI Futuro (B3) ───────────────────────────────────────────────────────────
+async function loadDI() {
+  try {
+    const r = await fetch('/api/b3?s=DI1F30');
+    if (!r.ok) throw new Error(`B3: ${r.status}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    cachePut('b3_di1f30', d);
+    renderDI(d, false);
+  } catch (e) {
+    const c = cacheGet('b3_di1f30');
+    if (c) renderDI(c, true);
+    else { setV('di-val', 'ERRO', 'err'); console.error('DI1F30', e); }
+  }
+}
+
+function renderDI(d, fromCache) {
+  const chgPp = (d.open != null && d.price != null) ? d.price - d.open : null;
+  setV('di-val', num(d.price) + '%', 'hl');
+  if (chgPp !== null && chgPp !== 0) {
+    setC('di-chg', (chgPp > 0 ? '+' : '') + num(chgPp, 2) + ' pp', '');
+  } else {
+    setC('di-chg', '% a.a.', '');
+  }
+  let tag = fromCache ? ' · cache' : '';
+  if (!fromCache && d.date) {
+    const dtStr = d.date.slice(8, 10) + '/' + d.date.slice(5, 7) + ' ' + d.date.slice(11, 16);
+    tag = ` · ${dtStr}`;
+  }
+  setSub('di-sub', 'B3 · DI1F30' + tag);
+}
+
+// ── NTN-B ─────────────────────────────────────────────────────────────────────
+async function loadNtnb() {
+  try {
+    const r = await fetch('/api/ntnb');
+    if (!r.ok) throw new Error(`NTN-B: ${r.status}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    cachePut('anbima_ntnb', d);
+    renderNtnb(d, false);
+  } catch (e) {
+    const c = cacheGet('anbima_ntnb');
+    if (c) renderNtnb(c, true);
+    else {
+      ['2028','2029','2030','2032','2035','2045'].forEach(y => setV('ntnb-'+y, 'ERRO', 'err'));
+      console.error('NTN-B', e);
+    }
+  }
+}
+
+function renderNtnb(d, fromCache) {
+  const sub = `ANBIMA · ${d.date}${fromCache ? ' · cache' : ''}`;
+  const el = document.getElementById('ntnb-date');
+  if (el) el.textContent = sub;
+  const LABELS = { '2028':'ago/28', '2029':'mai/29', '2030':'ago/30', '2032':'ago/32', '2035':'mai/35', '2045':'mai/45' };
+  for (const [year, label] of Object.entries(LABELS)) {
+    const rate = d.rates?.[year];
+    if (rate != null) {
+      setV('ntnb-'+year, num(rate)+'%', 'hl');
+      setSub('ntnb-'+year+'-sub', label+' · '+d.date);
+    } else {
+      setV('ntnb-'+year, 'N/D', 'dim2');
+    }
   }
 }
 
@@ -578,7 +702,7 @@ function startTimer() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function loadAll() {
-  await Promise.allSettled([loadBrasil(), loadAmericas(), loadEurope(), loadAsia(), loadJuros(), loadCommodities(), loadEttj()]);
+  await Promise.allSettled([loadBrasil(), loadAmericas(), loadEurope(), loadAsia(), loadJuros(), loadCommodities(), loadEttj(), loadDI(), loadNtnb()]);
   document.getElementById('last').textContent = new Date().toLocaleTimeString('pt-BR');
 }
 
