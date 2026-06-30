@@ -473,6 +473,7 @@
       <div class="pf-range">
         <button class="range-btn active" data-r="3mo" onclick="loadPortfolio('3mo')">3M</button>
         <button class="range-btn" data-r="6mo" onclick="loadPortfolio('6mo')">6M</button>
+        <button class="range-btn" data-r="ytd" onclick="loadPortfolio('ytd')">YTD</button>
         <button class="range-btn" data-r="1y"  onclick="loadPortfolio('1y')">1A</button>
         <button class="range-btn" data-r="2y"  onclick="loadPortfolio('2y')">2A</button>
       </div>
@@ -946,14 +947,26 @@ function togglePfTicker(card) {
 }
 
 async function yahooHistory(ticker, range) {
-  const r = await fetch(`/api/yahoo?t=${encodeURIComponent(ticker)}&range=${range}`);
+  const fetchRange = range === 'ytd' ? '1y' : range;
+  const r = await fetch(`/api/yahoo?t=${encodeURIComponent(ticker)}&range=${fetchRange}`);
   if (!r.ok) throw new Error(`${ticker}: ${r.status}`);
   const d = await r.json();
   const res = d?.chart?.result?.[0];
   if (!res) throw new Error(`sem dados: ${ticker}`);
   const ts = res.timestamp;
   const px = res.indicators.adjclose?.[0]?.adjclose ?? res.indicators.quote[0].close;
-  return ts.map((t, i) => ({ ts: t, p: px[i] })).filter(d => d.p != null);
+  let series = ts.map((t, i) => ({ ts: t, p: px[i] })).filter(d => d.p != null);
+
+  if (range === 'ytd') {
+    // base = último preço disponível em 31/12 do ano anterior
+    const dec31 = new Date(new Date().getFullYear() - 1, 11, 31, 23, 59, 59);
+    const dec31Ts = dec31.getTime() / 1000;
+    const base = series.filter(d => d.ts <= dec31Ts).pop();
+    const afterDec31 = series.filter(d => d.ts > dec31Ts);
+    series = base ? [base, ...afterDec31] : afterDec31;
+  }
+
+  return series;
 }
 
 function alignSeries(allSeries) {
@@ -1018,7 +1031,7 @@ async function loadPortfolio(range) {
 
   // stats
   const stats = validTickers.map((t, i) => ({ ticker: t, color: validColors[i], ...calcStats(normalized[i]) }));
-  const portStats = { ticker: 'PORTFÓLIO', color: '#ff6600', ...calcStats(portNorm) };
+  const portStats = { ticker: 'PORTFÓLIO SN', color: '#ff6600', ...calcStats(portNorm) };
   const allStats  = [...stats, portStats];
 
   // build ticker→index map
@@ -1050,7 +1063,7 @@ async function loadPortfolio(range) {
           borderColor: validColors[i], borderWidth: 1,
           pointRadius: 0, tension: 0,
         })),
-        { label: 'PORTFÓLIO', data: portNorm, borderColor: '#ff6600', borderWidth: 2.5, borderDash: [5,3], pointRadius: 0, tension: 0 },
+        { label: 'PORTFÓLIO SN', data: portNorm, borderColor: '#ff6600', borderWidth: 2.5, borderDash: [5,3], pointRadius: 0, tension: 0 },
       ],
     },
     options: {
