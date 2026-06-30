@@ -5,28 +5,34 @@ export default async function handler(req, res) {
   const ticker = req.query.t;
   if (!ticker) return res.status(400).json({ error: 'ticker required' });
 
-  const BASE_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
-    'Accept-Language': 'en-US,en;q=0.9',
-  };
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
   try {
-    // Step 1 — get cookie + crumb
-    const cookieRes = await fetch('https://fc.yahoo.com', { headers: BASE_HEADERS });
-    const cookie = (cookieRes.headers.get('set-cookie') || '').split(';')[0];
+    // Step 1 — get cookie from Yahoo
+    const cookieRes = await fetch('https://fc.yahoo.com', {
+      headers: { 'User-Agent': UA, 'Accept': '*/*' },
+    });
+    // Node 18+ uses getSetCookie(); older envs fall back to get()
+    let cookie = '';
+    if (typeof cookieRes.headers.getSetCookie === 'function') {
+      cookie = cookieRes.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
+    } else {
+      cookie = (cookieRes.headers.get('set-cookie') || '').split(';')[0];
+    }
 
+    // Step 2 — get crumb
     const crumbRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
-      headers: { ...BASE_HEADERS, Cookie: cookie },
+      headers: { 'User-Agent': UA, 'Cookie': cookie },
     });
     const crumb = await crumbRes.text();
+    if (!crumb || crumb.includes('<') || crumb.length > 20) throw new Error('crumb inválido');
 
-    // Step 2 — quoteSummary
+    // Step 3 — quoteSummary
     const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=financialData&crumb=${encodeURIComponent(crumb)}`;
     const r = await fetch(url, {
-      headers: { ...BASE_HEADERS, Cookie: cookie },
+      headers: { 'User-Agent': UA, 'Cookie': cookie, 'Accept': 'application/json' },
     });
-    if (!r.ok) throw new Error(`Yahoo quoteSummary ${r.status}`);
+    if (!r.ok) throw new Error(`Yahoo ${r.status}`);
     const d = await r.json();
     const fd = d?.quoteSummary?.result?.[0]?.financialData;
     if (!fd) throw new Error('sem financialData');
