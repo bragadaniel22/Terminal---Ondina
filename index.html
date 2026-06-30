@@ -98,6 +98,10 @@
     .ntnb-cell .rval { font-size: 15px; margin: 6px 0 4px; }
     .ntnb-cell .rname { font-size: 11px; }
     .ntnb-cell .rsub { font-size: 9px; }
+    .premarket-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+    }
 
     /* FOOTER */
     footer {
@@ -147,13 +151,13 @@
     </div>
 
     <div class="row">
-      <div><div class="rname">DI FUTURO JAN/30</div><div class="rsub" id="di-sub">B3 · DI1F30</div></div>
-      <div class="rright"><div class="rval hl" id="di-val">…</div><div class="rchg" id="di-chg">% a.a.</div></div>
+      <div><div class="rname">DI FUTURO JAN/30</div><div class="rsub" id="di30-sub">B3 · DI1F30</div></div>
+      <div class="rright"><div class="rval hl" id="di30-val">…</div><div class="rchg" id="di30-chg">% a.a.</div></div>
     </div>
 
     <div class="row">
-      <div><div class="rname">ETTJ PRÉ 252du</div><div class="rsub" id="ettjpre-sub">ANBIMA · carregando…</div></div>
-      <div class="rright"><div class="rval hl" id="ettjpre-val">…</div><div class="rchg">% a.a.</div></div>
+      <div><div class="rname">DI FUTURO JAN/35</div><div class="rsub" id="di35-sub">B3 · DI1F35</div></div>
+      <div class="rright"><div class="rval hl" id="di35-val">…</div><div class="rchg" id="di35-chg">% a.a.</div></div>
     </div>
 
     <div class="row">
@@ -169,7 +173,7 @@
 
   <!-- ── AMÉRICAS ── -->
   <div class="card">
-    <div class="card-head"><h2>🌎 Américas</h2><span>Yahoo Finance</span></div>
+    <div class="card-head"><h2>🇺🇸 Bolsa US</h2><span>Yahoo Finance</span></div>
 
     <div class="row">
       <div><div class="rname">S&amp;P 500</div><div class="rsub" id="sp-sub">^GSPC · EUA</div></div>
@@ -264,6 +268,37 @@
     <div class="row">
       <div><div class="rname">BITCOIN</div><div class="rsub" id="btc-sub">BTC-USD · USD</div></div>
       <div class="rright"><div class="rval" id="btc-val">…</div><div class="rchg" id="btc-chg">—</div></div>
+    </div>
+  </div>
+
+  <!-- ── PRÉ-MERCADO US ── -->
+  <div class="card card-wide">
+    <div class="card-head"><h2>⏰ Pré-Mercado US · Futuros</h2><span>Yahoo Finance · contratos futuros</span></div>
+    <div class="premarket-grid">
+      <div class="ntnb-cell">
+        <div class="rname">DOW FUTURO</div>
+        <div class="rval" id="pmDow-val">…</div>
+        <div class="rchg" id="pmDow-chg">—</div>
+        <div class="rsub" id="pmDow-sub">YM=F</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">S&amp;P FUTURO</div>
+        <div class="rval" id="pmSp-val">…</div>
+        <div class="rchg" id="pmSp-chg">—</div>
+        <div class="rsub" id="pmSp-sub">ES=F</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">NASDAQ FUTURO</div>
+        <div class="rval" id="pmNas-val">…</div>
+        <div class="rchg" id="pmNas-chg">—</div>
+        <div class="rsub" id="pmNas-sub">NQ=F</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">WTI OIL</div>
+        <div class="rval" id="pmOil-val">…</div>
+        <div class="rchg" id="pmOil-chg">—</div>
+        <div class="rsub" id="pmOil-sub">CL=F · USD/bbl</div>
+      </div>
     </div>
   </div>
 
@@ -584,34 +619,54 @@ async function loadJuros() {
 
 // ── DI Futuro (B3) ───────────────────────────────────────────────────────────
 async function loadDI() {
+  await Promise.all([
+    fetchDI('DI1F30', 'di30'),
+    fetchDI('DI1F35', 'di35'),
+  ]);
+}
+
+async function fetchDI(symbol, pfx) {
   try {
-    const r = await fetch('/api/b3?s=DI1F30');
+    const r = await fetch(`/api/b3?s=${symbol}`);
     if (!r.ok) throw new Error(`B3: ${r.status}`);
     const d = await r.json();
     if (d.error) throw new Error(d.error);
-    cachePut('b3_di1f30', d);
-    renderDI(d, false);
+    cachePut('b3_'+pfx, d);
+    renderOneDI(d, false, pfx, symbol);
   } catch (e) {
-    const c = cacheGet('b3_di1f30');
-    if (c) renderDI(c, true);
-    else { setV('di-val', 'ERRO', 'err'); console.error('DI1F30', e); }
+    const c = cacheGet('b3_'+pfx);
+    if (c) renderOneDI(c, true, pfx, symbol);
+    else { setV(pfx+'-val', 'ERRO', 'err'); console.error(symbol, e); }
   }
 }
 
-function renderDI(d, fromCache) {
+function renderOneDI(d, fromCache, pfx, symbol) {
   const chgPp = (d.open != null && d.price != null) ? d.price - d.open : null;
-  setV('di-val', num(d.price) + '%', 'hl');
+  setV(pfx+'-val', num(d.price)+'%', 'hl');
   if (chgPp !== null && chgPp !== 0) {
-    setC('di-chg', (chgPp > 0 ? '+' : '') + num(chgPp, 2) + ' pp', '');
+    setC(pfx+'-chg', (chgPp > 0 ? '+' : '') + num(chgPp, 2) + ' pp', '');
   } else {
-    setC('di-chg', '% a.a.', '');
+    setC(pfx+'-chg', '% a.a.', '');
   }
   let tag = fromCache ? ' · cache' : '';
   if (!fromCache && d.date) {
-    const dtStr = d.date.slice(8, 10) + '/' + d.date.slice(5, 7) + ' ' + d.date.slice(11, 16);
-    tag = ` · ${dtStr}`;
+    tag = ` · ${d.date.slice(8,10)}/${d.date.slice(5,7)} ${d.date.slice(11,16)}`;
   }
-  setSub('di-sub', 'B3 · DI1F30' + tag);
+  setSub(pfx+'-sub', `B3 · ${symbol}` + tag);
+}
+
+// ── Pré-Mercado US ───────────────────────────────────────────────────────────
+async function loadPreMarket() {
+  const list = [
+    { t: 'YM=F', val: 'pmDow-val', chg: 'pmDow-chg', sub: 'pmDow-sub', base: 'DOW FUT · YM=F', d: 0 },
+    { t: 'ES=F', val: 'pmSp-val',  chg: 'pmSp-chg',  sub: 'pmSp-sub',  base: 'S&P FUT · ES=F',  d: 2 },
+    { t: 'NQ=F', val: 'pmNas-val', chg: 'pmNas-chg', sub: 'pmNas-sub', base: 'NAS FUT · NQ=F', d: 2 },
+    { t: 'CL=F', val: 'pmOil-val', chg: 'pmOil-chg', sub: 'pmOil-sub', base: 'WTI OIL · CL=F',  d: 2 },
+  ];
+  await Promise.all(list.map(async ({ t, val, chg, sub, base, d }) => {
+    try { const data = await yahoo(t); renderMkt(val, chg, sub, data, d, base); }
+    catch (e) { setV(val, 'ERRO', 'err'); console.error(t, e); }
+  }));
 }
 
 // ── NTN-B ─────────────────────────────────────────────────────────────────────
@@ -659,18 +714,16 @@ async function loadEttj() {
     cachePut('anbima_ettj', d);
 
     const sub = `ANBIMA · 252du · ${d.date}`;
-    setV('ettjpre-val',  num(d.ettjPre)  + '%', 'hl'); setSub('ettjpre-sub',  sub);
     setV('ettjipca-val', num(d.ettjIpca) + '%', 'hl'); setSub('ettjipca-sub', sub);
     setV('infimp-val',   num(d.infImpl)  + '%', 'hl'); setSub('infimp-sub',   sub);
   } catch (e) {
     const c = cacheGet('anbima_ettj');
     if (c) {
       const sub = `ANBIMA · 252du · ${c.date} · cache`;
-      setV('ettjpre-val',  num(c.ettjPre)  + '%', 'hl'); setSub('ettjpre-sub',  sub);
       setV('ettjipca-val', num(c.ettjIpca) + '%', 'hl'); setSub('ettjipca-sub', sub);
       setV('infimp-val',   num(c.infImpl)  + '%', 'hl'); setSub('infimp-sub',   sub);
     } else {
-      ['ettjpre-val','ettjipca-val','infimp-val'].forEach(id => setV(id, 'ERRO', 'err'));
+      ['ettjipca-val','infimp-val'].forEach(id => setV(id, 'ERRO', 'err'));
       console.error('ETTJ', e);
     }
   }
@@ -702,7 +755,7 @@ function startTimer() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function loadAll() {
-  await Promise.allSettled([loadBrasil(), loadAmericas(), loadEurope(), loadAsia(), loadJuros(), loadCommodities(), loadEttj(), loadDI(), loadNtnb()]);
+  await Promise.allSettled([loadBrasil(), loadAmericas(), loadEurope(), loadAsia(), loadJuros(), loadCommodities(), loadEttj(), loadDI(), loadNtnb(), loadPreMarket()]);
   document.getElementById('last').textContent = new Date().toLocaleTimeString('pt-BR');
 }
 
