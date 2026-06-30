@@ -84,6 +84,12 @@
     .dim2{ color: var(--dim)   !important; }
     .err { color: var(--red); font-size: 11px; }
 
+    .section-div {
+      font-size: 8px; color: var(--dim); letter-spacing: 2px;
+      padding: 5px 12px; border-top: 1px solid var(--border-hi);
+      background: rgba(255,255,255,.008);
+    }
+
     .card-wide { grid-column: 1 / -1; }
     .ntnb-grid {
       display: grid;
@@ -98,9 +104,24 @@
     .ntnb-cell .rval { font-size: 15px; margin: 6px 0 4px; }
     .ntnb-cell .rname { font-size: 11px; }
     .ntnb-cell .rsub { font-size: 9px; }
-    .premarket-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
+    /* TABS */
+    .tabs {
+      display: flex; gap: 0; margin-bottom: 14px;
+      border-bottom: 1px solid var(--border-hi);
+    }
+    .tab-btn {
+      padding: 7px 18px; font-family: inherit; font-size: 9px;
+      letter-spacing: 3px; color: var(--dim); background: transparent;
+      border: none; border-bottom: 2px solid transparent;
+      cursor: pointer; text-transform: uppercase;
+    }
+    .tab-btn.active { color: var(--orange); border-bottom-color: var(--orange); }
+    .tab-btn:hover:not(.active) { color: var(--text); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .single-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr);
     }
 
     /* FOOTER */
@@ -129,6 +150,12 @@
   </div>
 </header>
 
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="indices" onclick="switchTab(this)">ÍNDICES</button>
+  <button class="tab-btn" data-tab="single-names" onclick="switchTab(this)">SINGLE NAMES</button>
+</nav>
+
+<div id="tab-indices" class="tab-panel active">
 <div class="grid">
 
   <!-- ── BRASIL ── -->
@@ -189,6 +216,24 @@
       <div><div class="rname">NASDAQ</div><div class="rsub" id="nasdaq-sub">^IXIC · EUA</div></div>
       <div class="rright"><div class="rval" id="nasdaq-val">…</div><div class="rchg" id="nasdaq-chg">—</div></div>
     </div>
+
+    <div class="section-div">⏰ PRÉ-MERCADO · FUTUROS</div>
+
+    <div class="row">
+      <div><div class="rname">DOW FUTURO</div><div class="rsub" id="pmDow-sub">YM=F</div></div>
+      <div class="rright"><div class="rval" id="pmDow-val">…</div><div class="rchg" id="pmDow-chg">—</div></div>
+    </div>
+
+    <div class="row">
+      <div><div class="rname">S&amp;P FUTURO</div><div class="rsub" id="pmSp-sub">ES=F</div></div>
+      <div class="rright"><div class="rval" id="pmSp-val">…</div><div class="rchg" id="pmSp-chg">—</div></div>
+    </div>
+
+    <div class="row">
+      <div><div class="rname">NASDAQ FUTURO</div><div class="rsub" id="pmNas-sub">NQ=F</div></div>
+      <div class="rright"><div class="rval" id="pmNas-val">…</div><div class="rchg" id="pmNas-chg">—</div></div>
+    </div>
+
   </div>
 
   <!-- ── EUROPA ── -->
@@ -261,6 +306,11 @@
     </div>
 
     <div class="row">
+      <div><div class="rname">WTI OIL</div><div class="rsub" id="wti-sub">CL=F · USD/bbl</div></div>
+      <div class="rright"><div class="rval" id="wti-val">…</div><div class="rchg" id="wti-chg">—</div></div>
+    </div>
+
+    <div class="row">
       <div><div class="rname">OURO</div><div class="rsub" id="gold-sub">GC=F · USD/oz</div></div>
       <div class="rright"><div class="rval" id="gold-val">…</div><div class="rchg" id="gold-chg">—</div></div>
     </div>
@@ -268,37 +318,6 @@
     <div class="row">
       <div><div class="rname">BITCOIN</div><div class="rsub" id="btc-sub">BTC-USD · USD</div></div>
       <div class="rright"><div class="rval" id="btc-val">…</div><div class="rchg" id="btc-chg">—</div></div>
-    </div>
-  </div>
-
-  <!-- ── PRÉ-MERCADO US ── -->
-  <div class="card card-wide">
-    <div class="card-head"><h2>⏰ Pré-Mercado US · Futuros</h2><span>Yahoo Finance · contratos futuros</span></div>
-    <div class="premarket-grid">
-      <div class="ntnb-cell">
-        <div class="rname">DOW FUTURO</div>
-        <div class="rval" id="pmDow-val">…</div>
-        <div class="rchg" id="pmDow-chg">—</div>
-        <div class="rsub" id="pmDow-sub">YM=F</div>
-      </div>
-      <div class="ntnb-cell">
-        <div class="rname">S&amp;P FUTURO</div>
-        <div class="rval" id="pmSp-val">…</div>
-        <div class="rchg" id="pmSp-chg">—</div>
-        <div class="rsub" id="pmSp-sub">ES=F</div>
-      </div>
-      <div class="ntnb-cell">
-        <div class="rname">NASDAQ FUTURO</div>
-        <div class="rval" id="pmNas-val">…</div>
-        <div class="rchg" id="pmNas-chg">—</div>
-        <div class="rsub" id="pmNas-sub">NQ=F</div>
-      </div>
-      <div class="ntnb-cell">
-        <div class="rname">WTI OIL</div>
-        <div class="rval" id="pmOil-val">…</div>
-        <div class="rchg" id="pmOil-chg">—</div>
-        <div class="rsub" id="pmOil-sub">CL=F · USD/bbl</div>
-      </div>
     </div>
   </div>
 
@@ -340,6 +359,77 @@
   </div>
 
 </div>
+</div><!-- /tab-indices -->
+
+<div id="tab-single-names" class="tab-panel">
+<div class="grid">
+  <div class="card card-wide">
+    <div class="card-head"><h2>📈 Single Names · Equities</h2><span>Yahoo Finance · USD</span></div>
+    <div class="single-grid">
+      <div class="ntnb-cell">
+        <div class="rname">AMAZON</div>
+        <div class="rval" id="sn-amzn-val">…</div>
+        <div class="rchg" id="sn-amzn-chg">—</div>
+        <div class="rsub" id="sn-amzn-sub">AMZN</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">MICROSOFT</div>
+        <div class="rval" id="sn-msft-val">…</div>
+        <div class="rchg" id="sn-msft-chg">—</div>
+        <div class="rsub" id="sn-msft-sub">MSFT</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">NVIDIA</div>
+        <div class="rval" id="sn-nvda-val">…</div>
+        <div class="rchg" id="sn-nvda-chg">—</div>
+        <div class="rsub" id="sn-nvda-sub">NVDA</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">SALESFORCE</div>
+        <div class="rval" id="sn-crm-val">…</div>
+        <div class="rchg" id="sn-crm-chg">—</div>
+        <div class="rsub" id="sn-crm-sub">CRM</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">THERMO FISHER</div>
+        <div class="rval" id="sn-tmo-val">…</div>
+        <div class="rchg" id="sn-tmo-chg">—</div>
+        <div class="rsub" id="sn-tmo-sub">TMO</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">DANAHER</div>
+        <div class="rval" id="sn-dhr-val">…</div>
+        <div class="rchg" id="sn-dhr-chg">—</div>
+        <div class="rsub" id="sn-dhr-sub">DHR</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">VISA</div>
+        <div class="rval" id="sn-v-val">…</div>
+        <div class="rchg" id="sn-v-chg">—</div>
+        <div class="rsub" id="sn-v-sub">V</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">VISTRA</div>
+        <div class="rval" id="sn-vst-val">…</div>
+        <div class="rchg" id="sn-vst-chg">—</div>
+        <div class="rsub" id="sn-vst-sub">VST</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">GOLD ETF</div>
+        <div class="rval" id="sn-gld-val">…</div>
+        <div class="rchg" id="sn-gld-chg">—</div>
+        <div class="rsub" id="sn-gld-sub">GLD</div>
+      </div>
+      <div class="ntnb-cell">
+        <div class="rname">GOOGLE</div>
+        <div class="rval" id="sn-googl-val">…</div>
+        <div class="rchg" id="sn-googl-chg">—</div>
+        <div class="rsub" id="sn-googl-sub">GOOGL</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div><!-- /tab-single-names -->
 
 <footer>
   <span>Fontes: BCB · Yahoo Finance · ECB · ANBIMA · B3</span>
@@ -571,6 +661,7 @@ async function loadAsia() {
 async function loadCommodities() {
   const list = [
     { t: 'BZ=F',    val: 'brent-val', chg: 'brent-chg', sub: 'brent-sub', base: 'BZ=F · USD/bbl', d: 2 },
+    { t: 'CL=F',    val: 'wti-val',   chg: 'wti-chg',   sub: 'wti-sub',   base: 'CL=F · USD/bbl', d: 2 },
     { t: 'GC=F',    val: 'gold-val',  chg: 'gold-chg',  sub: 'gold-sub',  base: 'GC=F · USD/oz',  d: 2 },
     { t: 'BTC-USD', val: 'btc-val',   chg: 'btc-chg',   sub: 'btc-sub',   base: 'BTC-USD · USD',  d: 0 },
   ];
@@ -661,7 +752,6 @@ async function loadPreMarket() {
     { t: 'YM=F', val: 'pmDow-val', chg: 'pmDow-chg', sub: 'pmDow-sub', base: 'DOW FUT · YM=F', d: 0 },
     { t: 'ES=F', val: 'pmSp-val',  chg: 'pmSp-chg',  sub: 'pmSp-sub',  base: 'S&P FUT · ES=F',  d: 2 },
     { t: 'NQ=F', val: 'pmNas-val', chg: 'pmNas-chg', sub: 'pmNas-sub', base: 'NAS FUT · NQ=F', d: 2 },
-    { t: 'CL=F', val: 'pmOil-val', chg: 'pmOil-chg', sub: 'pmOil-sub', base: 'WTI OIL · CL=F',  d: 2 },
   ];
   await Promise.all(list.map(async ({ t, val, chg, sub, base, d }) => {
     try { const data = await yahoo(t); renderMkt(val, chg, sub, data, d, base); }
@@ -751,6 +841,37 @@ function startTimer() {
     document.getElementById('prog').style.width = (cd / INTERVAL * 100) + '%';
     if (cd <= 0) { cd = INTERVAL; loadAll(); }
   }, 1000);
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+let snLoaded = false;
+function switchTab(btn) {
+  const name = btn.dataset.tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'single-names' && !snLoaded) { snLoaded = true; loadSingleNames(); }
+}
+
+// ── Single Names ──────────────────────────────────────────────────────────────
+const SINGLES = [
+  { t: 'AMZN',  val: 'sn-amzn-val',  chg: 'sn-amzn-chg',  sub: 'sn-amzn-sub',  base: 'AMZN · USD'  },
+  { t: 'MSFT',  val: 'sn-msft-val',  chg: 'sn-msft-chg',  sub: 'sn-msft-sub',  base: 'MSFT · USD'  },
+  { t: 'NVDA',  val: 'sn-nvda-val',  chg: 'sn-nvda-chg',  sub: 'sn-nvda-sub',  base: 'NVDA · USD'  },
+  { t: 'CRM',   val: 'sn-crm-val',   chg: 'sn-crm-chg',   sub: 'sn-crm-sub',   base: 'CRM · USD'   },
+  { t: 'TMO',   val: 'sn-tmo-val',   chg: 'sn-tmo-chg',   sub: 'sn-tmo-sub',   base: 'TMO · USD'   },
+  { t: 'DHR',   val: 'sn-dhr-val',   chg: 'sn-dhr-chg',   sub: 'sn-dhr-sub',   base: 'DHR · USD'   },
+  { t: 'V',     val: 'sn-v-val',     chg: 'sn-v-chg',     sub: 'sn-v-sub',     base: 'V · USD'     },
+  { t: 'VST',   val: 'sn-vst-val',   chg: 'sn-vst-chg',   sub: 'sn-vst-sub',   base: 'VST · USD'   },
+  { t: 'GLD',   val: 'sn-gld-val',   chg: 'sn-gld-chg',   sub: 'sn-gld-sub',   base: 'GLD · USD'   },
+  { t: 'GOOGL', val: 'sn-googl-val', chg: 'sn-googl-chg', sub: 'sn-googl-sub', base: 'GOOGL · USD' },
+];
+async function loadSingleNames() {
+  await Promise.all(SINGLES.map(async ({ t, val, chg, sub, base }) => {
+    try { const data = await yahoo(t); renderMkt(val, chg, sub, data, 2, base); }
+    catch (e) { setV(val, 'ERRO', 'err'); console.error(t, e); }
+  }));
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
