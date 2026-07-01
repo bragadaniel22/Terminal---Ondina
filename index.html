@@ -214,6 +214,43 @@
     .prog-wrap { display: inline-flex; align-items: center; gap: 6px; }
     .prog { width: 80px; height: 2px; background: var(--border-hi); display: inline-block; }
     .prog-fill { height: 100%; background: var(--orange); transition: width 1s linear; }
+
+    /* ── MOBILE (≤640px) — só ativa em telas estreitas, não altera o desktop ── */
+    @media (max-width: 640px) {
+      body { padding: 10px 10px 70px; }
+
+      header { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .hright { text-align: left; }
+      .brand { font-size: 15px; letter-spacing: 3px; }
+      .clock { font-size: 20px; }
+
+      .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .tab-btn { padding: 7px 12px; font-size: 8px; white-space: nowrap; flex-shrink: 0; }
+
+      .grid { grid-template-columns: 1fr; }
+
+      .ntnb-grid { grid-template-columns: repeat(2, 1fr); }
+      .ntnb-cell { border-right: none; border-bottom: 1px solid var(--border); }
+
+      .single-grid { grid-template-columns: repeat(2, 1fr); }
+
+      .pf-cards { grid-template-columns: repeat(2, 1fr); }
+      .pf-card { border-right: none; border-bottom: 1px solid var(--border); }
+      .pf-range, .modal-range { flex-wrap: wrap; }
+
+      .pf-chart-box canvas { height: 260px !important; }
+      #modal-chart { height: 260px !important; }
+      .modal-chart-box { height: 260px; }
+
+      .modal-box { width: 95vw; padding: 14px; }
+      .modal-header { flex-direction: column; align-items: flex-start; gap: 6px; }
+      .modal-title { font-size: 11px; }
+      .modal-last { font-size: 15px; }
+
+      .news-thumb { width: 48px; height: 48px; }
+
+      footer { flex-wrap: wrap; row-gap: 4px; font-size: 7px; padding: 6px 10px; }
+    }
   </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
