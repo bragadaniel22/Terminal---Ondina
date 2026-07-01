@@ -151,14 +151,26 @@
     .news-list { display: flex; flex-direction: column; }
     .news-item {
       display: flex; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border);
-      text-decoration: none; color: inherit;
     }
     .news-item:hover { background: rgba(255,102,0,.05); }
     .news-item:last-child { border-bottom: none; }
     .news-thumb { width: 60px; height: 60px; object-fit: cover; flex-shrink: 0; background: var(--border-hi); }
     .news-body { flex: 1; min-width: 0; }
-    .news-title { font-size: 11px; color: var(--bright); line-height: 1.4; }
+    .news-title { font-size: 11px; color: var(--bright); line-height: 1.4; text-decoration: none; }
+    .news-title:hover { text-decoration: underline; }
     .news-meta { font-size: 9px; color: var(--dim); margin-top: 5px; letter-spacing: .5px; }
+    .news-actions { margin-top: 7px; }
+    .news-summarize-btn {
+      font-family: inherit; font-size: 8px; letter-spacing: 1px; text-transform: uppercase;
+      color: var(--dim); background: transparent; border: 1px solid var(--border-hi);
+      padding: 3px 8px; cursor: pointer;
+    }
+    .news-summarize-btn:hover { color: var(--orange); border-color: var(--orange); }
+    .news-summary-box {
+      display: none; margin-top: 8px; padding: 10px 12px; background: rgba(255,102,0,.04);
+      border-left: 2px solid var(--orange); font-size: 10px; line-height: 1.6; color: var(--bright);
+    }
+    .news-summary-box.active { display: block; }
 
     /* ROW CLICK (abre modal de gráfico) */
     .row-click { cursor: pointer; }
@@ -989,25 +1001,49 @@ async function fetchMarketNews() {
   return d.items || [];
 }
 
+let feedNewsItems = [];
+
 function renderNewsList(items) {
+  feedNewsItems = items;
   const el = document.getElementById('feed-news-list');
   if (!items.length) {
     el.innerHTML = '<div class="row"><div class="rname dim2">sem notícias disponíveis</div></div>';
     return;
   }
-  el.innerHTML = items.map(n => {
+  el.innerHTML = items.map((n, i) => {
     const d = n.time ? new Date(n.time * 1000) : null;
     const thumb = n.thumbnail
       ? `<img class="news-thumb" src="${n.thumbnail}" loading="lazy" onerror="this.style.display='none'">`
       : `<div class="news-thumb"></div>`;
-    return `<a class="news-item" href="${n.link}" target="_blank" rel="noopener">
+    return `<div class="news-item">
       ${thumb}
       <div class="news-body">
-        <div class="news-title">${escapeHtml(n.title)}</div>
+        <a class="news-title" href="${n.link}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a>
         <div class="news-meta">${escapeHtml(n.publisher || 'Yahoo Finance')}${d ? ' · ' + fmtShortDateTime(d) : ''}</div>
+        <div class="news-actions">
+          <button class="news-summarize-btn" onclick="summarizeNews(${i})">🤖 resumir com IA</button>
+          <div class="news-summary-box" id="news-summary-${i}"></div>
+        </div>
       </div>
-    </a>`;
+    </div>`;
   }).join('');
+}
+
+async function summarizeNews(idx) {
+  const item = feedNewsItems[idx];
+  const box = document.getElementById(`news-summary-${idx}`);
+  if (!item || !box) return;
+  box.classList.add('active');
+  box.textContent = 'resumindo…';
+  try {
+    const r = await fetch(`/api/summarize-news?url=${encodeURIComponent(item.link)}&title=${encodeURIComponent(item.title || '')}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    box.textContent = d.summary;
+  } catch (e) {
+    box.textContent = 'Não foi possível resumir esta notícia agora.';
+    console.error('summarize news', e);
+  }
 }
 
 async function loadFeed() {
