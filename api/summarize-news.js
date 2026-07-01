@@ -55,6 +55,9 @@ export default async function handler(req, res) {
       }
     );
     if (!r.ok) {
+      if (r.status === 429) {
+        return res.status(429).json({ error: 'rate_limit' });
+      }
       const t = await r.text();
       throw new Error(`Gemini ${r.status}: ${t.slice(0, 200)}`);
     }
