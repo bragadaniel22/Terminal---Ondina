@@ -147,6 +147,19 @@
       display: grid; grid-template-columns: repeat(5, 1fr);
     }
 
+    /* FEED (BETA) */
+    .news-list { display: flex; flex-direction: column; }
+    .news-item {
+      display: flex; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border);
+      text-decoration: none; color: inherit;
+    }
+    .news-item:hover { background: rgba(255,102,0,.05); }
+    .news-item:last-child { border-bottom: none; }
+    .news-thumb { width: 60px; height: 60px; object-fit: cover; flex-shrink: 0; background: var(--border-hi); }
+    .news-body { flex: 1; min-width: 0; }
+    .news-title { font-size: 11px; color: var(--bright); line-height: 1.4; }
+    .news-meta { font-size: 9px; color: var(--dim); margin-top: 5px; letter-spacing: .5px; }
+
     /* ROW CLICK (abre modal de gráfico) */
     .row-click { cursor: pointer; }
     .row-click:hover { background: rgba(255,102,0,.06) !important; }
@@ -210,6 +223,7 @@
   <button class="tab-btn active" data-tab="indices" onclick="switchTab(this)">ÍNDICES</button>
   <button class="tab-btn" data-tab="single-names" onclick="switchTab(this)">SINGLE NAMES</button>
   <button class="tab-btn" data-tab="portfolio" onclick="switchTab(this)">PORTFÓLIO</button>
+  <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">FEED (BETA)</button>
 </nav>
 
 <div id="tab-indices" class="tab-panel active">
@@ -538,6 +552,17 @@
     </div>
   </div>
 </div><!-- /tab-portfolio -->
+
+<div id="tab-feed" class="tab-panel">
+<div class="grid">
+  <div class="card card-wide">
+    <div class="card-head"><h2>📰 Feed · Notícias · Mercado Americano</h2><span>Yahoo Finance</span></div>
+    <div class="news-list" id="feed-news-list">
+      <div class="row"><div class="rname dim2">carregando notícias…</div></div>
+    </div>
+  </div>
+</div>
+</div><!-- /tab-feed -->
 
 <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this) closeChart()">
   <div class="modal-box">
@@ -952,6 +977,49 @@ async function loadEttj() {
   }
 }
 
+// ── Feed (beta) · notícias + resumo de IA ──────────────────────────────────────
+function escapeHtml(s = '') {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function fetchMarketNews() {
+  const r = await fetch('/api/news');
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d.items || [];
+}
+
+function renderNewsList(items) {
+  const el = document.getElementById('feed-news-list');
+  if (!items.length) {
+    el.innerHTML = '<div class="row"><div class="rname dim2">sem notícias disponíveis</div></div>';
+    return;
+  }
+  el.innerHTML = items.map(n => {
+    const d = n.time ? new Date(n.time * 1000) : null;
+    const thumb = n.thumbnail
+      ? `<img class="news-thumb" src="${n.thumbnail}" loading="lazy" onerror="this.style.display='none'">`
+      : `<div class="news-thumb"></div>`;
+    return `<a class="news-item" href="${n.link}" target="_blank" rel="noopener">
+      ${thumb}
+      <div class="news-body">
+        <div class="news-title">${escapeHtml(n.title)}</div>
+        <div class="news-meta">${escapeHtml(n.publisher || 'Yahoo Finance')}${d ? ' · ' + fmtShortDateTime(d) : ''}</div>
+      </div>
+    </a>`;
+  }).join('');
+}
+
+async function loadFeed() {
+  try {
+    const items = await fetchMarketNews();
+    renderNewsList(items);
+  } catch (e) {
+    document.getElementById('feed-news-list').innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar notícias</div></div>';
+    console.error('feed news', e);
+  }
+}
+
 // ── Relógio ───────────────────────────────────────────────────────────────────
 function tick() {
   const n = new Date();
@@ -979,14 +1047,16 @@ function startTimer() {
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 let snLoaded = false;
 let pfLoaded = false;
+let feedLoaded = false;
 function switchTab(btn) {
   const name = btn.dataset.tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'single-names' && !snLoaded) { snLoaded = true; loadSingleNames(); }
-  if (name === 'portfolio'    && !pfLoaded) { pfLoaded = true; loadPortfolio('3mo'); }
+  if (name === 'single-names' && !snLoaded)   { snLoaded = true; loadSingleNames(); }
+  if (name === 'portfolio'    && !pfLoaded)   { pfLoaded = true; loadPortfolio('3mo'); }
+  if (name === 'feed'         && !feedLoaded) { feedLoaded = true; loadFeed(); }
 }
 
 // ── Portfolio Simulator ───────────────────────────────────────────────────────
