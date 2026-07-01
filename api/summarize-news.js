@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   if (!url) return res.status(400).json({ error: 'url obrigatória' });
 
   try {
-    const prompt = `Resuma esta notícia em português (Brasil), em 2 a 4 frases, direto e objetivo, focando no que é relevante para o mercado financeiro. Baseie-se no conteúdo real da página vinculada.\n\nTítulo original: "${title || ''}"\nLink: ${url}`;
+    const prompt = `Você tem acesso apenas à página do Yahoo Finance no link abaixo. Resuma essa notícia em português (Brasil), em 2 a 4 frases, direto e objetivo, focando no que é relevante para o mercado financeiro.\n\nRegras importantes: use apenas o conteúdo que está literalmente disponível nessa página do Yahoo Finance. Não tente acessar, seguir links para, ou completar informações a partir do site original da fonte (ex: outros domínios fora do finance.yahoo.com que a página possa referenciar). Se o conteúdo disponível na página for limitado (ex: apenas um resumo curto ou teaser), resuma apenas o que está ali — não diga que não conseguiu acessar o conteúdo, apenas resuma o que está disponível.\n\nTítulo original: "${title || ''}"\nLink: ${url}`;
 
     const r = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
