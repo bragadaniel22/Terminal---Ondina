@@ -1038,6 +1038,10 @@ async function summarizeNews(idx) {
   try {
     const r = await fetch(`/api/summarize-news?url=${encodeURIComponent(item.link)}&title=${encodeURIComponent(item.title || '')}`);
     const d = await r.json();
+    if (d.error === 'rate_limit') {
+      box.textContent = '⏳ Limite de uso do Gemini atingido (5 por minuto no plano gratuito). Aguarde um minuto e tente de novo.';
+      return;
+    }
     if (d.error) throw new Error(d.error);
     box.textContent = d.summary;
   } catch (e) {
