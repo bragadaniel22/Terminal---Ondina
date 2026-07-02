@@ -73,6 +73,7 @@
     .row:last-child { border-bottom: none; }
     .row:hover { background: rgba(255,255,255,.015); }
     .rname { font-size: 11px; color: var(--text); letter-spacing: .5px; }
+    .lock { font-size: 9px; margin-left: 4px; }
     .rsub  { font-size: 9px; color: var(--dim); margin-top: 2px; }
     .rright { text-align: right; }
     .rval  { font-size: 14px; font-weight: bold; color: var(--bright); }
@@ -293,7 +294,7 @@
     </div>
 
     <div class="row row-click" onclick="openChart('^BVSP','Ibovespa')">
-      <div><div class="rname">IBOVESPA</div><div class="rsub" id="ibov-sub">^BVSP · pontos</div></div>
+      <div><div class="rname">IBOVESPA<span class="lock" id="ibov-lock"></span></div><div class="rsub" id="ibov-sub">^BVSP · pontos</div></div>
       <div class="rright"><div class="rval" id="ibov-val">…</div><div class="rchg" id="ibov-chg">—</div></div>
     </div>
 
@@ -323,39 +324,39 @@
     <div class="card-head"><h2>🇺🇸 Bolsa US</h2><span>Yahoo Finance</span></div>
 
     <div class="row row-click" onclick="openChart('^GSPC','S&amp;P 500')">
-      <div><div class="rname">S&amp;P 500</div><div class="rsub" id="sp-sub">^GSPC · EUA</div></div>
+      <div><div class="rname">S&amp;P 500<span class="lock" id="sp-lock"></span></div><div class="rsub" id="sp-sub">^GSPC · EUA</div></div>
       <div class="rright"><div class="rval" id="sp-val">…</div><div class="rchg" id="sp-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('^SPXEW','S&amp;P Equal Weight')">
-      <div><div class="rname">S&amp;P EQUAL WEIGHT</div><div class="rsub" id="spew-sub">^SPXEW · EUA</div></div>
+      <div><div class="rname">S&amp;P EQUAL WEIGHT<span class="lock" id="spew-lock"></span></div><div class="rsub" id="spew-sub">^SPXEW · EUA</div></div>
       <div class="rright"><div class="rval" id="spew-val">…</div><div class="rchg" id="spew-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('^DJI','Dow Jones')">
-      <div><div class="rname">DOW JONES</div><div class="rsub" id="dow-sub">^DJI · EUA</div></div>
+      <div><div class="rname">DOW JONES<span class="lock" id="dow-lock"></span></div><div class="rsub" id="dow-sub">^DJI · EUA</div></div>
       <div class="rright"><div class="rval" id="dow-val">…</div><div class="rchg" id="dow-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('^IXIC','Nasdaq')">
-      <div><div class="rname">NASDAQ</div><div class="rsub" id="nasdaq-sub">^IXIC · EUA</div></div>
+      <div><div class="rname">NASDAQ<span class="lock" id="nasdaq-lock"></span></div><div class="rsub" id="nasdaq-sub">^IXIC · EUA</div></div>
       <div class="rright"><div class="rval" id="nasdaq-val">…</div><div class="rchg" id="nasdaq-chg">—</div></div>
     </div>
 
     <div class="section-div">⏰ PRÉ-MERCADO · FUTUROS</div>
 
     <div class="row row-click" onclick="openChart('YM=F','Dow Futuro')">
-      <div><div class="rname">DOW FUTURO</div><div class="rsub" id="pmDow-sub">YM=F</div></div>
+      <div><div class="rname">DOW FUTURO<span class="lock" id="pmDow-lock"></span></div><div class="rsub" id="pmDow-sub">YM=F</div></div>
       <div class="rright"><div class="rval" id="pmDow-val">…</div><div class="rchg" id="pmDow-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('ES=F','S&amp;P Futuro')">
-      <div><div class="rname">S&amp;P FUTURO</div><div class="rsub" id="pmSp-sub">ES=F</div></div>
+      <div><div class="rname">S&amp;P FUTURO<span class="lock" id="pmSp-lock"></span></div><div class="rsub" id="pmSp-sub">ES=F</div></div>
       <div class="rright"><div class="rval" id="pmSp-val">…</div><div class="rchg" id="pmSp-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('NQ=F','Nasdaq Futuro')">
-      <div><div class="rname">NASDAQ FUTURO</div><div class="rsub" id="pmNas-sub">NQ=F</div></div>
+      <div><div class="rname">NASDAQ FUTURO<span class="lock" id="pmNas-lock"></span></div><div class="rsub" id="pmNas-sub">NQ=F</div></div>
       <div class="rright"><div class="rval" id="pmNas-val">…</div><div class="rchg" id="pmNas-chg">—</div></div>
     </div>
 
@@ -366,12 +367,12 @@
     <div class="card-head"><h2>🌍 Europa</h2><span>Yahoo Finance</span></div>
 
     <div class="row row-click" onclick="openChart('^STOXX50E','Euro Stoxx 50')">
-      <div><div class="rname">EURO STOXX 50</div><div class="rsub" id="stoxx-sub">^STOXX50E · EUR</div></div>
+      <div><div class="rname">EURO STOXX 50<span class="lock" id="stoxx-lock"></span></div><div class="rsub" id="stoxx-sub">^STOXX50E · EUR</div></div>
       <div class="rright"><div class="rval" id="stoxx-val">…</div><div class="rchg" id="stoxx-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('^GDAXI','DAX')">
-      <div><div class="rname">DAX</div><div class="rsub" id="dax-sub">^GDAXI · EUR</div></div>
+      <div><div class="rname">DAX<span class="lock" id="dax-lock"></span></div><div class="rsub" id="dax-sub">^GDAXI · EUR</div></div>
       <div class="rright"><div class="rval" id="dax-val">…</div><div class="rchg" id="dax-chg">—</div></div>
     </div>
   </div>
@@ -381,22 +382,22 @@
     <div class="card-head"><h2>🌏 Ásia &amp; Pacífico</h2><span>Yahoo Finance</span></div>
 
     <div class="row row-click" onclick="openChart('^N225','Nikkei 225')">
-      <div><div class="rname">NIKKEI 225</div><div class="rsub" id="nk-sub">^N225 · JPY</div></div>
+      <div><div class="rname">NIKKEI 225<span class="lock" id="nk-lock"></span></div><div class="rsub" id="nk-sub">^N225 · JPY</div></div>
       <div class="rright"><div class="rval" id="nk-val">…</div><div class="rchg" id="nk-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('^HSI','Hang Seng')">
-      <div><div class="rname">HANG SENG</div><div class="rsub" id="hsi-sub">^HSI · HKD</div></div>
+      <div><div class="rname">HANG SENG<span class="lock" id="hsi-lock"></span></div><div class="rsub" id="hsi-sub">^HSI · HKD</div></div>
       <div class="rright"><div class="rval" id="hsi-val">…</div><div class="rchg" id="hsi-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('^NSEI','Nifty 50')">
-      <div><div class="rname">NIFTY 50</div><div class="rsub" id="nifty-sub">^NSEI · INR</div></div>
+      <div><div class="rname">NIFTY 50<span class="lock" id="nifty-lock"></span></div><div class="rsub" id="nifty-sub">^NSEI · INR</div></div>
       <div class="rright"><div class="rval" id="nifty-val">…</div><div class="rchg" id="nifty-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('^AXJO','ASX 200')">
-      <div><div class="rname">ASX 200</div><div class="rsub" id="asx-sub">^AXJO · AUD</div></div>
+      <div><div class="rname">ASX 200<span class="lock" id="asx-lock"></span></div><div class="rsub" id="asx-sub">^AXJO · AUD</div></div>
       <div class="rright"><div class="rval" id="asx-val">…</div><div class="rchg" id="asx-chg">—</div></div>
     </div>
   </div>
@@ -426,22 +427,22 @@
     <div class="card-head"><h2>🛢 Commodities &amp; Cripto</h2><span>Yahoo Finance</span></div>
 
     <div class="row row-click" onclick="openChart('BZ=F','Brent')">
-      <div><div class="rname">BRENT</div><div class="rsub" id="brent-sub">BZ=F · USD/bbl</div></div>
+      <div><div class="rname">BRENT<span class="lock" id="brent-lock"></span></div><div class="rsub" id="brent-sub">BZ=F · USD/bbl</div></div>
       <div class="rright"><div class="rval" id="brent-val">…</div><div class="rchg" id="brent-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('CL=F','WTI Oil')">
-      <div><div class="rname">WTI OIL</div><div class="rsub" id="wti-sub">CL=F · USD/bbl</div></div>
+      <div><div class="rname">WTI OIL<span class="lock" id="wti-lock"></span></div><div class="rsub" id="wti-sub">CL=F · USD/bbl</div></div>
       <div class="rright"><div class="rval" id="wti-val">…</div><div class="rchg" id="wti-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('GC=F','Ouro')">
-      <div><div class="rname">OURO</div><div class="rsub" id="gold-sub">GC=F · USD/oz</div></div>
+      <div><div class="rname">OURO<span class="lock" id="gold-lock"></span></div><div class="rsub" id="gold-sub">GC=F · USD/oz</div></div>
       <div class="rright"><div class="rval" id="gold-val">…</div><div class="rchg" id="gold-chg">—</div></div>
     </div>
 
     <div class="row row-click" onclick="openChart('BTC-USD','Bitcoin')">
-      <div><div class="rname">BITCOIN</div><div class="rsub" id="btc-sub">BTC-USD · USD</div></div>
+      <div><div class="rname">BITCOIN<span class="lock" id="btc-lock"></span></div><div class="rsub" id="btc-sub">BTC-USD · USD</div></div>
       <div class="rright"><div class="rval" id="btc-val">…</div><div class="rchg" id="btc-chg">—</div></div>
     </div>
   </div>
@@ -754,7 +755,12 @@ async function yahooFetch(ticker) {
   }
 
   const chg = prev ? (price - prev) / prev * 100 : null;
-  return { price, chg, date };
+  // Mercado aberto agora? compara o horário atual com o pregão regular de hoje
+  const ctp = m.currentTradingPeriod?.regular;
+  const nowSec = Date.now() / 1000;
+  const marketOpen = ctp ? (nowSec >= ctp.start && nowSec <= ctp.end) : null;
+
+  return { price, chg, date, marketOpen };
 }
 
 async function yahoo(ticker) {
@@ -765,7 +771,7 @@ async function yahoo(ticker) {
   } catch (e) {
     const c = cacheGet('yh_' + ticker);
     if (c && c.price != null) {
-      return { price: c.price, chg: c.chg, date: c.dateMs ? new Date(c.dateMs) : null, fromCache: true };
+      return { price: c.price, chg: c.chg, date: c.dateMs ? new Date(c.dateMs) : null, fromCache: true, marketOpen: null };
     }
     throw e;
   }
@@ -781,7 +787,7 @@ async function ecbRate() {
 
 // ── Render mercado (com cache e indicador de data) ────────────────────────────
 function renderMkt(valId, chgId, subId, data, decimals, baseSub, suffix = '') {
-  const { price, chg, date, fromCache } = data;
+  const { price, chg, date, fromCache, marketOpen } = data;
   const cls = chg > 0 ? 'pos' : chg < 0 ? 'neg' : '';
   setV(valId, num(price, decimals) + suffix, cls);
   setC(chgId, pct(chg), cls);
@@ -791,6 +797,8 @@ function renderMkt(valId, chgId, subId, data, decimals, baseSub, suffix = '') {
     else if (date) tag = ` · ${fmtShortDateTime(date)}`;
     setSub(subId, baseSub + tag);
   }
+  const lockEl = document.getElementById(valId.replace(/-val$/, '-lock'));
+  if (lockEl) lockEl.textContent = marketOpen === false ? ' 🔒' : '';
 }
 
 // ── Loaders ───────────────────────────────────────────────────────────────────
