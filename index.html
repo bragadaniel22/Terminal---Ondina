@@ -793,7 +793,7 @@ async function yahooFetch(ticker) {
 async function yahoo(ticker) {
   try {
     const data = await yahooFetch(ticker);
-    cachePut('yh_' + ticker, { price: data.price, chg: data.chg, dateMs: data.date?.getTime() ?? null });
+    cachePut('yh_' + ticker, { price: data.price, chg: data.chg, dateMs: data.date?.getTime() ?? null, fetchedAt: Date.now() });
     return data;
   } catch (e) {
     const c = cacheGet('yh_' + ticker);
@@ -1267,11 +1267,13 @@ async function loadHeatmap() {
 
   const results = await Promise.all(groups.map(async group => {
     const data = await Promise.all(group.tickers.map(async t => {
-      // reaproveita o cache já populado pelo ciclo de 60s — evita chamadas extras à API
+      // reaproveita o cache só se foi buscado há pouco (ciclo de 60s já rodando);
+      // cache velho (de outra sessão, por exemplo) não conta — busca de novo
       const cached = cacheGet('yh_' + t);
-      let chg = cached?.chg ?? null;
+      const isFresh = cached?.fetchedAt && (Date.now() - cached.fetchedAt) < 90000;
+      let chg = isFresh ? cached.chg : null;
       if (chg == null) {
-        try { const d = await yahoo(t); chg = d.chg; } catch { chg = null; }
+        try { const d = await yahoo(t); chg = d.chg; } catch { chg = cached?.chg ?? null; }
       }
       return { key: t, label: group.labels?.[t] || t, chg };
     }));
@@ -1658,6 +1660,7 @@ async function loadSingleNames() {
 async function loadAll() {
   await Promise.allSettled([loadBrasil(), loadAmericas(), loadEurope(), loadAsia(), loadJuros(), loadCommodities(), loadEttj(), loadDI(), loadNtnb(), loadPreMarket()]);
   document.getElementById('last').textContent = new Date().toLocaleTimeString('pt-BR');
+  if (heatmapLoaded) loadHeatmap();
 }
 
 tick();
