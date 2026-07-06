@@ -148,6 +148,23 @@
       display: grid; grid-template-columns: repeat(5, 1fr);
     }
 
+    /* HEATMAP */
+    .heatmap-wrap { padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+    .heatmap-group { border: 1px solid var(--border); }
+    .heatmap-group-header {
+      padding: 6px 10px; font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+      color: #fff; display: flex; justify-content: space-between; align-items: center;
+    }
+    .heatmap-area { position: relative; width: 100%; }
+    .heatmap-tile {
+      position: absolute; box-sizing: border-box; border: 1px solid var(--bg);
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      overflow: hidden; color: #fff; text-align: center; padding: 2px; cursor: pointer;
+    }
+    .heatmap-tile:hover { outline: 1px solid #fff; outline-offset: -1px; z-index: 2; }
+    .heatmap-tile .ht-symbol { font-weight: bold; font-size: 12px; line-height: 1.2; white-space: nowrap; }
+    .heatmap-tile .ht-chg { font-size: 10px; margin-top: 2px; }
+
     /* FEED (BETA) */
     .news-list { display: flex; flex-direction: column; }
     .news-item {
@@ -273,6 +290,7 @@
   <button class="tab-btn active" data-tab="indices" onclick="switchTab(this)">ÍNDICES</button>
   <button class="tab-btn" data-tab="single-names" onclick="switchTab(this)">SINGLE NAMES</button>
   <button class="tab-btn" data-tab="portfolio" onclick="switchTab(this)">PORTFÓLIO</button>
+  <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
   <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">FEED (BETA)</button>
 </nav>
 
@@ -602,6 +620,15 @@
     </div>
   </div>
 </div><!-- /tab-portfolio -->
+
+<div id="tab-heatmap" class="tab-panel">
+  <div class="card">
+    <div class="card-head"><h2>🗺 Heatmap · Portfólio</h2><span>Yahoo Finance</span></div>
+    <div class="heatmap-wrap" id="heatmap-wrap">
+      <div class="row"><div class="rname dim2">carregando…</div></div>
+    </div>
+  </div>
+</div><!-- /tab-heatmap -->
 
 <div id="tab-feed" class="tab-panel">
 <div class="grid">
@@ -1133,15 +1160,166 @@ function startTimer() {
 let snLoaded = false;
 let pfLoaded = false;
 let feedLoaded = false;
+let heatmapLoaded = false;
 function switchTab(btn) {
   const name = btn.dataset.tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'single-names' && !snLoaded)   { snLoaded = true; loadSingleNames(); }
-  if (name === 'portfolio'    && !pfLoaded)   { pfLoaded = true; loadPortfolio('3mo'); }
-  if (name === 'feed'         && !feedLoaded) { feedLoaded = true; loadFeed(); }
+  if (name === 'single-names' && !snLoaded)      { snLoaded = true; loadSingleNames(); }
+  if (name === 'portfolio'    && !pfLoaded)      { pfLoaded = true; loadPortfolio('3mo'); }
+  if (name === 'heatmap'      && !heatmapLoaded) { heatmapLoaded = true; loadHeatmap(); }
+  if (name === 'feed'         && !feedLoaded)    { feedLoaded = true; loadFeed(); }
+}
+
+// ── Heatmap · Portfólio ─────────────────────────────────────────────────────
+function getHeatmapGroups() {
+  return [
+    { title: 'Single Names Portfolio', tickers: SINGLES.map(s => s.t), height: 260 },
+    {
+      title: 'Bolsa US', height: 160,
+      tickers: ['^GSPC', '^SPXEW', '^DJI', '^IXIC'],
+      labels: { '^GSPC': 'S&P500', '^SPXEW': 'S&P EW', '^DJI': 'DOW', '^IXIC': 'NASDAQ' },
+    },
+    {
+      title: 'Índices Futuros', height: 140,
+      tickers: ['YM=F', 'ES=F', 'NQ=F'],
+      labels: { 'YM=F': 'DOW FUT', 'ES=F': 'S&P FUT', 'NQ=F': 'NASDAQ FUT' },
+    },
+    {
+      title: 'Europa + Ásia', height: 200,
+      tickers: ['^STOXX50E', '^GDAXI', '^N225', '^HSI', '^NSEI', '^AXJO'],
+      labels: { '^STOXX50E': 'STOXX50', '^GDAXI': 'DAX', '^N225': 'NIKKEI', '^HSI': 'HANG SENG', '^NSEI': 'NIFTY', '^AXJO': 'ASX' },
+    },
+    {
+      title: 'Commodities e Cripto', height: 160,
+      tickers: ['BZ=F', 'CL=F', 'GC=F', 'BTC-USD'],
+      labels: { 'BZ=F': 'BRENT', 'CL=F': 'WTI', 'GC=F': 'OURO', 'BTC-USD': 'BTC' },
+    },
+  ];
+}
+
+// Squarified treemap (Bruls/Huizing/van Wijk) — mantém os blocos próximos de quadrados,
+// evita as tiras finas e compridas que a divisão binária simples produzia.
+function computeTreemap(itemsIn, width, height) {
+  if (!itemsIn.length) return [];
+  const items = [...itemsIn].sort((a, b) => b.value - a.value);
+  const total = items.reduce((s, i) => s + i.value, 0);
+  const scale = (width * height) / total;
+  const queue = items.map(i => ({ ...i, area: i.value * scale }));
+
+  function worstRatio(row, side) {
+    const areas = row.map(r => r.area);
+    const sum = areas.reduce((a, b) => a + b, 0);
+    const max = Math.max(...areas), min = Math.min(...areas);
+    return Math.max((side * side * max) / (sum * sum), (sum * sum) / (side * side * min));
+  }
+
+  const result = [];
+  let rect = { x: 0, y: 0, w: width, h: height };
+  let remaining = queue;
+
+  while (remaining.length) {
+    const side = Math.min(rect.w, rect.h);
+    let row = [remaining[0]];
+    let i = 1;
+    while (i < remaining.length) {
+      const testRow = [...row, remaining[i]];
+      if (worstRatio(testRow, side) <= worstRatio(row, side)) { row = testRow; i++; }
+      else break;
+    }
+    remaining = remaining.slice(row.length);
+
+    const rowArea = row.reduce((s, r) => s + r.area, 0);
+    const thickness = rowArea / side;
+    let offset = 0;
+    const vertical = rect.w >= rect.h; // faixa vertical (largura=thickness) ou horizontal (altura=thickness)
+
+    row.forEach(item => {
+      const length = item.area / thickness;
+      if (vertical) {
+        result.push({ ...item, x: rect.x, y: rect.y + offset, w: thickness, h: length });
+      } else {
+        result.push({ ...item, x: rect.x + offset, y: rect.y, w: length, h: thickness });
+      }
+      offset += length;
+    });
+
+    rect = vertical
+      ? { x: rect.x + thickness, y: rect.y, w: rect.w - thickness, h: rect.h }
+      : { x: rect.x, y: rect.y + thickness, w: rect.w, h: rect.h - thickness };
+  }
+  return result;
+}
+
+function heatColor(chg) {
+  if (chg == null || isNaN(chg)) return 'hsl(230, 15%, 22%)';
+  const clamped = Math.max(-4, Math.min(4, chg));
+  const intensity = Math.abs(clamped) / 4;
+  const light = 46 - intensity * 22;
+  return chg >= 0 ? `hsl(152, 65%, ${light}%)` : `hsl(355, 68%, ${light}%)`;
+}
+
+async function loadHeatmap() {
+  const wrap = document.getElementById('heatmap-wrap');
+  const groups = getHeatmapGroups();
+
+  const results = await Promise.all(groups.map(async group => {
+    const data = await Promise.all(group.tickers.map(async t => {
+      // reaproveita o cache já populado pelo ciclo de 60s — evita chamadas extras à API
+      const cached = cacheGet('yh_' + t);
+      let chg = cached?.chg ?? null;
+      if (chg == null) {
+        try { const d = await yahoo(t); chg = d.chg; } catch { chg = null; }
+      }
+      return { key: t, label: group.labels?.[t] || t, chg };
+    }));
+    return { ...group, data };
+  }));
+
+  wrap.innerHTML = '';
+  results.forEach(group => {
+    const items = group.data.map(d => ({ ...d, value: Math.max(Math.abs(d.chg) || 0, 0.15) }));
+    const layout = computeTreemap(items, 760, group.height);
+    const validChgs = group.data.map(d => d.chg).filter(c => c != null && !isNaN(c));
+    const avgChg = validChgs.length ? validChgs.reduce((a, b) => a + b, 0) / validChgs.length : null;
+
+    const groupEl = document.createElement('div');
+    groupEl.className = 'heatmap-group';
+    groupEl.innerHTML = `
+      <div class="heatmap-group-header" style="background:${heatColor(avgChg)}">
+        <span>${escapeHtml(group.title)}</span>
+        <span>${avgChg != null ? pct(avgChg) : '—'}</span>
+      </div>
+      <div class="heatmap-area" style="height:${group.height}px"></div>`;
+    const area = groupEl.querySelector('.heatmap-area');
+    layout.forEach(tile => {
+      const el = document.createElement('div');
+      el.className = 'heatmap-tile';
+      el.style.left = (tile.x / 760 * 100) + '%';
+      el.style.top = (tile.y / group.height * 100) + '%';
+      el.style.width = (tile.w / 760 * 100) + '%';
+      el.style.height = (tile.h / group.height * 100) + '%';
+      el.style.background = heatColor(tile.chg);
+      el.title = `${tile.label}: ${tile.chg != null ? pct(tile.chg) : 'N/D'}`;
+      el.onclick = () => openChart(tile.key, tile.label);
+
+      // fonte se adapta ao tamanho real do bloco — evita texto estourando em blocos pequenos
+      const minDim = Math.min(tile.w, tile.h);
+      let symbolSize = 13, chgSize = 10, showChg = true;
+      if (minDim < 70) { symbolSize = 10; chgSize = 9; }
+      if (minDim < 45) { symbolSize = 9;  chgSize = 8; showChg = tile.h > 30; }
+      if (minDim < 28) { symbolSize = 8;  showChg = false; }
+
+      const chgHtml = showChg
+        ? `<div class="ht-chg" style="font-size:${chgSize}px">${tile.chg != null ? pct(tile.chg) : 'N/D'}</div>`
+        : '';
+      el.innerHTML = `<div class="ht-symbol" style="font-size:${symbolSize}px">${escapeHtml(tile.label)}</div>${chgHtml}`;
+      area.appendChild(el);
+    });
+    wrap.appendChild(groupEl);
+  });
 }
 
 // ── Portfolio Simulator ───────────────────────────────────────────────────────
