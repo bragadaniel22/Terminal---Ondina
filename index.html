@@ -396,8 +396,8 @@
 
     <div class="section-div">🌐 EMERGING MARKETS</div>
 
-    <div class="row row-click" onclick="openChart('^891800-USD-STRD','MSCI Emerging Markets')">
-      <div><div class="rname">MSCI EM<span class="lock" id="msciem-lock"></span></div><div class="rsub" id="msciem-sub">MSCI EM · USD</div></div>
+    <div class="row row-click" onclick="openChart('EEM','MSCI EM (EEM)')">
+      <div><div class="rname">MSCI EM<span class="lock" id="msciem-lock"></span></div><div class="rsub" id="msciem-sub">EEM · USD</div></div>
       <div class="rright"><div class="rval" id="msciem-val">…</div><div class="rchg" id="msciem-chg">—</div></div>
     </div>
   </div>
@@ -887,7 +887,7 @@ async function loadEurope() {
   const list = [
     { t: '^STOXX50E',        val: 'stoxx-val',  chg: 'stoxx-chg',  sub: 'stoxx-sub',  base: '^STOXX50E · EUR', d: 2 },
     { t: '^GDAXI',           val: 'dax-val',    chg: 'dax-chg',    sub: 'dax-sub',    base: '^GDAXI · EUR',    d: 2 },
-    { t: '^891800-USD-STRD', val: 'msciem-val', chg: 'msciem-chg', sub: 'msciem-sub', base: 'MSCI EM · USD',   d: 2 },
+    { t: 'EEM',              val: 'msciem-val', chg: 'msciem-chg', sub: 'msciem-sub', base: 'EEM · USD',       d: 2 },
   ];
   await Promise.all(list.map(async ({ t, val, chg, sub, base, d }) => {
     try { const data = await yahoo(t); renderMkt(val, chg, sub, data, d, base); }
@@ -1197,8 +1197,8 @@ function getHeatmapGroups() {
     },
     {
       title: 'Europa + Ásia + Emerging Markets', height: 200,
-      tickers: ['^STOXX50E', '^GDAXI', '^N225', '^HSI', '^NSEI', '^AXJO', '^891800-USD-STRD'],
-      labels: { '^STOXX50E': 'STOXX50', '^GDAXI': 'DAX', '^N225': 'NIKKEI', '^HSI': 'HANG SENG', '^NSEI': 'NIFTY', '^AXJO': 'ASX', '^891800-USD-STRD': 'MSCI EM' },
+      tickers: ['^STOXX50E', '^GDAXI', '^N225', '^HSI', '^NSEI', '^AXJO', 'EEM'],
+      labels: { '^STOXX50E': 'STOXX50', '^GDAXI': 'DAX', '^N225': 'NIKKEI', '^HSI': 'HANG SENG', '^NSEI': 'NIFTY', '^AXJO': 'ASX', 'EEM': 'MSCI EM' },
     },
     {
       title: 'Commodities e Cripto', height: 160,
