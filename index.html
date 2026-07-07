@@ -380,9 +380,9 @@
 
   </div>
 
-  <!-- ── EUROPA ── -->
+  <!-- ── EUROPA + EMERGING MARKETS ── -->
   <div class="card">
-    <div class="card-head"><h2>🌍 Europa</h2><span>Yahoo Finance</span></div>
+    <div class="card-head"><h2>🌍 Europa + Emerging Markets</h2><span>Yahoo Finance</span></div>
 
     <div class="row row-click" onclick="openChart('^STOXX50E','Euro Stoxx 50')">
       <div><div class="rname">EURO STOXX 50<span class="lock" id="stoxx-lock"></span></div><div class="rsub" id="stoxx-sub">^STOXX50E · EUR</div></div>
@@ -392,6 +392,13 @@
     <div class="row row-click" onclick="openChart('^GDAXI','DAX')">
       <div><div class="rname">DAX<span class="lock" id="dax-lock"></span></div><div class="rsub" id="dax-sub">^GDAXI · EUR</div></div>
       <div class="rright"><div class="rval" id="dax-val">…</div><div class="rchg" id="dax-chg">—</div></div>
+    </div>
+
+    <div class="section-div">🌐 EMERGING MARKETS</div>
+
+    <div class="row row-click" onclick="openChart('^891800-USD-STRD','MSCI Emerging Markets')">
+      <div><div class="rname">MSCI EM<span class="lock" id="msciem-lock"></span></div><div class="rsub" id="msciem-sub">MSCI EM · USD</div></div>
+      <div class="rright"><div class="rval" id="msciem-val">…</div><div class="rchg" id="msciem-chg">—</div></div>
     </div>
   </div>
 
@@ -878,8 +885,9 @@ async function loadAmericas() {
 
 async function loadEurope() {
   const list = [
-    { t: '^STOXX50E', val: 'stoxx-val', chg: 'stoxx-chg', sub: 'stoxx-sub', base: '^STOXX50E · EUR', d: 2 },
-    { t: '^GDAXI',    val: 'dax-val',   chg: 'dax-chg',   sub: 'dax-sub',   base: '^GDAXI · EUR',   d: 2 },
+    { t: '^STOXX50E',        val: 'stoxx-val',  chg: 'stoxx-chg',  sub: 'stoxx-sub',  base: '^STOXX50E · EUR', d: 2 },
+    { t: '^GDAXI',           val: 'dax-val',    chg: 'dax-chg',    sub: 'dax-sub',    base: '^GDAXI · EUR',    d: 2 },
+    { t: '^891800-USD-STRD', val: 'msciem-val', chg: 'msciem-chg', sub: 'msciem-sub', base: 'MSCI EM · USD',   d: 2 },
   ];
   await Promise.all(list.map(async ({ t, val, chg, sub, base, d }) => {
     try { const data = await yahoo(t); renderMkt(val, chg, sub, data, d, base); }
@@ -1188,9 +1196,9 @@ function getHeatmapGroups() {
       labels: { 'YM=F': 'DOW FUT', 'ES=F': 'S&P FUT', 'NQ=F': 'NASDAQ FUT' },
     },
     {
-      title: 'Europa + Ásia', height: 200,
-      tickers: ['^STOXX50E', '^GDAXI', '^N225', '^HSI', '^NSEI', '^AXJO'],
-      labels: { '^STOXX50E': 'STOXX50', '^GDAXI': 'DAX', '^N225': 'NIKKEI', '^HSI': 'HANG SENG', '^NSEI': 'NIFTY', '^AXJO': 'ASX' },
+      title: 'Europa + Ásia + Emerging Markets', height: 200,
+      tickers: ['^STOXX50E', '^GDAXI', '^N225', '^HSI', '^NSEI', '^AXJO', '^891800-USD-STRD'],
+      labels: { '^STOXX50E': 'STOXX50', '^GDAXI': 'DAX', '^N225': 'NIKKEI', '^HSI': 'HANG SENG', '^NSEI': 'NIFTY', '^AXJO': 'ASX', '^891800-USD-STRD': 'MSCI EM' },
     },
     {
       title: 'Commodities e Cripto', height: 160,
