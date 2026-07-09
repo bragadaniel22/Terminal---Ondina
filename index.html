@@ -152,6 +152,14 @@
     .single-grid {
       display: grid; grid-template-columns: repeat(5, 1fr);
     }
+    .ntnb-cell { position: relative; }
+    .sn-search-btn {
+      position: absolute; top: 4px; right: 4px; width: 18px; height: 18px;
+      display: flex; align-items: center; justify-content: center;
+      background: transparent; border: none; font-size: 10px; line-height: 1;
+      color: var(--dim); cursor: pointer; opacity: .7;
+    }
+    .sn-search-btn:hover { color: var(--orange); opacity: 1; }
 
     /* HEATMAP */
     .heatmap-wrap { padding: 12px; display: flex; flex-direction: column; gap: 14px; }
@@ -536,6 +544,7 @@
     <div class="card-head"><h2>📈 Single Names · Equities</h2><span>Yahoo Finance · USD</span></div>
     <div class="single-grid">
       <div class="ntnb-cell row-click" onclick="openChart('AMZN','Amazon')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('AMZN','Amazon')">🔍</button>
         <div class="rname">AMAZON</div>
         <div class="rval" id="sn-amzn-val">…</div>
         <div class="rchg" id="sn-amzn-chg">—</div>
@@ -543,6 +552,7 @@
         <div class="rtgt" id="sn-amzn-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('MSFT','Microsoft')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('MSFT','Microsoft')">🔍</button>
         <div class="rname">MICROSOFT</div>
         <div class="rval" id="sn-msft-val">…</div>
         <div class="rchg" id="sn-msft-chg">—</div>
@@ -550,6 +560,7 @@
         <div class="rtgt" id="sn-msft-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('NVDA','Nvidia')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('NVDA','Nvidia')">🔍</button>
         <div class="rname">NVIDIA</div>
         <div class="rval" id="sn-nvda-val">…</div>
         <div class="rchg" id="sn-nvda-chg">—</div>
@@ -557,6 +568,7 @@
         <div class="rtgt" id="sn-nvda-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('CRM','Salesforce')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('CRM','Salesforce')">🔍</button>
         <div class="rname">SALESFORCE</div>
         <div class="rval" id="sn-crm-val">…</div>
         <div class="rchg" id="sn-crm-chg">—</div>
@@ -564,6 +576,7 @@
         <div class="rtgt" id="sn-crm-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('TMO','Thermo Fisher')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('TMO','Thermo Fisher')">🔍</button>
         <div class="rname">THERMO FISHER</div>
         <div class="rval" id="sn-tmo-val">…</div>
         <div class="rchg" id="sn-tmo-chg">—</div>
@@ -571,6 +584,7 @@
         <div class="rtgt" id="sn-tmo-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('DHR','Danaher')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('DHR','Danaher')">🔍</button>
         <div class="rname">DANAHER</div>
         <div class="rval" id="sn-dhr-val">…</div>
         <div class="rchg" id="sn-dhr-chg">—</div>
@@ -578,6 +592,7 @@
         <div class="rtgt" id="sn-dhr-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('V','Visa')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('V','Visa')">🔍</button>
         <div class="rname">VISA</div>
         <div class="rval" id="sn-v-val">…</div>
         <div class="rchg" id="sn-v-chg">—</div>
@@ -585,6 +600,7 @@
         <div class="rtgt" id="sn-v-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('VST','Vistra')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('VST','Vistra')">🔍</button>
         <div class="rname">VISTRA</div>
         <div class="rval" id="sn-vst-val">…</div>
         <div class="rchg" id="sn-vst-chg">—</div>
@@ -592,6 +608,7 @@
         <div class="rtgt" id="sn-vst-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('GLD','Gold ETF')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('GLD','Gold ETF')">🔍</button>
         <div class="rname">GOLD ETF</div>
         <div class="rval" id="sn-gld-val">…</div>
         <div class="rchg" id="sn-gld-chg">—</div>
@@ -599,6 +616,7 @@
         <div class="rtgt" id="sn-gld-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('GOOGL','Google')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('GOOGL','Google')">🔍</button>
         <div class="rname">GOOGLE</div>
         <div class="rval" id="sn-googl-val">…</div>
         <div class="rchg" id="sn-googl-chg">—</div>
@@ -747,6 +765,20 @@
       <div class="sources-section">
         <h3>⏱ Atualização</h3>
         <p>Dados atualizados automaticamente a cada 60 segundos enquanto a página estiver aberta.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="ticker-news-overlay" onclick="if(event.target===this) closeTickerNews()">
+  <div class="modal-box sources-box">
+    <button class="modal-close" onclick="closeTickerNews()">✕</button>
+    <div class="modal-header">
+      <div class="modal-title">Notícias · <span id="ticker-news-title">—</span></div>
+    </div>
+    <div class="sources-body">
+      <div class="news-list" id="ticker-news-list">
+        <div class="row"><div class="rname dim2">carregando…</div></div>
       </div>
     </div>
   </div>
@@ -1441,8 +1473,49 @@ function closeSources() {
   document.getElementById('sources-overlay').classList.remove('active');
 }
 
+async function openTickerNews(ticker, label) {
+  document.getElementById('ticker-news-title').textContent = label;
+  document.getElementById('ticker-news-overlay').classList.add('active');
+  const list = document.getElementById('ticker-news-list');
+  list.innerHTML = '<div class="row"><div class="rname dim2">carregando…</div></div>';
+  try {
+    const r = await fetch(`/api/news?t=${encodeURIComponent(ticker)}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    renderTickerNewsList(d.items || []);
+  } catch (e) {
+    list.innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar notícias</div></div>';
+    console.error('ticker news', ticker, e);
+  }
+}
+
+function closeTickerNews() {
+  document.getElementById('ticker-news-overlay').classList.remove('active');
+}
+
+function renderTickerNewsList(items) {
+  const el = document.getElementById('ticker-news-list');
+  if (!items.length) {
+    el.innerHTML = '<div class="row"><div class="rname dim2">sem notícias disponíveis</div></div>';
+    return;
+  }
+  el.innerHTML = items.map(n => {
+    const d = n.time ? new Date(n.time * 1000) : null;
+    const thumb = n.thumbnail
+      ? `<img class="news-thumb" src="${n.thumbnail}" loading="lazy" onerror="this.style.display='none'">`
+      : `<div class="news-thumb"></div>`;
+    return `<div class="news-item">
+      ${thumb}
+      <div class="news-body">
+        <a class="news-title" href="${n.link}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a>
+        <div class="news-meta">${escapeHtml(n.publisher || 'Yahoo Finance')}${d ? ' · ' + fmtShortDateTime(d) : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeChart(); closeSources(); }
+  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); }
 });
 
 async function loadModalChart(range) {
