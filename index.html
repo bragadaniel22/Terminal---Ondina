@@ -1449,6 +1449,7 @@ async function loadHeatmap() {
 // ── Portfolio Simulator ───────────────────────────────────────────────────────
 const PF_TICKERS = ['AMZN','MSFT','NVDA','CRM','TMO','DHR','V','VST','GLD','GOOGL'];
 const PF_COLORS  = ['#4488ff','#00cc77','#ffcc44','#ff66cc','#00cccc','#88ff44','#cc88ff','#ffaa44','#ff6688','#44ccff'];
+const PF_BENCHMARK = { ticker: '^GSPC', label: 'S&P 500', color: '#dde4f8' };
 // ── Modal de gráfico individual (clique em índice) ────────────────────────────
 let modalChart = null;
 let modalTicker = null;
@@ -1651,14 +1652,14 @@ async function loadPortfolio(range) {
   document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === range));
 
   const cardsEl = document.getElementById('pf-cards');
-  cardsEl.innerHTML = [...PF_TICKERS, 'PORTFÓLIO'].map(t =>
+  cardsEl.innerHTML = [...PF_TICKERS, 'PORTFÓLIO', PF_BENCHMARK.label].map(t =>
     `<div class="pf-card"><div class="rname">${t}</div><div class="pf-val dim2">…</div><div class="pf-stat">carregando</div></div>`
   ).join('');
 
-  const results = await Promise.allSettled(PF_TICKERS.map(t => yahooHistory(t, range)));
+  const results = await Promise.allSettled([...PF_TICKERS, PF_BENCHMARK.ticker].map(t => yahooHistory(t, range)));
 
   const validData = [], validTickers = [], validColors = [];
-  results.forEach((r, i) => {
+  results.slice(0, PF_TICKERS.length).forEach((r, i) => {
     if (r.status === 'fulfilled' && r.value.length > 4) {
       validData.push(r.value);
       validTickers.push(PF_TICKERS[i]);
@@ -1667,14 +1668,22 @@ async function loadPortfolio(range) {
   });
   if (!validData.length) return;
 
-  const { dates, series } = alignSeries(validData);
-  const normalized = series.map(s => s.map(p => (p / s[0]) * 100));
+  const benchResult   = results[PF_TICKERS.length];
+  const hasBenchmark  = benchResult.status === 'fulfilled' && benchResult.value.length > 4;
+
+  const { dates, series } = alignSeries(hasBenchmark ? [...validData, benchResult.value] : validData);
+  const tickerSeries = hasBenchmark ? series.slice(0, -1) : series;
+  const benchSeries  = hasBenchmark ? series[series.length - 1] : null;
+
+  const normalized = tickerSeries.map(s => s.map(p => (p / s[0]) * 100));
   const portNorm   = dates.map((_, i) => normalized.reduce((a, n) => a + n[i], 0) / normalized.length);
+  const benchNorm  = benchSeries ? benchSeries.map(p => (p / benchSeries[0]) * 100) : null;
 
   // stats
   const stats = validTickers.map((t, i) => ({ ticker: t, color: validColors[i], ...calcStats(normalized[i]) }));
-  const portStats = { ticker: 'PORTFÓLIO SN', color: '#ff6600', ...calcStats(portNorm) };
-  const allStats  = [...stats, portStats];
+  const portStats  = { ticker: 'PORTFÓLIO SN', color: '#ff6600', ...calcStats(portNorm) };
+  const benchStats = benchNorm ? { ticker: PF_BENCHMARK.label, color: PF_BENCHMARK.color, ...calcStats(benchNorm) } : null;
+  const allStats   = benchStats ? [...stats, portStats, benchStats] : [...stats, portStats];
 
   // build ticker→index map
   pfTickerIdx = {};
@@ -1706,6 +1715,7 @@ async function loadPortfolio(range) {
           pointRadius: 0, tension: 0,
         })),
         { label: 'PORTFÓLIO SN', data: portNorm, borderColor: '#ff6600', borderWidth: 2.5, borderDash: [5,3], pointRadius: 0, tension: 0 },
+        ...(hasBenchmark ? [{ label: PF_BENCHMARK.label, data: benchNorm, borderColor: PF_BENCHMARK.color, borderWidth: 2.5, borderDash: [5,3], pointRadius: 0, tension: 0 }] : []),
       ],
     },
     options: {
