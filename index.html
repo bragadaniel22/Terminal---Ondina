@@ -738,10 +738,12 @@ function setSub(id, text) {
 
 // ── APIs ──────────────────────────────────────────────────────────────────────
 async function bcbLast(serie) {
-  const r = await fetch(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${serie}/dados/ultimos/1?formato=json`);
+  // sem "?formato=json": pra série 432 (Selic) esse parâmetro tem causado erro do lado do BCB
+  // (retorna HTTP 200 com corpo {"erro":{}}). Sem o parâmetro a API já responde em JSON normalmente.
+  const r = await fetch(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${serie}/dados/ultimos/1`);
   if (!r.ok) throw new Error(`BCB ${serie}: ${r.status}`);
   const d = await r.json();
-  if (!d.length) throw new Error('BCB: vazio');
+  if (!Array.isArray(d) || !d.length) throw new Error('BCB: vazio ou erro');
   return { v: parseFloat(d[0].valor.replace(',', '.')), date: d[0].data };
 }
 
@@ -858,7 +860,7 @@ async function loadBrasil() {
     setV('selic-val', num(v) + '%', 'hl');
     setSub('selic-sub', `BCB série 432 · ${date}`);
   } catch (e) {
-    setV('selic-val', 'ERRO', 'err'); console.error('Selic', e);
+    setV('selic-val', 'ERRO', 'err'); setSub('selic-sub', 'BCB · falha ao buscar'); console.error('Selic', e);
   }
 
   // IBOV
