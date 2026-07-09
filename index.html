@@ -203,6 +203,21 @@
     }
     .news-summary-box.active { display: block; }
 
+    .feed-search-wrap {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+      background: var(--bg-card); border: 1px solid var(--border-hi);
+      border-radius: 20px;
+    }
+    .feed-search-wrap:focus-within { border-color: var(--orange); }
+    .feed-search-icon { font-size: 13px; color: var(--dim); flex-shrink: 0; }
+    .feed-search-wrap input {
+      flex: 1; font-family: inherit; font-size: 12px; color: var(--bright);
+      background: transparent; border: none; padding: 4px 0;
+    }
+    .feed-search-wrap input:focus { outline: none; }
+    .feed-search-wrap input::placeholder { color: var(--dim); }
+
     /* ROW CLICK (abre modal de gráfico) */
     .row-click { cursor: pointer; }
     .row-click:hover { background: rgba(255,102,0,.06) !important; }
@@ -675,7 +690,15 @@
 
 <div id="tab-feed" class="tab-panel">
 <div class="grid">
-  <div class="card card-wide">
+  <div class="feed-search-wrap">
+    <span class="feed-search-icon">🔍</span>
+    <input type="text" id="feed-search-input" placeholder="buscar notícias por palavra-chave… (ex: inflação, Nvidia, Fed, petróleo)" onkeydown="if(event.key==='Enter') runFeedSearch()" oninput="if(!this.value.trim()) clearFeedSearch()">
+  </div>
+  <div class="card card-wide" id="feed-search-card" style="display:none">
+    <div class="card-head"><h2>🔍 Resultados da busca</h2><span id="feed-search-label"></span></div>
+    <div class="news-list" id="feed-search-list"></div>
+  </div>
+  <div class="card card-wide" id="feed-market-card">
     <div class="card-head"><h2>📰 Feed · Notícias · Mercado Americano</h2><span>Yahoo Finance</span></div>
     <div class="news-list" id="feed-news-list">
       <div class="row"><div class="rname dim2">carregando notícias…</div></div>
@@ -1195,11 +1218,11 @@ async function fetchMarketNews() {
   return d.items || [];
 }
 
-let feedNewsItems = [];
+const newsStore = {};
 
-function renderNewsList(items) {
-  feedNewsItems = items;
-  const el = document.getElementById('feed-news-list');
+function renderNewsList(items, storeKey, containerId) {
+  newsStore[storeKey] = items;
+  const el = document.getElementById(containerId);
   if (!items.length) {
     el.innerHTML = '<div class="row"><div class="rname dim2">sem notícias disponíveis</div></div>';
     return;
@@ -1215,17 +1238,17 @@ function renderNewsList(items) {
         <a class="news-title" href="${n.link}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a>
         <div class="news-meta">${escapeHtml(n.publisher || 'Yahoo Finance')}${d ? ' · ' + fmtShortDateTime(d) : ''}</div>
         <div class="news-actions">
-          <button class="news-summarize-btn" onclick="summarizeNews(${i})">🤖 resumir com IA</button>
-          <div class="news-summary-box" id="news-summary-${i}"></div>
+          <button class="news-summarize-btn" onclick="summarizeNews('${storeKey}', ${i})">🤖 resumir com IA</button>
+          <div class="news-summary-box" id="news-summary-${storeKey}-${i}"></div>
         </div>
       </div>
     </div>`;
   }).join('');
 }
 
-async function summarizeNews(idx) {
-  const item = feedNewsItems[idx];
-  const box = document.getElementById(`news-summary-${idx}`);
+async function summarizeNews(storeKey, idx) {
+  const item = newsStore[storeKey]?.[idx];
+  const box = document.getElementById(`news-summary-${storeKey}-${idx}`);
   if (!item || !box) return;
   box.classList.add('active');
   box.textContent = 'resumindo…';
@@ -1247,11 +1270,49 @@ async function summarizeNews(idx) {
 async function loadFeed() {
   try {
     const items = await fetchMarketNews();
-    renderNewsList(items);
+    renderNewsList(items, 'feed', 'feed-news-list');
   } catch (e) {
     document.getElementById('feed-news-list').innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar notícias</div></div>';
     console.error('feed news', e);
   }
+}
+
+// ── Feed · busca por palavra-chave ─────────────────────────────────────────────
+let feedSearchSeq = 0;
+
+async function runFeedSearch() {
+  const input = document.getElementById('feed-search-input');
+  const query = input.value.trim();
+  if (!query) return;
+
+  const seq = ++feedSearchSeq;
+  const searchCard = document.getElementById('feed-search-card');
+  const marketCard = document.getElementById('feed-market-card');
+  const listEl = document.getElementById('feed-search-list');
+  const labelEl = document.getElementById('feed-search-label');
+
+  searchCard.style.display = '';
+  marketCard.style.display = 'none';
+  labelEl.textContent = query;
+  listEl.innerHTML = '<div class="row"><div class="rname dim2">buscando…</div></div>';
+
+  try {
+    const r = await fetch(`/api/news?t=${encodeURIComponent(query)}`);
+    const d = await r.json();
+    if (seq !== feedSearchSeq) return; // busca obsoleta — usuário já digitou outra coisa
+    if (d.error) throw new Error(d.error);
+    renderNewsList(d.items || [], 'search', 'feed-search-list');
+  } catch (e) {
+    if (seq !== feedSearchSeq) return;
+    listEl.innerHTML = '<div class="row"><div class="rname err">ERRO ao buscar notícias</div></div>';
+    console.error('feed search', query, e);
+  }
+}
+
+function clearFeedSearch() {
+  feedSearchSeq++;
+  document.getElementById('feed-search-card').style.display = 'none';
+  document.getElementById('feed-market-card').style.display = '';
 }
 
 // ── Relógio ───────────────────────────────────────────────────────────────────
@@ -1711,18 +1772,18 @@ async function loadPortfolio(range) {
       datasets: [
         ...validTickers.map((t, i) => ({
           label: t, data: normalized[i],
-          borderColor: validColors[i], borderWidth: 1,
+          borderColor: validColors[i], backgroundColor: validColors[i], borderWidth: 1, fill: false,
           pointRadius: 0, tension: 0,
         })),
-        { label: 'PORTFÓLIO SN', data: portNorm, borderColor: '#ff6600', borderWidth: 2.5, borderDash: [5,3], pointRadius: 0, tension: 0 },
-        ...(hasBenchmark ? [{ label: PF_BENCHMARK.label, data: benchNorm, borderColor: PF_BENCHMARK.color, borderWidth: 2.5, borderDash: [5,3], pointRadius: 0, tension: 0 }] : []),
+        { label: 'PORTFÓLIO SN', data: portNorm, borderColor: '#ff6600', backgroundColor: '#ff6600', borderWidth: 2.5, borderDash: [5,3], fill: false, pointRadius: 0, tension: 0 },
+        ...(hasBenchmark ? [{ label: PF_BENCHMARK.label, data: benchNorm, borderColor: PF_BENCHMARK.color, backgroundColor: PF_BENCHMARK.color, borderWidth: 2.5, borderDash: [5,3], fill: false, pointRadius: 0, tension: 0 }] : []),
       ],
     },
     options: {
       responsive: true, animation: false, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: '#485068', font: { family: 'Courier New', size: 10 }, boxWidth: 12, padding: 10 } },
+        legend: { labels: { color: '#485068', font: { family: 'Courier New', size: 10 }, boxWidth: 12, padding: 10, usePointStyle: false } },
         tooltip: {
           backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
           titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
