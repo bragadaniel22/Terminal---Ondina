@@ -37,6 +37,11 @@
     }
     .brand { color: var(--orange); font-size: 18px; font-weight: bold; letter-spacing: 5px; }
     .brand small { display: block; font-size: 9px; color: var(--dim); letter-spacing: 3px; margin-top: 3px; }
+    .sources-link {
+      display: inline-block; font-style: italic; font-size: 8px; color: var(--dim);
+      letter-spacing: 1px; margin-top: 4px; cursor: pointer; text-decoration: underline;
+    }
+    .sources-link:hover { color: var(--orange); }
     .hright { text-align: right; }
     .clock { font-size: 26px; color: var(--bright); letter-spacing: 2px; }
     .today { font-size: 9px; color: var(--dim); margin-top: 2px; }
@@ -222,6 +227,18 @@
     }
     #modal-chart { height: 360px !important; }
 
+    /* MODAL DE FONTES / METODOLOGIA */
+    .sources-box { width: min(620px, 92vw); max-height: 82vh; display: flex; flex-direction: column; }
+    .sources-body { overflow-y: auto; padding-right: 6px; }
+    .sources-section { margin-bottom: 16px; }
+    .sources-section:last-child { margin-bottom: 0; }
+    .sources-section h3 {
+      font-size: 10px; color: var(--orange); letter-spacing: 2px; text-transform: uppercase;
+      margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+    }
+    .sources-section p { font-size: 11px; line-height: 1.6; color: var(--text); }
+    .sources-section p strong { color: var(--bright); }
+
     /* FOOTER */
     footer {
       position: fixed; bottom: 0; left: 0; right: 0;
@@ -278,6 +295,7 @@
   <div class="brand">
     TERMINAL FINANCEIRO
     <small>MERCADOS · TAXAS · ÍNDICES</small>
+    <div class="sources-link" onclick="openSources()">fontes</div>
   </div>
   <div class="hright">
     <div class="live">AO VIVO</div>
@@ -668,6 +686,68 @@
     <div class="modal-chart-box">
       <div class="modal-status" id="modal-chart-status"></div>
       <canvas id="modal-chart"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="sources-overlay" onclick="if(event.target===this) closeSources()">
+  <div class="modal-box sources-box">
+    <button class="modal-close" onclick="closeSources()">✕</button>
+    <div class="modal-header">
+      <div class="modal-title">Fontes &amp; Metodologia</div>
+    </div>
+    <div class="sources-body">
+      <div class="sources-section">
+        <h3>🇧🇷 Brasil</h3>
+        <p><strong>CDI 12M</strong> e <strong>Selic</strong>: Banco Central (BCB), séries 11 e 432, via API pública SGS. CDI 12M é acumulado das taxas diárias do último ano.</p>
+        <p><strong>Ibovespa</strong>: Yahoo Finance (^BVSP).</p>
+        <p><strong>DI Futuro JAN/30 e JAN/35</strong>: cotação B3 (contratos DI1F30 e DI1F35).</p>
+        <p><strong>ETTJ IPCA e Inflação Implícita</strong>: ANBIMA, estrutura a termo de taxas de juros (252 dias úteis).</p>
+      </div>
+      <div class="sources-section">
+        <h3>🇺🇸 Bolsa US</h3>
+        <p>Yahoo Finance: S&amp;P 500 (^GSPC), S&amp;P Equal Weight (^SPXEW), Dow Jones (^DJI), Nasdaq (^IXIC) e futuros (Dow, S&amp;P, Nasdaq).</p>
+      </div>
+      <div class="sources-section">
+        <h3>🌍 Europa + Emerging Markets</h3>
+        <p>Yahoo Finance: Euro Stoxx 50 (^STOXX50E), DAX (^GDAXI) e MSCI Emerging Markets via ETF iShares (EEM).</p>
+      </div>
+      <div class="sources-section">
+        <h3>🌏 Ásia &amp; Pacífico</h3>
+        <p>Yahoo Finance: Nikkei 225, Hang Seng, Nifty 50 e ASX 200.</p>
+      </div>
+      <div class="sources-section">
+        <h3>📈 Juros Globais</h3>
+        <p><strong>Fed Funds Rate</strong>: proxy via T-Bill 3M (Yahoo Finance ^IRX). <strong>Taxa BCE</strong>: API oficial do Banco Central Europeu. <strong>T-Note 10 Anos</strong>: Yahoo Finance (^TNX).</p>
+      </div>
+      <div class="sources-section">
+        <h3>🛢 Commodities &amp; Cripto</h3>
+        <p>Yahoo Finance: Brent (BZ=F), WTI (CL=F), Ouro (GC=F) e Bitcoin (BTC-USD).</p>
+      </div>
+      <div class="sources-section">
+        <h3>📊 NTN-B</h3>
+        <p>ANBIMA, arquivo diário de mercado secundário — taxas indicativas por vencimento.</p>
+      </div>
+      <div class="sources-section">
+        <h3>📈 Single Names</h3>
+        <p>Preços via Yahoo Finance. Preço-alvo (target) e número de analistas via Yahoo Finance quoteSummary (consenso de mercado).</p>
+      </div>
+      <div class="sources-section">
+        <h3>📊 Portfólio</h3>
+        <p>Histórico de preços via Yahoo Finance. Retorno, volatilidade e Sharpe calculados internamente — sem taxa livre de risco (Rf = 0).</p>
+      </div>
+      <div class="sources-section">
+        <h3>🗺 Heatmap</h3>
+        <p>Reaproveita os mesmos dados já buscados nas outras abas (cache de até 90s) — não gera chamadas extras às APIs. Tamanho dos blocos proporcional à magnitude da variação do dia.</p>
+      </div>
+      <div class="sources-section">
+        <h3>📰 Feed</h3>
+        <p>Notícias via Yahoo Finance. Resumo por IA (sob demanda, por notícia) via Google Gemini, quando configurado.</p>
+      </div>
+      <div class="sources-section">
+        <h3>⏱ Atualização</h3>
+        <p>Dados atualizados automaticamente a cada 60 segundos enquanto a página estiver aberta.</p>
+      </div>
     </div>
   </div>
 </div>
@@ -1353,8 +1433,16 @@ function closeChart() {
   document.getElementById('modal-overlay').classList.remove('active');
 }
 
+function openSources() {
+  document.getElementById('sources-overlay').classList.add('active');
+}
+
+function closeSources() {
+  document.getElementById('sources-overlay').classList.remove('active');
+}
+
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeChart();
+  if (e.key === 'Escape') { closeChart(); closeSources(); }
 });
 
 async function loadModalChart(range) {
