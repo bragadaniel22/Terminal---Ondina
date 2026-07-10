@@ -763,7 +763,7 @@
         <div class="pf-chart-title">Risco × Retorno · Simulação Monte Carlo (anualizado)</div>
         <canvas id="mk-chart"></canvas>
       </div>
-      <div class="sources-link" style="padding:0 12px 10px" onclick="openMkMethodology()">metodologia</div>
+      <div class="sources-link" style="padding:0 12px 10px; font-size:11px" onclick="openMkMethodology()">metodologia</div>
       <div id="mk-table"></div>
     </div>
   </div>
@@ -913,20 +913,45 @@
     </div>
     <div class="sources-body">
       <div class="sources-section">
-        <h3>🎲 Como a simulação funciona</h3>
-        <p>Pra cada ativo escolhido, calcula o retorno diário histórico (da janela selecionada: 1A/2A/3A) e monta a matriz de covariância entre eles. Em seguida gera <strong>4.000 carteiras aleatórias</strong> (pesos somando 100%, sem venda a descoberto) e calcula o retorno e a volatilidade anualizados de cada uma — essa nuvem de pontos é a simulação de Monte Carlo mostrada no gráfico.</p>
+        <h3>📥 Dados de entrada</h3>
+        <p>Preço de fechamento diário via Yahoo Finance (mesmo endpoint <strong>/api/yahoo</strong> usado no resto do terminal), na janela escolhida (1A, 2A ou 3A). Ativos digitados por nome livre são resolvidos pra ticker via <strong>/api/quote-search</strong>. Mínimo de 2 ativos e 30 dias de histórico em comum entre eles pra rodar.</p>
       </div>
       <div class="sources-section">
-        <h3>🎯 Os três pontos destacados</h3>
-        <p><strong>Mínima Volatilidade</strong>: a carteira simulada com menor risco. <strong>Máximo Sharpe</strong>: a com melhor retorno por unidade de risco. <strong>Sua Carteira</strong>: os pesos que você digitou, pra comparar com as duas anteriores.</p>
+        <h3>🧮 Retorno diário de cada ativo</h3>
+        <p><strong>r(i,t) = [P(i,t) − P(i,t−1)] / P(i,t−1)</strong></p>
+        <p>Onde <strong>P(i,t)</strong> é o preço de fechamento do ativo <em>i</em> no dia <em>t</em>. Essa série de retornos diários é a base de todos os cálculos abaixo.</p>
       </div>
       <div class="sources-section">
-        <h3>📐 Premissas do cálculo</h3>
-        <p>Retorno e volatilidade são anualizados assumindo 252 dias úteis/ano. Sharpe calculado sem taxa livre de risco (Rf = 0). É uma leitura do <strong>passado</strong> (histórico da janela escolhida) — não é previsão de retorno futuro.</p>
+        <h3>📊 Retorno esperado — μ (mu)</h3>
+        <p><strong>μ(i) = média aritmética de r(i,t)</strong> ao longo de toda a janela, depois anualizada multiplicando por 252 (dias úteis/ano). É o retorno esperado de cada ativo isolado — o insumo básico de todo o resto do cálculo.</p>
       </div>
       <div class="sources-section">
-        <h3>⚖ Por que o "Retorno" aqui difere da aba Portfólio</h3>
-        <p>Aqui é a média aritmética dos retornos diários anualizada — padrão exigido pela matemática de Markowitz, já que a soma ponderada de retornos só funciona linearmente com médias aritméticas. Na aba Portfólio é o retorno total composto (CAGR) do período. Os dois são cálculos corretos, só medem coisas diferentes.</p>
+        <h3>🔗 Matriz de covariância — Σ (sigma)</h3>
+        <p><strong>Σ(i,j) = média de [r(i,t) − μ(i)] × [r(j,t) − μ(j)]</strong> ao longo da janela (covariância populacional — divide por T, o número de dias, não por T−1).</p>
+        <p>Na diagonal (i = j), Σ(i,i) é a variância do próprio ativo <em>i</em>. Fora da diagonal, Σ(i,j) mede o quanto os ativos <em>i</em> e <em>j</em> se movem juntos — correlação baixa ou negativa entre dois ativos reduz o risco da carteira sem reduzir o retorno esperado. É essa matriz que captura matematicamente o benefício da diversificação.</p>
+      </div>
+      <div class="sources-section">
+        <h3>⚖ Retorno e risco de uma carteira com pesos w</h3>
+        <p><strong>Retorno da carteira = Σᵢ w(i) × μ(i)</strong> — soma ponderada dos retornos esperados de cada ativo.</p>
+        <p><strong>Variância da carteira = Σᵢ Σⱼ w(i) × w(j) × Σ(i,j)</strong> — soma de todos os pares de ativos (incluindo cada ativo com ele mesmo), ponderados pelo produto dos pesos e pela covariância entre eles. <strong>Volatilidade = raiz quadrada dessa variância</strong> (anualizada, multiplicando a variância por 252 antes da raiz).</p>
+        <p><strong>Sharpe = retorno da carteira ÷ volatilidade da carteira</strong>, sem taxa livre de risco (Rf = 0).</p>
+      </div>
+      <div class="sources-section">
+        <h3>🎲 Simulação de Monte Carlo</h3>
+        <p>Gera <strong>4.000 vetores de peso aleatórios</strong>: sorteia um número aleatório uniforme entre 0 e 1 pra cada ativo e divide cada um pela soma total — isso garante que os pesos sempre somem 100% e nunca sejam negativos (sem venda a descoberto, sem alavancagem). Pra cada um dos 4.000 vetores, aplica as fórmulas de retorno e risco acima. A nuvem de pontos no gráfico é exatamente essas 4.000 combinações.</p>
+        <p><strong>Mínima Volatilidade</strong> e <strong>Máximo Sharpe</strong> são o melhor ponto <em>dentro dessa amostra de 4.000</em> — não uma otimização numérica exata (como programação quadrática). Validamos contra a fórmula analítica exata de mínima variância pra carteiras de 2 ativos e a diferença ficou na 4ª casa decimal do peso — precisão de sobra pra decisão prática, mas vale saber que é uma aproximação por amostragem, não o ótimo matemático perfeito. <strong>Sua Carteira</strong> é calculada pelas mesmas fórmulas, com os pesos que você digitou (normalizados pra somar 100% se não somarem).</p>
+      </div>
+      <div class="sources-section">
+        <h3>🌎 Alinhamento entre bolsas diferentes</h3>
+        <p>Ativos de bolsas diferentes (ex: B3 e NASDAQ) fecham em horários diferentes, então seus timestamps de barra diária nunca coincidem exatamente, mesmo no mesmo dia. Por isso o alinhamento entre séries é feito por <strong>dia calendário</strong> (a data, não o timestamp exato) — cada ativo contribui com o preço daquele dia, e só entram no cálculo os dias em que todos os ativos escolhidos têm dado disponível.</p>
+      </div>
+      <div class="sources-section">
+        <h3>📐 Premissas e limitações</h3>
+        <p>Anualização assume 252 dias úteis/ano. É uma leitura do <strong>passado</strong> (histórico da janela escolhida) — não é previsão de retorno futuro, nem considera custos de transação, impostos ou rebalanceamento.</p>
+      </div>
+      <div class="sources-section">
+        <h3>⚖ Retorno aritmético vs. composto (aba Portfólio)</h3>
+        <p>O "Retorno" mostrado aqui é μ×252 — média aritmética anualizada, padrão exigido pela matemática de Markowitz, porque as fórmulas de retorno e variância da carteira acima só valem com médias aritméticas (a soma ponderada de retornos compostos não representa o retorno real da carteira). Na aba Portfólio, o "Retorno" é o total composto (CAGR) do período. São cálculos diferentes, os dois corretos pro que cada um mede — só não devem ser comparados diretamente entre abas.</p>
       </div>
     </div>
   </div>
