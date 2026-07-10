@@ -751,6 +751,7 @@
     <div class="mk-add-row">
       <input type="text" id="mk-ticker-input" placeholder="adicionar ativo… (ex: AAPL, Nvidia, Ibovespa)" onkeydown="if(event.key==='Enter') mkAddAsset()">
       <button class="range-btn" onclick="mkAddAsset()">+ ADICIONAR</button>
+      <button class="range-btn" onclick="mkAddSingleNames()">MEUS SINGLE NAMES</button>
     </div>
     <div id="mk-asset-list" class="mk-asset-list">
       <div class="row"><div class="rname dim2">adicione pelo menos 2 ativos e clique em calcular</div></div>
@@ -2110,7 +2111,37 @@ async function mkAddAsset() {
   }
 }
 
+// ── Atalho: popula direto com os 10 Single Names, peso igual ────────────────────
+const MK_SINGLES_NAMES = {
+  AMZN: 'Amazon.com Inc.', MSFT: 'Microsoft Corporation', NVDA: 'NVIDIA Corporation',
+  CRM: 'Salesforce Inc.', TMO: 'Thermo Fisher Scientific', DHR: 'Danaher Corporation',
+  V: 'Visa Inc.', VST: 'Vistra Corp.', GLD: 'SPDR Gold Shares', GOOGL: 'Alphabet Inc.',
+};
+function mkAddSingleNames() {
+  mkAssets = PF_TICKERS.map(t => ({ ticker: t, name: MK_SINGLES_NAMES[t] || t, weight: 10 }));
+  document.getElementById('mk-status').textContent = '';
+  document.getElementById('mk-results').style.display = 'none';
+  mkRenderAssetList();
+}
+
 // ── Matemática: retornos diários, covariância, simulação de Monte Carlo ────────
+// Alinha por DIA CALENDÁRIO (não por timestamp exato) — necessário porque ativos
+// de bolsas diferentes (ex: B3 vs NASDAQ) fecham em horários diferentes, então
+// seus timestamps de barra diária nunca coincidem exatamente, mesmo no mesmo dia.
+function mkAlignSeries(allSeries) {
+  const dateKey = ts => new Date(ts * 1000).toISOString().slice(0, 10);
+  const maps = allSeries.map(s => {
+    const m = new Map();
+    s.forEach(d => { const k = dateKey(d.ts); if (!m.has(k)) m.set(k, d.p); });
+    return m;
+  });
+  const keySets = maps.map(m => new Set(m.keys()));
+  const common = [...keySets[0]].filter(k => keySets.every(s => s.has(k))).sort();
+  return {
+    dateKeys: common,
+    series: maps.map(m => common.map(k => m.get(k))),
+  };
+}
 function mkDailyReturns(prices) {
   return prices.slice(1).map((p, i) => (p - prices[i]) / prices[i]);
 }
@@ -2177,8 +2208,8 @@ async function mkCalculate() {
       skippedMsg = `sem histórico suficiente pra: ${skipped} — seguindo com os demais. `;
     }
 
-    const { dates, series } = alignSeries(validSeries);
-    if (dates.length < 30) throw new Error('poucas datas em comum entre os ativos escolhidos — tente outra janela ou outros ativos');
+    const { dateKeys, series } = mkAlignSeries(validSeries);
+    if (dateKeys.length < 30) throw new Error('poucas datas em comum entre os ativos escolhidos — tente outra janela ou outros ativos');
 
     const returnsMatrix = series.map(mkDailyReturns);
     const { means, cov } = mkBuildStats(returnsMatrix);
