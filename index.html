@@ -763,7 +763,7 @@
         <div class="pf-chart-title">Risco × Retorno · Simulação Monte Carlo (anualizado)</div>
         <canvas id="mk-chart"></canvas>
       </div>
-      <div class="sources-link" style="padding:0 12px 10px" onclick="openSources()">metodologia</div>
+      <div class="sources-link" style="padding:0 12px 10px" onclick="openMkMethodology()">metodologia</div>
       <div id="mk-table"></div>
     </div>
   </div>
@@ -887,10 +887,7 @@
       </div>
       <div class="sources-section">
         <h3>🎯 Simulador · Fronteira Eficiente (Markowitz)</h3>
-        <p>Pra cada ativo escolhido, calcula o retorno diário histórico (da janela selecionada: 1A/2A/3A) e monta a matriz de covariância entre eles. Em seguida gera <strong>4.000 carteiras aleatórias</strong> (pesos somando 100%, sem venda a descoberto) e calcula o retorno e a volatilidade anualizados de cada uma — essa nuvem de pontos é a simulação de Monte Carlo mostrada no gráfico.</p>
-        <p><strong>Mínima Volatilidade</strong>: a carteira simulada com menor risco. <strong>Máximo Sharpe</strong>: a com melhor retorno por unidade de risco. <strong>Sua Carteira</strong>: os pesos que você digitou, pra comparar com as duas anteriores.</p>
-        <p>Retorno e volatilidade são anualizados assumindo 252 dias úteis/ano. Sharpe calculado sem taxa livre de risco (Rf = 0). É uma leitura do <strong>passado</strong> (histórico da janela escolhida) — não é previsão de retorno futuro.</p>
-        <p><strong>Por que o "Retorno" aqui pode diferir do retorno mostrado na aba Portfólio</strong>: aqui é a média aritmética dos retornos diários anualizada (padrão exigido pela matemática de Markowitz — a soma ponderada de retornos só funciona linearmente com médias aritméticas). Na aba Portfólio é o retorno total composto (CAGR) do período. Os dois são cálculos corretos, só medem coisas diferentes.</p>
+        <p>Simulador em que você escolhe os ativos e pesos de uma carteira hipotética e vê qual combinação teria dado o melhor retorno pro risco assumido, com base no histórico. Metodologia completa disponível dentro da própria aba SIMULADOR.</p>
       </div>
       <div class="sources-section">
         <h3>🗺 Heatmap</h3>
@@ -903,6 +900,33 @@
       <div class="sources-section">
         <h3>⏱ Atualização</h3>
         <p>Dados atualizados automaticamente a cada 60 segundos enquanto a página estiver aberta.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="mk-methodology-overlay" onclick="if(event.target===this) closeMkMethodology()">
+  <div class="modal-box sources-box">
+    <button class="modal-close" onclick="closeMkMethodology()">✕</button>
+    <div class="modal-header">
+      <div class="modal-title">Metodologia · Simulador Markowitz</div>
+    </div>
+    <div class="sources-body">
+      <div class="sources-section">
+        <h3>🎲 Como a simulação funciona</h3>
+        <p>Pra cada ativo escolhido, calcula o retorno diário histórico (da janela selecionada: 1A/2A/3A) e monta a matriz de covariância entre eles. Em seguida gera <strong>4.000 carteiras aleatórias</strong> (pesos somando 100%, sem venda a descoberto) e calcula o retorno e a volatilidade anualizados de cada uma — essa nuvem de pontos é a simulação de Monte Carlo mostrada no gráfico.</p>
+      </div>
+      <div class="sources-section">
+        <h3>🎯 Os três pontos destacados</h3>
+        <p><strong>Mínima Volatilidade</strong>: a carteira simulada com menor risco. <strong>Máximo Sharpe</strong>: a com melhor retorno por unidade de risco. <strong>Sua Carteira</strong>: os pesos que você digitou, pra comparar com as duas anteriores.</p>
+      </div>
+      <div class="sources-section">
+        <h3>📐 Premissas do cálculo</h3>
+        <p>Retorno e volatilidade são anualizados assumindo 252 dias úteis/ano. Sharpe calculado sem taxa livre de risco (Rf = 0). É uma leitura do <strong>passado</strong> (histórico da janela escolhida) — não é previsão de retorno futuro.</p>
+      </div>
+      <div class="sources-section">
+        <h3>⚖ Por que o "Retorno" aqui difere da aba Portfólio</h3>
+        <p>Aqui é a média aritmética dos retornos diários anualizada — padrão exigido pela matemática de Markowitz, já que a soma ponderada de retornos só funciona linearmente com médias aritméticas. Na aba Portfólio é o retorno total composto (CAGR) do período. Os dois são cálculos corretos, só medem coisas diferentes.</p>
       </div>
     </div>
   </div>
@@ -1725,6 +1749,14 @@ function closeSources() {
   document.getElementById('sources-overlay').classList.remove('active');
 }
 
+function openMkMethodology() {
+  document.getElementById('mk-methodology-overlay').classList.add('active');
+}
+
+function closeMkMethodology() {
+  document.getElementById('mk-methodology-overlay').classList.remove('active');
+}
+
 async function openTickerNews(ticker, label) {
   document.getElementById('ticker-news-title').textContent = label;
   document.getElementById('ticker-news-overlay').classList.add('active');
@@ -1767,7 +1799,7 @@ function renderTickerNewsList(items) {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); }
+  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); closeMkMethodology(); }
 });
 
 async function loadModalChart(range) {
