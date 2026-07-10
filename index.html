@@ -203,6 +203,10 @@
     }
     .news-summary-box.active { display: block; }
 
+    .feed-subtabs { grid-column: 1 / -1; display: flex; gap: 6px; }
+    .feed-subpanel { display: none; }
+    .feed-subpanel.active { display: contents; }
+
     .feed-search-wrap {
       grid-column: 1 / -1;
       display: flex; align-items: center; gap: 10px; padding: 10px 16px;
@@ -332,7 +336,7 @@
   <button class="tab-btn" data-tab="single-names" onclick="switchTab(this)">SINGLE NAMES</button>
   <button class="tab-btn" data-tab="portfolio" onclick="switchTab(this)">PORTFÓLIO</button>
   <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
-  <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">FEED (BETA)</button>
+  <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">BUSCAR</button>
 </nav>
 
 <div id="tab-indices" class="tab-panel active">
@@ -690,18 +694,36 @@
 
 <div id="tab-feed" class="tab-panel">
 <div class="grid">
-  <div class="feed-search-wrap">
-    <span class="feed-search-icon">🔍</span>
-    <input type="text" id="feed-search-input" placeholder="buscar notícias por palavra-chave… (ex: inflação, Nvidia, Fed, petróleo)" onkeydown="if(event.key==='Enter') runFeedSearch()" oninput="if(!this.value.trim()) clearFeedSearch()">
+  <div class="feed-subtabs">
+    <button class="range-btn active" data-feedsub="news" onclick="switchFeedSubtab(this)">NOTÍCIAS</button>
+    <button class="range-btn" data-feedsub="assets" onclick="switchFeedSubtab(this)">ATIVOS</button>
   </div>
-  <div class="card card-wide" id="feed-search-card" style="display:none">
-    <div class="card-head"><h2>🔍 Resultados da busca</h2><span id="feed-search-label"></span></div>
-    <div class="news-list" id="feed-search-list"></div>
+
+  <div id="feedsub-news" class="feed-subpanel active">
+    <div class="feed-search-wrap">
+      <span class="feed-search-icon">🔍</span>
+      <input type="text" id="feed-search-input" placeholder="buscar notícias por palavra-chave… (ex: inflação, Nvidia, Fed, petróleo)" onkeydown="if(event.key==='Enter') runFeedSearch()" oninput="if(!this.value.trim()) clearFeedSearch()">
+    </div>
+    <div class="card card-wide" id="feed-search-card" style="display:none">
+      <div class="card-head"><h2>🔍 Resultados da busca</h2><span id="feed-search-label"></span></div>
+      <div class="news-list" id="feed-search-list"></div>
+    </div>
+    <div class="card card-wide" id="feed-market-card">
+      <div class="card-head"><h2>📰 Notícias · Mercado Americano</h2><span>Yahoo Finance</span></div>
+      <div class="news-list" id="feed-news-list">
+        <div class="row"><div class="rname dim2">carregando notícias…</div></div>
+      </div>
+    </div>
   </div>
-  <div class="card card-wide" id="feed-market-card">
-    <div class="card-head"><h2>📰 Feed · Notícias · Mercado Americano</h2><span>Yahoo Finance</span></div>
-    <div class="news-list" id="feed-news-list">
-      <div class="row"><div class="rname dim2">carregando notícias…</div></div>
+
+  <div id="feedsub-assets" class="feed-subpanel">
+    <div class="feed-search-wrap">
+      <span class="feed-search-icon">🔍</span>
+      <input type="text" id="asset-search-input" placeholder="buscar ativo ou índice… (ex: AAPL, Nvidia, Ibovespa)" onkeydown="if(event.key==='Enter') runAssetSearch()">
+    </div>
+    <div class="card card-wide">
+      <div class="card-head"><h2>🔎 Resultado da busca</h2><span id="asset-search-label"></span></div>
+      <div id="asset-search-list"></div>
     </div>
   </div>
 </div>
@@ -1315,6 +1337,70 @@ function clearFeedSearch() {
   document.getElementById('feed-market-card').style.display = '';
 }
 
+// ── Sub-abas dentro de NOTÍCIAS (Notícias / Ativos) ─────────────────────────
+function switchFeedSubtab(btn) {
+  const name = btn.dataset.feedsub;
+  btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.feed-subpanel').forEach(p => p.classList.remove('active'));
+  document.getElementById('feedsub-' + name).classList.add('active');
+}
+
+// ── Busca de ativos/índices (resolve texto livre em tickers, via /api/quote-search) ──
+let assetSearchSeq = 0;
+
+function assetRowSkeleton(label) {
+  return `<div class="row"><div class="rname">${escapeHtml(label)}</div><div class="rright"><div class="rval dim2">…</div></div></div>`;
+}
+function assetRowError(label) {
+  return `<div class="row"><div class="rname">${escapeHtml(label)}</div><div class="rright"><div class="rval err">ERRO</div></div></div>`;
+}
+function assetRowData(label, sub, price, chg) {
+  const cls = chg > 0 ? 'pos' : chg < 0 ? 'neg' : '';
+  return `<div class="row">
+    <div><div class="rname">${escapeHtml(label)}</div>${sub ? `<div class="rsub">${escapeHtml(sub)}</div>` : ''}</div>
+    <div class="rright"><div class="rval">${num(price, 2)}</div><div class="rchg ${cls}">${pct(chg)}</div></div>
+  </div>`;
+}
+
+async function runAssetSearch() {
+  const input = document.getElementById('asset-search-input');
+  const query = input.value.trim();
+  if (!query) return;
+
+  const seq = ++assetSearchSeq;
+  const listEl = document.getElementById('asset-search-list');
+  const labelEl = document.getElementById('asset-search-label');
+  labelEl.textContent = query;
+  listEl.innerHTML = '<div class="row"><div class="rname dim2">buscando…</div></div>';
+
+  try {
+    const r = await fetch(`/api/quote-search?q=${encodeURIComponent(query)}`);
+    const d = await r.json();
+    if (seq !== assetSearchSeq) return; // busca obsoleta
+    if (d.error) throw new Error(d.error);
+    const candidates = d.quotes || [];
+    if (!candidates.length) {
+      listEl.innerHTML = '<div class="row"><div class="rname dim2">nenhum ativo encontrado</div></div>';
+      return;
+    }
+    listEl.innerHTML = candidates.map(c => assetRowSkeleton(`${c.symbol} · ${c.name}`)).join('');
+    const results = await Promise.allSettled(candidates.map(c => yahoo(c.symbol)));
+    if (seq !== assetSearchSeq) return;
+    listEl.innerHTML = candidates.map((c, i) => {
+      const label = c.name && c.name !== c.symbol ? c.name : c.symbol;
+      const sub = c.symbol + (c.exchange ? ' · ' + c.exchange : '');
+      const res = results[i];
+      if (res.status !== 'fulfilled') { console.error('asset', c.symbol, res.reason); return assetRowError(label); }
+      return assetRowData(label, sub, res.value.price, res.value.chg);
+    }).join('');
+  } catch (e) {
+    if (seq !== assetSearchSeq) return;
+    listEl.innerHTML = '<div class="row"><div class="rname err">ERRO ao buscar ativos</div></div>';
+    console.error('asset search', query, e);
+  }
+}
+
 // ── Relógio ───────────────────────────────────────────────────────────────────
 function tick() {
   const n = new Date();
@@ -1338,6 +1424,17 @@ function startTimer() {
     if (cd <= 0) { cd = INTERVAL; loadAll(); }
   }, 1000);
 }
+
+// Aba em segundo plano (minimizada ou outra aba em foco) → pausa o countdown e para
+// de disparar loadAll(); ao voltar, atualiza na hora e reinicia o ciclo de 60s.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearInterval(timer);
+  } else {
+    loadAll();
+    startTimer();
+  }
+});
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 let snLoaded = false;
