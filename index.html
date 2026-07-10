@@ -138,6 +138,51 @@
     .pf-card:hover { background: rgba(255,255,255,.02); }
     .pf-card.pf-hidden { opacity: 0.22; }
 
+    /* MARKOWITZ */
+    .mk-add-row { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); }
+    .mk-add-row input {
+      flex: 1; font-family: inherit; font-size: 11px; color: var(--bright);
+      background: var(--bg); border: 1px solid var(--border-hi); padding: 7px 10px;
+    }
+    .mk-add-row input:focus { outline: none; border-color: var(--orange); }
+    .mk-asset-list { display: flex; flex-direction: column; }
+    .mk-asset-row {
+      display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .mk-asset-row:last-child { border-bottom: none; }
+    .mk-asset-name { flex: 1; min-width: 0; }
+    .mk-asset-weight { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .mk-weight-input {
+      width: 52px; font-family: inherit; font-size: 11px; color: var(--bright);
+      background: var(--bg); border: 1px solid var(--border-hi); padding: 4px 6px; text-align: right;
+    }
+    .mk-weight-input:focus { outline: none; border-color: var(--orange); }
+    .mk-weight-pct { font-size: 10px; color: var(--dim); }
+    .mk-remove-btn {
+      font-family: inherit; background: transparent; border: none; color: var(--dim);
+      cursor: pointer; font-size: 12px; padding: 2px 4px; flex-shrink: 0;
+    }
+    .mk-remove-btn:hover { color: var(--red); }
+    .mk-calc-btn {
+      display: block; width: calc(100% - 24px); margin: 12px; padding: 10px;
+      font-family: inherit; font-size: 10px; letter-spacing: 2px;
+      color: var(--bright); background: rgba(255,102,0,.08); border: 1px solid var(--orange);
+      cursor: pointer; text-transform: uppercase;
+    }
+    .mk-calc-btn:hover:not(:disabled) { background: rgba(255,102,0,.16); }
+    .mk-calc-btn:disabled { opacity: .35; cursor: not-allowed; border-color: var(--border-hi); color: var(--dim); }
+    .mk-status { padding: 0 12px 12px; font-size: 10px; color: var(--dim); }
+    .mk-results { border-top: 1px solid var(--border); }
+    .mk-table-block { padding: 14px; border-top: 1px solid var(--border); }
+    .mk-table-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; font-weight: bold; }
+    .mk-table-stats { display: flex; gap: 16px; font-size: 10px; color: var(--dim); margin-bottom: 10px; }
+    .mk-table-stats b { color: var(--bright); font-weight: bold; }
+    .mk-alloc-list { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+    .mk-alloc-row { display: flex; gap: 6px; font-size: 10px; }
+    .mk-alloc-row .rname { color: var(--text); }
+    .mk-alloc-row .rval { color: var(--bright); font-weight: bold; }
+
     /* TABS */
     .tabs {
       display: flex; gap: 0; margin-bottom: 14px;
@@ -344,6 +389,7 @@
   <button class="tab-btn active" data-tab="indices" onclick="switchTab(this)">ÍNDICES</button>
   <button class="tab-btn" data-tab="single-names" onclick="switchTab(this)">SINGLE NAMES</button>
   <button class="tab-btn" data-tab="portfolio" onclick="switchTab(this)">PORTFÓLIO</button>
+  <button class="tab-btn" data-tab="simulador" onclick="switchTab(this)">SIMULADOR</button>
   <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
   <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">BUSCAR</button>
 </nav>
@@ -691,6 +737,35 @@
     </div>
   </div>
 </div><!-- /tab-portfolio -->
+
+<div id="tab-simulador" class="tab-panel">
+  <div class="card card-wide">
+    <div class="card-head">
+      <h2>🎯 Fronteira Eficiente · Markowitz</h2>
+      <div class="pf-range" id="mk-range-row">
+        <button class="range-btn" data-mkr="1y" onclick="mkSelectRange(this)">1A</button>
+        <button class="range-btn active" data-mkr="2y" onclick="mkSelectRange(this)">2A</button>
+        <button class="range-btn" data-mkr="3y" onclick="mkSelectRange(this)">3A</button>
+      </div>
+    </div>
+    <div class="mk-add-row">
+      <input type="text" id="mk-ticker-input" placeholder="adicionar ativo… (ex: AAPL, Nvidia, Ibovespa)" onkeydown="if(event.key==='Enter') mkAddAsset()">
+      <button class="range-btn" onclick="mkAddAsset()">+ ADICIONAR</button>
+    </div>
+    <div id="mk-asset-list" class="mk-asset-list">
+      <div class="row"><div class="rname dim2">adicione pelo menos 2 ativos e clique em calcular</div></div>
+    </div>
+    <button class="mk-calc-btn" id="mk-calc-btn" onclick="mkCalculate()" disabled>▶ CALCULAR FRONTEIRA EFICIENTE</button>
+    <div id="mk-status" class="mk-status"></div>
+    <div id="mk-results" class="mk-results" style="display:none">
+      <div class="pf-chart-box">
+        <div class="pf-chart-title">Risco × Retorno · Simulação Monte Carlo (anualizado)</div>
+        <canvas id="mk-chart"></canvas>
+      </div>
+      <div id="mk-table"></div>
+    </div>
+  </div>
+</div><!-- /tab-simulador -->
 
 <div id="tab-heatmap" class="tab-panel">
   <div class="card">
@@ -1966,6 +2041,234 @@ async function loadPortfolio(range) {
     },
     plugins: [labelPlugin],
   });
+}
+
+// ── Markowitz · Fronteira Eficiente ─────────────────────────────────────────────
+// Simulador em memória — nada é salvo em cache/localStorage, então recarregar a
+// página (ou fechar o terminal) já limpa tudo sozinho, sem código extra pra isso.
+let mkAssets = []; // { ticker, name, weight }
+let mkRange = '2y';
+let mkChart = null;
+
+function mkSelectRange(btn) {
+  mkRange = btn.dataset.mkr;
+  btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b === btn));
+}
+
+function mkRenderAssetList() {
+  const el = document.getElementById('mk-asset-list');
+  const calcBtn = document.getElementById('mk-calc-btn');
+  if (!mkAssets.length) {
+    el.innerHTML = '<div class="row"><div class="rname dim2">adicione pelo menos 2 ativos e clique em calcular</div></div>';
+  } else {
+    el.innerHTML = mkAssets.map((a, i) => `
+      <div class="mk-asset-row">
+        <div class="mk-asset-name">
+          <div class="rname">${escapeHtml(a.ticker)}</div>
+          <div class="rsub">${escapeHtml(a.name)}</div>
+        </div>
+        <div class="mk-asset-weight">
+          <input type="number" class="mk-weight-input" value="${a.weight}" min="0" step="1" oninput="mkUpdateWeight(${i}, this.value)">
+          <span class="mk-weight-pct">%</span>
+        </div>
+        <button class="mk-remove-btn" onclick="mkRemoveAsset(${i})" title="remover">✕</button>
+      </div>`).join('');
+  }
+  calcBtn.disabled = mkAssets.length < 2;
+}
+
+function mkUpdateWeight(idx, value) {
+  mkAssets[idx].weight = parseFloat(value) || 0;
+}
+
+function mkRemoveAsset(idx) {
+  mkAssets.splice(idx, 1);
+  mkRenderAssetList();
+  document.getElementById('mk-results').style.display = 'none';
+}
+
+async function mkAddAsset() {
+  const input = document.getElementById('mk-ticker-input');
+  const query = input.value.trim();
+  if (!query) return;
+  const statusEl = document.getElementById('mk-status');
+  statusEl.textContent = 'buscando…';
+  try {
+    const r = await fetch(`/api/quote-search?q=${encodeURIComponent(query)}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const top = (d.quotes || [])[0];
+    if (!top) { statusEl.textContent = `nenhum ativo encontrado pra "${query}"`; return; }
+    if (mkAssets.some(a => a.ticker === top.symbol)) { statusEl.textContent = `${top.symbol} já está na lista`; input.value = ''; return; }
+    mkAssets.push({ ticker: top.symbol, name: top.name, weight: Math.round(100 / (mkAssets.length + 1)) });
+    input.value = '';
+    statusEl.textContent = '';
+    mkRenderAssetList();
+  } catch (e) {
+    statusEl.textContent = 'erro ao buscar ativo';
+    console.error('markowitz add', query, e);
+  }
+}
+
+// ── Matemática: retornos diários, covariância, simulação de Monte Carlo ────────
+function mkDailyReturns(prices) {
+  return prices.slice(1).map((p, i) => (p - prices[i]) / prices[i]);
+}
+function mkMean(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }
+function mkCovariance(a, b, ma, mb) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += (a[i] - ma) * (b[i] - mb);
+  return s / a.length;
+}
+function mkBuildStats(returnsMatrix) {
+  const n = returnsMatrix.length;
+  const means = returnsMatrix.map(mkMean);
+  const cov = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) cov[i][j] = mkCovariance(returnsMatrix[i], returnsMatrix[j], means[i], means[j]);
+  }
+  return { means, cov };
+}
+function mkPortfolioStats(w, means, cov) {
+  const n = w.length;
+  let ret = 0;
+  for (let i = 0; i < n; i++) ret += w[i] * means[i];
+  let variance = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) variance += w[i] * w[j] * cov[i][j];
+  const annRet = ret * 252;
+  const annVol = Math.sqrt(Math.max(variance, 0) * 252);
+  const sharpe = annVol > 0 ? annRet / annVol : 0;
+  return { ret: annRet, vol: annVol, sharpe };
+}
+function mkRandomWeights(n) {
+  const r = Array.from({ length: n }, () => Math.random());
+  const s = r.reduce((a, b) => a + b, 0);
+  return r.map(x => x / s);
+}
+function mkRunSimulation(means, cov, n, iterations) {
+  const points = [];
+  for (let k = 0; k < iterations; k++) {
+    const w = mkRandomWeights(n);
+    points.push({ w, ...mkPortfolioStats(w, means, cov) });
+  }
+  return points;
+}
+
+async function mkCalculate() {
+  if (mkAssets.length < 2) return;
+  const calcBtn = document.getElementById('mk-calc-btn');
+  const statusEl = document.getElementById('mk-status');
+  calcBtn.disabled = true;
+  statusEl.textContent = 'baixando histórico…';
+
+  try {
+    const results = await Promise.allSettled(mkAssets.map(a => yahooHistory(a.ticker, mkRange)));
+    const validIdx = [];
+    const validSeries = [];
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled' && r.value.length > 30) { validIdx.push(i); validSeries.push(r.value); }
+    });
+    if (validSeries.length < 2) throw new Error('histórico insuficiente pra pelo menos 2 ativos');
+
+    const validAssets = validIdx.map(i => mkAssets[i]);
+    let skippedMsg = '';
+    if (validIdx.length < mkAssets.length) {
+      const skipped = mkAssets.filter((_, i) => !validIdx.includes(i)).map(a => a.ticker).join(', ');
+      skippedMsg = `sem histórico suficiente pra: ${skipped} — seguindo com os demais. `;
+    }
+
+    const { dates, series } = alignSeries(validSeries);
+    if (dates.length < 30) throw new Error('poucas datas em comum entre os ativos escolhidos — tente outra janela ou outros ativos');
+
+    const returnsMatrix = series.map(mkDailyReturns);
+    const { means, cov } = mkBuildStats(returnsMatrix);
+
+    const points = mkRunSimulation(means, cov, validAssets.length, 4000);
+    let minVol = points[0], maxSharpe = points[0];
+    for (const p of points) {
+      if (p.vol < minVol.vol) minVol = p;
+      if (p.sharpe > maxSharpe.sharpe) maxSharpe = p;
+    }
+
+    const userWeightsRaw = validAssets.map(a => a.weight || 0);
+    const wSum = userWeightsRaw.reduce((a, b) => a + b, 0);
+    const userWeights = wSum > 0 ? userWeightsRaw.map(w => w / wSum) : validAssets.map(() => 1 / validAssets.length);
+    const userStats = mkPortfolioStats(userWeights, means, cov);
+
+    mkRenderChart(points, minVol, maxSharpe, userStats);
+    mkRenderTable(validAssets, minVol, maxSharpe, userWeights, userStats);
+    document.getElementById('mk-results').style.display = '';
+    statusEl.textContent = skippedMsg;
+  } catch (e) {
+    statusEl.textContent = 'erro ao calcular — ' + e.message;
+    console.error('markowitz calc', e);
+  } finally {
+    calcBtn.disabled = mkAssets.length < 2;
+  }
+}
+
+function mkRenderChart(points, minVol, maxSharpe, userStats) {
+  if (mkChart) mkChart.destroy();
+  const ctx = document.getElementById('mk-chart').getContext('2d');
+  mkChart = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: [
+        { label: 'Simulações', data: points.map(p => ({ x: p.vol * 100, y: p.ret * 100 })), backgroundColor: 'rgba(72,80,104,.45)', pointRadius: 2, pointHoverRadius: 3 },
+        { label: 'Mínima Volatilidade', data: [{ x: minVol.vol * 100, y: minVol.ret * 100 }], backgroundColor: '#00cc77', pointRadius: 7, pointHoverRadius: 9 },
+        { label: 'Máximo Sharpe', data: [{ x: maxSharpe.vol * 100, y: maxSharpe.ret * 100 }], backgroundColor: '#ffcc44', pointRadius: 7, pointHoverRadius: 9 },
+        { label: 'Sua Carteira', data: [{ x: userStats.vol * 100, y: userStats.ret * 100 }], backgroundColor: '#ff6600', pointRadius: 8, pointHoverRadius: 10 },
+      ],
+    },
+    options: {
+      responsive: true, animation: false, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#485068', font: { family: 'Courier New', size: 10 }, boxWidth: 12, padding: 10 } },
+        tooltip: {
+          backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
+          titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
+          titleFont: { family: 'Courier New', size: 9 }, bodyFont: { family: 'Courier New', size: 8 },
+          callbacks: {
+            title: c => c[0].dataset.label,
+            label: c => [`Retorno: ${c.parsed.y.toFixed(1)}%`, `Vol.: ${c.parsed.x.toFixed(1)}%`],
+          },
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Volatilidade (anualizada)', color: '#485068', font: { family: 'Courier New', size: 10 } },
+          ticks: { color: '#485068', font: { family: 'Courier New', size: 10 }, callback: v => v.toFixed(0) + '%' },
+          grid: { color: '#181828' },
+        },
+        y: {
+          title: { display: true, text: 'Retorno (anualizado)', color: '#485068', font: { family: 'Courier New', size: 10 } },
+          ticks: { color: '#485068', font: { family: 'Courier New', size: 10 }, callback: v => v.toFixed(0) + '%' },
+          grid: { color: '#181828' },
+        },
+      },
+    },
+  });
+}
+
+function mkRenderTable(assets, minVol, maxSharpe, userWeights, userStats) {
+  const portfolios = [
+    { title: 'Mínima Volatilidade', color: '#00cc77', weights: minVol.w, stats: minVol },
+    { title: 'Máximo Sharpe', color: '#ffcc44', weights: maxSharpe.w, stats: maxSharpe },
+    { title: 'Sua Carteira', color: '#ff6600', weights: userWeights, stats: userStats },
+  ];
+  const el = document.getElementById('mk-table');
+  el.innerHTML = portfolios.map(p => `
+    <div class="mk-table-block">
+      <div class="mk-table-title" style="color:${p.color}">${p.title}</div>
+      <div class="mk-table-stats">
+        <span>Retorno: <b class="${p.stats.ret >= 0 ? 'pos' : 'neg'}">${pct(p.stats.ret * 100)}</b></span>
+        <span>Vol.: <b>${num(p.stats.vol * 100, 1)}%</b></span>
+        <span>Sharpe: <b>${num(p.stats.sharpe, 2)}</b></span>
+      </div>
+      <div class="mk-alloc-list">
+        ${assets.map((a, i) => `<div class="mk-alloc-row"><span class="rname">${escapeHtml(a.ticker)}</span><span class="rval">${num(p.weights[i] * 100, 1)}%</span></div>`).join('')}
+      </div>
+    </div>`).join('');
 }
 
 // ── Single Names ──────────────────────────────────────────────────────────────
