@@ -743,6 +743,7 @@
     <div class="card-head">
       <h2>🎯 Fronteira Eficiente · Markowitz</h2>
       <div class="pf-range" id="mk-range-row">
+        <button class="range-btn" data-mkr="ytd" onclick="mkSelectRange(this)">YTD</button>
         <button class="range-btn" data-mkr="1y" onclick="mkSelectRange(this)">1A</button>
         <button class="range-btn active" data-mkr="2y" onclick="mkSelectRange(this)">2A</button>
         <button class="range-btn" data-mkr="3y" onclick="mkSelectRange(this)">3A</button>
@@ -934,7 +935,7 @@
         <h3>⚖ Retorno e risco de uma carteira com pesos w</h3>
         <p><strong>Retorno da carteira = Σᵢ w(i) × μ(i)</strong> — soma ponderada dos retornos esperados de cada ativo.</p>
         <p><strong>Variância da carteira = Σᵢ Σⱼ w(i) × w(j) × Σ(i,j)</strong> — soma de todos os pares de ativos (incluindo cada ativo com ele mesmo), ponderados pelo produto dos pesos e pela covariância entre eles. <strong>Volatilidade = raiz quadrada dessa variância</strong> (anualizada, multiplicando a variância por 252 antes da raiz).</p>
-        <p><strong>Sharpe = retorno da carteira ÷ volatilidade da carteira</strong>, sem taxa livre de risco (Rf = 0).</p>
+        <p><strong>Sharpe = [retorno da carteira − Rf] ÷ volatilidade da carteira</strong>. <strong>Rf</strong> (taxa livre de risco) usa o Fed Funds Rate no momento do cálculo (proxy T-Bill 3M, ^IRX, mesmo dado da aba ÍNDICES) — aparece logo abaixo do botão de calcular. Se a busca do Fed Funds falhar, cai pra Rf = 0 automaticamente.</p>
       </div>
       <div class="sources-section">
         <h3>🎲 Simulação de Monte Carlo</h3>
@@ -2225,7 +2226,7 @@ function mkBuildStats(returnsMatrix) {
   }
   return { means, cov };
 }
-function mkPortfolioStats(w, means, cov) {
+function mkPortfolioStats(w, means, cov, rf = 0) {
   const n = w.length;
   let ret = 0;
   for (let i = 0; i < n; i++) ret += w[i] * means[i];
@@ -2233,7 +2234,7 @@ function mkPortfolioStats(w, means, cov) {
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) variance += w[i] * w[j] * cov[i][j];
   const annRet = ret * 252;
   const annVol = Math.sqrt(Math.max(variance, 0) * 252);
-  const sharpe = annVol > 0 ? annRet / annVol : 0;
+  const sharpe = annVol > 0 ? (annRet - rf) / annVol : 0;
   return { ret: annRet, vol: annVol, sharpe };
 }
 function mkRandomWeights(n) {
@@ -2241,11 +2242,11 @@ function mkRandomWeights(n) {
   const s = r.reduce((a, b) => a + b, 0);
   return r.map(x => x / s);
 }
-function mkRunSimulation(means, cov, n, iterations) {
+function mkRunSimulation(means, cov, n, iterations, rf = 0) {
   const points = [];
   for (let k = 0; k < iterations; k++) {
     const w = mkRandomWeights(n);
-    points.push({ w, ...mkPortfolioStats(w, means, cov) });
+    points.push({ w, ...mkPortfolioStats(w, means, cov, rf) });
   }
   return points;
 }
@@ -2279,7 +2280,13 @@ async function mkCalculate() {
     const returnsMatrix = series.map(mkDailyReturns);
     const { means, cov } = mkBuildStats(returnsMatrix);
 
-    const points = mkRunSimulation(means, cov, validAssets.length, 4000);
+    let rf = 0, rfLabel = 'Rf = 0';
+    try {
+      const fed = await yahoo('^IRX');
+      if (fed.price != null) { rf = fed.price / 100; rfLabel = `Rf = ${num(fed.price, 2)}% (Fed Funds · ^IRX)`; }
+    } catch (e) { console.error('markowitz rf (fed funds)', e); }
+
+    const points = mkRunSimulation(means, cov, validAssets.length, 4000, rf);
     let minVol = points[0], maxSharpe = points[0];
     for (const p of points) {
       if (p.vol < minVol.vol) minVol = p;
@@ -2289,12 +2296,12 @@ async function mkCalculate() {
     const userWeightsRaw = validAssets.map(a => a.weight || 0);
     const wSum = userWeightsRaw.reduce((a, b) => a + b, 0);
     const userWeights = wSum > 0 ? userWeightsRaw.map(w => w / wSum) : validAssets.map(() => 1 / validAssets.length);
-    const userStats = mkPortfolioStats(userWeights, means, cov);
+    const userStats = mkPortfolioStats(userWeights, means, cov, rf);
 
     mkRenderChart(points, minVol, maxSharpe, userStats);
     mkRenderTable(validAssets, minVol, maxSharpe, userWeights, userStats);
     document.getElementById('mk-results').style.display = '';
-    statusEl.textContent = skippedMsg;
+    statusEl.textContent = skippedMsg + rfLabel;
   } catch (e) {
     statusEl.textContent = 'erro ao calcular — ' + e.message;
     console.error('markowitz calc', e);
