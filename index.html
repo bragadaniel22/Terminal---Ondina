@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Terminal Financeiro</title>
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icon-16.png">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -35,8 +38,9 @@
       border-bottom: 1px solid var(--border-hi);
       margin-bottom: 14px;
     }
-    .brand { color: var(--orange); font-size: 18px; font-weight: bold; letter-spacing: 5px; }
-    .brand small { display: block; font-size: 9px; color: var(--dim); letter-spacing: 3px; margin-top: 3px; }
+    .brand { display: flex; align-items: center; gap: 10px; color: var(--orange); font-size: 18px; font-weight: bold; letter-spacing: 5px; }
+    .brand-logo { width: 30px; height: 30px; flex-shrink: 0; }
+    .brand-text small { display: block; font-size: 9px; color: var(--dim); letter-spacing: 3px; margin-top: 3px; }
     .sources-link {
       display: inline-block; font-style: italic; font-size: 8px; color: var(--dim);
       letter-spacing: 1px; margin-top: 4px; cursor: pointer; text-decoration: underline;
@@ -283,7 +287,8 @@
 
       header { flex-direction: column; align-items: flex-start; gap: 8px; }
       .hright { text-align: left; }
-      .brand { font-size: 15px; letter-spacing: 3px; }
+      .brand-text { font-size: 15px; letter-spacing: 3px; }
+      .brand-logo { width: 24px; height: 24px; }
       .clock { font-size: 20px; }
 
       .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -320,9 +325,12 @@
 
 <header>
   <div class="brand">
-    TERMINAL FINANCEIRO
-    <small>MERCADOS · TAXAS · ÍNDICES</small>
-    <div class="sources-link" onclick="openSources()">fontes</div>
+    <img src="assets/icon.svg" class="brand-logo" alt="">
+    <div class="brand-text">
+      TERMINAL FINANCEIRO
+      <small>MERCADOS · TAXAS · ÍNDICES</small>
+      <div class="sources-link" onclick="openSources()">fontes</div>
+    </div>
   </div>
   <div class="hright">
     <div class="live">AO VIVO</div>
