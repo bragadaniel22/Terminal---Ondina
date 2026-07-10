@@ -763,6 +763,7 @@
         <div class="pf-chart-title">Risco × Retorno · Simulação Monte Carlo (anualizado)</div>
         <canvas id="mk-chart"></canvas>
       </div>
+      <div class="sources-link" style="padding:0 12px 10px" onclick="openSources()">metodologia</div>
       <div id="mk-table"></div>
     </div>
   </div>
@@ -883,6 +884,13 @@
       <div class="sources-section">
         <h3>📊 Portfólio</h3>
         <p>Histórico de preços via Yahoo Finance. Retorno, volatilidade e Sharpe calculados internamente — sem taxa livre de risco (Rf = 0).</p>
+      </div>
+      <div class="sources-section">
+        <h3>🎯 Simulador · Fronteira Eficiente (Markowitz)</h3>
+        <p>Pra cada ativo escolhido, calcula o retorno diário histórico (da janela selecionada: 1A/2A/3A) e monta a matriz de covariância entre eles. Em seguida gera <strong>4.000 carteiras aleatórias</strong> (pesos somando 100%, sem venda a descoberto) e calcula o retorno e a volatilidade anualizados de cada uma — essa nuvem de pontos é a simulação de Monte Carlo mostrada no gráfico.</p>
+        <p><strong>Mínima Volatilidade</strong>: a carteira simulada com menor risco. <strong>Máximo Sharpe</strong>: a com melhor retorno por unidade de risco. <strong>Sua Carteira</strong>: os pesos que você digitou, pra comparar com as duas anteriores.</p>
+        <p>Retorno e volatilidade são anualizados assumindo 252 dias úteis/ano. Sharpe calculado sem taxa livre de risco (Rf = 0). É uma leitura do <strong>passado</strong> (histórico da janela escolhida) — não é previsão de retorno futuro.</p>
+        <p><strong>Por que o "Retorno" aqui pode diferir do retorno mostrado na aba Portfólio</strong>: aqui é a média aritmética dos retornos diários anualizada (padrão exigido pela matemática de Markowitz — a soma ponderada de retornos só funciona linearmente com médias aritméticas). Na aba Portfólio é o retorno total composto (CAGR) do período. Os dois são cálculos corretos, só medem coisas diferentes.</p>
       </div>
       <div class="sources-section">
         <h3>🗺 Heatmap</h3>
@@ -2246,9 +2254,9 @@ function mkRenderChart(points, minVol, maxSharpe, userStats) {
     data: {
       datasets: [
         { label: 'Simulações', data: points.map(p => ({ x: p.vol * 100, y: p.ret * 100 })), backgroundColor: 'rgba(72,80,104,.45)', pointRadius: 2, pointHoverRadius: 3 },
-        { label: 'Mínima Volatilidade', data: [{ x: minVol.vol * 100, y: minVol.ret * 100 }], backgroundColor: '#00cc77', pointRadius: 7, pointHoverRadius: 9 },
-        { label: 'Máximo Sharpe', data: [{ x: maxSharpe.vol * 100, y: maxSharpe.ret * 100 }], backgroundColor: '#ffcc44', pointRadius: 7, pointHoverRadius: 9 },
-        { label: 'Sua Carteira', data: [{ x: userStats.vol * 100, y: userStats.ret * 100 }], backgroundColor: '#ff6600', pointRadius: 8, pointHoverRadius: 10 },
+        { label: 'Mínima Volatilidade', data: [{ x: minVol.vol * 100, y: minVol.ret * 100 }], backgroundColor: '#00cc77', pointRadius: 11, pointHoverRadius: 13 },
+        { label: 'Máximo Sharpe', data: [{ x: maxSharpe.vol * 100, y: maxSharpe.ret * 100 }], backgroundColor: '#ffcc44', pointRadius: 11, pointHoverRadius: 13 },
+        { label: 'Sua Carteira', data: [{ x: userStats.vol * 100, y: userStats.ret * 100 }], backgroundColor: '#ff6600', pointRadius: 12, pointHoverRadius: 14 },
       ],
     },
     options: {
