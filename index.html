@@ -946,6 +946,7 @@
       <div class="sources-section">
         <h3>🎲 Simulação de Monte Carlo</h3>
         <p>Gera <strong>4.000 vetores de peso aleatórios</strong>: sorteia um número aleatório uniforme entre 0 e 1 pra cada ativo e divide cada um pela soma total — isso garante que os pesos sempre somem 100% e nunca sejam negativos (sem venda a descoberto, sem alavancagem). Pra cada um dos 4.000 vetores, aplica as fórmulas de retorno e risco acima. A nuvem de pontos no gráfico é exatamente essas 4.000 combinações.</p>
+        <p><strong>A linha branca é a fronteira eficiente</strong>: divide a faixa de volatilidade observada em 40 faixas e, em cada uma, conecta o ponto de maior retorno encontrado — esse é, por definição, o "melhor" ponto pra aquele nível de risco. É uma aproximação da fronteira teórica (baseada só nos 4.000 pontos simulados, não numa otimização exata), mas fica bem próxima dela.</p>
         <p><strong>Mínima Volatilidade</strong> e <strong>Máximo Sharpe</strong> são o melhor ponto <em>dentro dessa amostra de 4.000</em> — não uma otimização numérica exata (como programação quadrática). Validamos contra a fórmula analítica exata de mínima variância pra carteiras de 2 ativos e a diferença ficou na 4ª casa decimal do peso — precisão de sobra pra decisão prática, mas vale saber que é uma aproximação por amostragem, não o ótimo matemático perfeito. <strong>Sua Carteira</strong> é calculada pelas mesmas fórmulas, com os pesos que você digitou (normalizados pra somar 100% se não somarem).</p>
       </div>
       <div class="sources-section">
@@ -2259,6 +2260,23 @@ function mkRunSimulation(means, cov, n, iterations, rf = 0) {
   return points;
 }
 
+// A fronteira eficiente é o "envelope superior" da nuvem simulada: divide a faixa
+// de volatilidade em faixas (bins) e, em cada uma, pega só o ponto de maior retorno —
+// por definição, esse é o melhor ponto pra aquele nível de risco.
+function mkComputeFrontier(points, nBins = 40) {
+  const vols = points.map(p => p.vol);
+  const minV = Math.min(...vols), maxV = Math.max(...vols);
+  const binSize = (maxV - minV) / nBins || 1;
+  const bins = new Array(nBins + 1).fill(null);
+  points.forEach(p => {
+    let idx = Math.floor((p.vol - minV) / binSize);
+    if (idx > nBins) idx = nBins;
+    if (idx < 0) idx = 0;
+    if (!bins[idx] || p.ret > bins[idx].ret) bins[idx] = p;
+  });
+  return bins.filter(Boolean).sort((a, b) => a.vol - b.vol);
+}
+
 async function mkCalculate() {
   if (mkAssets.length < 2) return;
   const calcBtn = document.getElementById('mk-calc-btn');
@@ -2320,12 +2338,14 @@ async function mkCalculate() {
 
 function mkRenderChart(points, minVol, maxSharpe, userStats) {
   if (mkChart) mkChart.destroy();
+  const frontier = mkComputeFrontier(points);
   const ctx = document.getElementById('mk-chart').getContext('2d');
   mkChart = new Chart(ctx, {
     type: 'scatter',
     data: {
       datasets: [
         { label: 'Simulações', data: points.map(p => ({ x: p.vol * 100, y: p.ret * 100 })), backgroundColor: 'rgba(72,80,104,.45)', pointRadius: 2, pointHoverRadius: 3 },
+        { type: 'line', label: 'Fronteira Eficiente', data: frontier.map(p => ({ x: p.vol * 100, y: p.ret * 100 })), borderColor: '#dde4f8', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.15 },
         { label: 'Mínima Volatilidade', data: [{ x: minVol.vol * 100, y: minVol.ret * 100 }], backgroundColor: '#00cc77', pointRadius: 11, pointHoverRadius: 13 },
         { label: 'Máximo Sharpe', data: [{ x: maxSharpe.vol * 100, y: maxSharpe.ret * 100 }], backgroundColor: '#ffcc44', pointRadius: 11, pointHoverRadius: 13 },
         { label: 'Sua Carteira', data: [{ x: userStats.vol * 100, y: userStats.ret * 100 }], backgroundColor: '#ff6600', pointRadius: 12, pointHoverRadius: 14 },
