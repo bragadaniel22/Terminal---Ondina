@@ -2325,7 +2325,7 @@ function mkEnforceLongOnly(n, solveSubset) {
 }
 function mkSubMatrix(cov, idx) { return idx.map(i => idx.map(j => cov[i][j])); }
 
-function mkGlobalMinVarPortfolio(means, cov) {
+function mkGlobalMinVarPortfolio(means, cov, rf = 0) {
   const n = means.length;
   const w = mkEnforceLongOnly(n, free => {
     const subCov = mkSubMatrix(cov, free);
@@ -2335,7 +2335,7 @@ function mkGlobalMinVarPortfolio(means, cov) {
     const A = mkDot(ones, invCovOnes);
     return invCovOnes.map(x => x / A);
   });
-  return { w, ...mkPortfolioStats(w, means, cov) };
+  return { w, ...mkPortfolioStats(w, means, cov, rf) };
 }
 // Carteira de tangência (Máximo Sharpe), restrita a pesos ≥ 0.
 function mkTangencyPortfolio(means, cov, rf) {
@@ -2355,7 +2355,7 @@ function mkTangencyPortfolio(means, cov, rf) {
 // Traça a fronteira restrita variando o retorno-alvo entre o mínimo possível
 // (carteira de mínima variância restrita) e o máximo possível long-only (o maior
 // retorno entre os ativos individuais — nenhuma combinação long-only supera isso).
-function mkExactFrontier(means, cov, minVolPortfolio, nPoints = 60) {
+function mkExactFrontier(means, cov, minVolPortfolio, rf = 0, nPoints = 60) {
   const n = means.length;
   const loRetAnn = minVolPortfolio.ret;
   const hiRetAnn = Math.max(...means) * 252;
@@ -2368,7 +2368,7 @@ function mkExactFrontier(means, cov, minVolPortfolio, nPoints = 60) {
       const setup = mkExactFrontierSetup(subMeans, subCov);
       return mkMinVarWeightsForReturn(setup, subMeans, retAnn / 252);
     });
-    points.push({ w, ...mkPortfolioStats(w, means, cov) });
+    points.push({ w, ...mkPortfolioStats(w, means, cov, rf) });
   }
   return points;
 }
@@ -2408,9 +2408,9 @@ async function mkCalculate() {
       if (fed.price != null) { rf = fed.price / 100; rfLabel = `Rf = ${num(fed.price, 2)}% (Fed Funds · ^IRX)`; }
     } catch (e) { console.error('markowitz rf (fed funds)', e); }
 
-    const minVol = mkGlobalMinVarPortfolio(means, cov);
+    const minVol = mkGlobalMinVarPortfolio(means, cov, rf);
     const maxSharpe = mkTangencyPortfolio(means, cov, rf);
-    const frontier = mkExactFrontier(means, cov, minVol);
+    const frontier = mkExactFrontier(means, cov, minVol, rf);
 
     const userWeightsRaw = validAssets.map(a => a.weight || 0);
     const wSum = userWeightsRaw.reduce((a, b) => a + b, 0);
