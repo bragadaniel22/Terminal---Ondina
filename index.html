@@ -1519,9 +1519,15 @@ function assetRowSkeleton(label) {
 function assetRowError(label) {
   return `<div class="row"><div class="rname">${escapeHtml(label)}</div><div class="rright"><div class="rval err">ERRO</div></div></div>`;
 }
-function assetRowData(label, sub, price, chg) {
+// Escapa pra uso dentro de string JS de aspas simples num atributo HTML de aspas duplas
+// (dois contextos ao mesmo tempo — precisa fugir de ambos: \' pro JS, &quot; pro HTML).
+function jsAttrSafe(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+function assetRowData(label, sub, price, chg, ticker) {
   const cls = chg > 0 ? 'pos' : chg < 0 ? 'neg' : '';
-  return `<div class="row">
+  const clickAttr = ticker ? ` onclick="openChart('${jsAttrSafe(ticker)}', '${jsAttrSafe(label)}')"` : '';
+  return `<div class="row${ticker ? ' row-click' : ''}"${clickAttr}>
     <div><div class="rname">${escapeHtml(label)}</div>${sub ? `<div class="rsub">${escapeHtml(sub)}</div>` : ''}</div>
     <div class="rright"><div class="rval">${num(price, 2)}</div><div class="rchg ${cls}">${pct(chg)}</div></div>
   </div>`;
@@ -1556,7 +1562,7 @@ async function runAssetSearch() {
       const sub = c.symbol + (c.exchange ? ' · ' + c.exchange : '');
       const res = results[i];
       if (res.status !== 'fulfilled') { console.error('asset', c.symbol, res.reason); return assetRowError(label); }
-      return assetRowData(label, sub, res.value.price, res.value.chg);
+      return assetRowData(label, sub, res.value.price, res.value.chg, c.symbol);
     }).join('');
   } catch (e) {
     if (seq !== assetSearchSeq) return;
