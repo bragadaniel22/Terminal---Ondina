@@ -2262,19 +2262,26 @@ function mkRunSimulation(means, cov, n, iterations, rf = 0) {
 
 // A fronteira eficiente é o "envelope superior" da nuvem simulada: divide a faixa
 // de volatilidade em faixas (bins) e, em cada uma, pega só o ponto de maior retorno —
-// por definição, esse é o melhor ponto pra aquele nível de risco.
-function mkComputeFrontier(points, nBins = 40) {
+// por definição, esse é o melhor ponto pra aquele nível de risco. Faixas com poucas
+// amostras (extremos de volatilidade, raros de sortear com pesos aleatórios normalizados)
+// são descartadas — com 1-2 pontos aleatórios, "o melhor da faixa" é só sorte, não sinal.
+function mkComputeFrontier(points, nBins = 40, minCount = 5) {
   const vols = points.map(p => p.vol);
   const minV = Math.min(...vols), maxV = Math.max(...vols);
   const binSize = (maxV - minV) / nBins || 1;
   const bins = new Array(nBins + 1).fill(null);
+  const counts = new Array(nBins + 1).fill(0);
   points.forEach(p => {
     let idx = Math.floor((p.vol - minV) / binSize);
     if (idx > nBins) idx = nBins;
     if (idx < 0) idx = 0;
+    counts[idx]++;
     if (!bins[idx] || p.ret > bins[idx].ret) bins[idx] = p;
   });
-  return bins.filter(Boolean).sort((a, b) => a.vol - b.vol);
+  return bins
+    .map((p, i) => (counts[i] >= minCount ? p : null))
+    .filter(Boolean)
+    .sort((a, b) => a.vol - b.vol);
 }
 
 async function mkCalculate() {
