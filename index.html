@@ -427,6 +427,11 @@
     </div>
 
     <div class="row">
+      <div><div class="rname">ETTJ PRÉ 252du</div><div class="rsub" id="ettjpre-sub">ANBIMA · carregando…</div></div>
+      <div class="rright"><div class="rval hl" id="ettjpre-val">…</div><div class="rchg">% a.a.</div></div>
+    </div>
+
+    <div class="row">
       <div><div class="rname">ETTJ IPCA 252du</div><div class="rsub" id="ettjipca-sub">ANBIMA · carregando…</div></div>
       <div class="rright"><div class="rval hl" id="ettjipca-val">…</div><div class="rchg">% a.a.</div></div>
     </div>
@@ -747,6 +752,7 @@
         <button class="range-btn" data-mkr="1y" onclick="mkSelectRange(this)">1A</button>
         <button class="range-btn active" data-mkr="2y" onclick="mkSelectRange(this)">2A</button>
         <button class="range-btn" data-mkr="3y" onclick="mkSelectRange(this)">3A</button>
+        <button class="range-btn" data-mkr="5y" onclick="mkSelectRange(this)">5A</button>
       </div>
     </div>
     <div class="mk-add-row">
@@ -852,7 +858,7 @@
         <p><strong>CDI 12M</strong> e <strong>Selic</strong>: Banco Central (BCB), séries 11 e 432, via API pública SGS. CDI 12M é acumulado das taxas diárias do último ano.</p>
         <p><strong>Ibovespa</strong>: Yahoo Finance (^BVSP).</p>
         <p><strong>DI Futuro JAN/30 e JAN/35</strong>: cotação B3 (contratos DI1F30 e DI1F35).</p>
-        <p><strong>ETTJ IPCA e Inflação Implícita</strong>: ANBIMA, estrutura a termo de taxas de juros (252 dias úteis).</p>
+        <p><strong>ETTJ Pré, ETTJ IPCA e Inflação Implícita</strong>: ANBIMA, estrutura a termo de taxas de juros (252 dias úteis).</p>
       </div>
       <div class="sources-section">
         <h3>🇺🇸 Bolsa US</h3>
@@ -1356,16 +1362,18 @@ async function loadEttj() {
     cachePut('anbima_ettj', d);
 
     const sub = `ANBIMA · 252du · ${d.date}`;
+    setV('ettjpre-val',  num(d.ettjPre)  + '%', 'hl'); setSub('ettjpre-sub',  sub);
     setV('ettjipca-val', num(d.ettjIpca) + '%', 'hl'); setSub('ettjipca-sub', sub);
     setV('infimp-val',   num(d.infImpl)  + '%', 'hl'); setSub('infimp-sub',   sub);
   } catch (e) {
     const c = cacheGet('anbima_ettj');
     if (c) {
       const sub = `ANBIMA · 252du · ${c.date} · cache`;
+      setV('ettjpre-val',  num(c.ettjPre)  + '%', 'hl'); setSub('ettjpre-sub',  sub);
       setV('ettjipca-val', num(c.ettjIpca) + '%', 'hl'); setSub('ettjipca-sub', sub);
       setV('infimp-val',   num(c.infImpl)  + '%', 'hl'); setSub('infimp-sub',   sub);
     } else {
-      ['ettjipca-val','infimp-val'].forEach(id => setV(id, 'ERRO', 'err'));
+      ['ettjpre-val','ettjipca-val','infimp-val'].forEach(id => setV(id, 'ERRO', 'err'));
       console.error('ETTJ', e);
     }
   }
