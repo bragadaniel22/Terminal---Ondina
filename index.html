@@ -767,7 +767,7 @@
     <div id="mk-status" class="mk-status"></div>
     <div id="mk-results" class="mk-results" style="display:none">
       <div class="pf-chart-box">
-        <div class="pf-chart-title">Risco × Retorno · Simulação Monte Carlo (anualizado)</div>
+        <div class="pf-chart-title">Risco × Retorno · Otimização Exata (anualizado)</div>
         <canvas id="mk-chart"></canvas>
       </div>
       <div class="sources-link" style="padding:0 12px 10px; font-size:11px" onclick="openMkMethodology()">metodologia</div>
@@ -934,7 +934,7 @@
       </div>
       <div class="sources-section">
         <h3>🔗 Matriz de covariância — Σ (sigma)</h3>
-        <p><strong>Σ(i,j) = média de [r(i,t) − μ(i)] × [r(j,t) − μ(j)]</strong> ao longo da janela (covariância populacional — divide por T, o número de dias, não por T−1).</p>
+        <p><strong>Σ(i,j) = Σₜ [r(i,t) − μ(i)] × [r(j,t) − μ(j)] / (T − 1)</strong>, onde T é o número de dias da janela (covariância <em>amostral</em>, com o ajuste de Bessel T−1 — convenção padrão em estatística financeira).</p>
         <p>Na diagonal (i = j), Σ(i,i) é a variância do próprio ativo <em>i</em>. Fora da diagonal, Σ(i,j) mede o quanto os ativos <em>i</em> e <em>j</em> se movem juntos — correlação baixa ou negativa entre dois ativos reduz o risco da carteira sem reduzir o retorno esperado. É essa matriz que captura matematicamente o benefício da diversificação.</p>
       </div>
       <div class="sources-section">
@@ -944,10 +944,14 @@
         <p><strong>Sharpe = [retorno da carteira − Rf] ÷ volatilidade da carteira</strong>. <strong>Rf</strong> (taxa livre de risco) usa o Fed Funds Rate no momento do cálculo (proxy T-Bill 3M, ^IRX, mesmo dado da aba ÍNDICES) — aparece logo abaixo do botão de calcular. Se a busca do Fed Funds falhar, cai pra Rf = 0 automaticamente.</p>
       </div>
       <div class="sources-section">
-        <h3>🎲 Simulação de Monte Carlo</h3>
-        <p>Gera <strong>4.000 vetores de peso aleatórios</strong>: sorteia um número aleatório uniforme entre 0 e 1 pra cada ativo e divide cada um pela soma total — isso garante que os pesos sempre somem 100% e nunca sejam negativos (sem venda a descoberto, sem alavancagem). Pra cada um dos 4.000 vetores, aplica as fórmulas de retorno e risco acima. A nuvem de pontos no gráfico é exatamente essas 4.000 combinações.</p>
-        <p><strong>A linha branca é a fronteira eficiente</strong>: divide a faixa de volatilidade observada em 40 faixas e, em cada uma, conecta o ponto de maior retorno encontrado — esse é, por definição, o "melhor" ponto pra aquele nível de risco. É uma aproximação da fronteira teórica (baseada só nos 4.000 pontos simulados, não numa otimização exata), mas fica bem próxima dela.</p>
-        <p><strong>Mínima Volatilidade</strong> e <strong>Máximo Sharpe</strong> são o melhor ponto <em>dentro dessa amostra de 4.000</em> — não uma otimização numérica exata (como programação quadrática). Validamos contra a fórmula analítica exata de mínima variância pra carteiras de 2 ativos e a diferença ficou na 4ª casa decimal do peso — precisão de sobra pra decisão prática, mas vale saber que é uma aproximação por amostragem, não o ótimo matemático perfeito. <strong>Sua Carteira</strong> é calculada pelas mesmas fórmulas, com os pesos que você digitou (normalizados pra somar 100% se não somarem).</p>
+        <h3>📏 Linha de Mercado de Capitais (CML)</h3>
+        <p>A linha azul tracejada liga o ponto (risco = 0, retorno = Rf) ao ponto de <strong>Máximo Sharpe</strong> — o "ponto de tangência". Ao permitir combinar a carteira de ativos com o ativo livre de risco (Fed Funds), qualquer ponto <em>nessa reta</em> tem uma relação risco-retorno melhor do que qualquer ponto da fronteira eficiente em si: pontos entre Rf e o ponto de tangência representam uma mistura de caixa (Fed Funds) com a carteira ótima; pontos além do ponto de tangência representariam alavancagem (tomar dinheiro emprestado à taxa livre de risco pra investir mais que 100% na carteira ótima) — o simulador não recomenda isso, é só a continuação matemática da reta.</p>
+      </div>
+      <div class="sources-section">
+        <h3>🧮 Otimização exata (álgebra de matrizes)</h3>
+        <p>Pra cada nível de retorno-alvo, existe uma única carteira de menor variância possível — resolvida por álgebra de matrizes (fórmula clássica de Markowitz, mesma que o Excel Solver encontra por tentativa e erro): inverte a matriz de covariância (Σ⁻¹) e usa multiplicadores de Lagrange pra achar os pesos exatos, sem precisar simular nada. Repetindo isso pra ~60 níveis de retorno entre a Mínima Volatilidade e o maior retorno individual entre os ativos escolhidos, traça a curva completa da fronteira — por isso ela sai lisa, sem ruído.</p>
+        <p><strong>Restrições aplicadas: peso ≥ 0 (sem venda a descoberto) e soma dos pesos = 100%</strong>. A fórmula fechada de Markowitz, por si só, não respeita "peso ≥ 0" — pra impor isso, usamos o <strong>método de conjunto ativo</strong>: resolve sem essa restrição e, se algum ativo saísse com peso negativo, remove ele do cálculo (fixa em 0%) e resolve de novo só com os demais — repete até todos os pesos ficarem válidos. Isso converge pro ótimo restrito exato, não é uma aproximação.</p>
+        <p><strong>Mínima Volatilidade</strong> é o vértice dessa curva (menor variância possível respeitando as restrições). <strong>Máximo Sharpe</strong> é a carteira de tangência, também restrita a peso ≥ 0. <strong>Sua Carteira</strong> usa os pesos que você digitou (normalizados pra somar 100%), pelas mesmas fórmulas de retorno/risco.</p>
       </div>
       <div class="sources-section">
         <h3>🌎 Alinhamento entre bolsas diferentes</h3>
@@ -2199,7 +2203,7 @@ function mkAddSingleNames() {
   mkRenderAssetList();
 }
 
-// ── Matemática: retornos diários, covariância, simulação de Monte Carlo ────────
+// ── Matemática: retornos diários, covariância, otimização exata ────────────────
 // Alinha por DIA CALENDÁRIO (não por timestamp exato) — necessário porque ativos
 // de bolsas diferentes (ex: B3 vs NASDAQ) fecham em horários diferentes, então
 // seus timestamps de barra diária nunca coincidem exatamente, mesmo no mesmo dia.
@@ -2221,10 +2225,12 @@ function mkDailyReturns(prices) {
   return prices.slice(1).map((p, i) => (p - prices[i]) / prices[i]);
 }
 function mkMean(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }
+// Covariância AMOSTRAL (divide por T−1, não por T) — convenção padrão em finanças
+// (estimador não-viesado), usada nas referências de Markowitz consultadas.
 function mkCovariance(a, b, ma, mb) {
   let s = 0;
   for (let i = 0; i < a.length; i++) s += (a[i] - ma) * (b[i] - mb);
-  return s / a.length;
+  return s / (a.length - 1);
 }
 function mkBuildStats(returnsMatrix) {
   const n = returnsMatrix.length;
@@ -2246,42 +2252,125 @@ function mkPortfolioStats(w, means, cov, rf = 0) {
   const sharpe = annVol > 0 ? (annRet - rf) / annVol : 0;
   return { ret: annRet, vol: annVol, sharpe };
 }
-function mkRandomWeights(n) {
-  const r = Array.from({ length: n }, () => Math.random());
-  const s = r.reduce((a, b) => a + b, 0);
-  return r.map(x => x / s);
-}
-function mkRunSimulation(means, cov, n, iterations, rf = 0) {
-  const points = [];
-  for (let k = 0; k < iterations; k++) {
-    const w = mkRandomWeights(n);
-    points.push({ w, ...mkPortfolioStats(w, means, cov, rf) });
+// ── Otimização exata (álgebra de matrizes) ──────────────────────────────────────
+// Mesma matemática do Solver do Excel (minimizar variância sujeito a soma dos pesos
+// = 100% e retorno-alvo = R), só que resolvida analiticamente via inversão de matriz,
+// em vez de tentativa e erro por simulação. Fórmula clássica de Markowitz/Merton
+// (duplo-fundo): permite peso negativo (venda a descoberto) — ver nota na metodologia.
+function mkMatInverse(M) {
+  const n = M.length;
+  const A = M.map((row, i) => [...row, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
+  for (let col = 0; col < n; col++) {
+    let pivotRow = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(A[r][col]) > Math.abs(A[pivotRow][col])) pivotRow = r;
+    [A[col], A[pivotRow]] = [A[pivotRow], A[col]];
+    const pivot = A[col][col];
+    if (Math.abs(pivot) < 1e-12) throw new Error('matriz de covariância não pode ser invertida — ativos redundantes/correlação perfeita ou poucos dados. Tente outra janela ou outros ativos');
+    for (let j = 0; j < 2 * n; j++) A[col][j] /= pivot;
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const factor = A[r][col];
+      for (let j = 0; j < 2 * n; j++) A[r][j] -= factor * A[col][j];
+    }
   }
-  return points;
+  return A.map(row => row.slice(n));
+}
+function mkMatVec(M, v) { return M.map(row => row.reduce((s, x, j) => s + x * v[j], 0)); }
+function mkDot(a, b) { return a.reduce((s, x, i) => s + x * b[i], 0); }
+
+function mkExactFrontierSetup(means, cov) {
+  const n = means.length;
+  const invCov = mkMatInverse(cov);
+  const ones = new Array(n).fill(1);
+  const invCovOnes = mkMatVec(invCov, ones);
+  const invCovMu = mkMatVec(invCov, means);
+  const A = mkDot(ones, invCovOnes);
+  const B = mkDot(ones, invCovMu);
+  const C = mkDot(means, invCovMu);
+  const D = A * C - B * B;
+  return { invCov, A, B, C, D };
+}
+// Peso de menor variância pra um retorno-alvo exato (diário, não anualizado), SEM
+// restrição de sinal — usado internamente pelo método de conjunto ativo abaixo.
+function mkMinVarWeightsForReturn(setup, means, targetRet) {
+  const { invCov, A, B, C, D } = setup;
+  const lambda = (C - B * targetRet) / D;
+  const gamma = (A * targetRet - B) / D;
+  const vec = means.map((m, i) => lambda * 1 + gamma * m);
+  return mkMatVec(invCov, vec);
 }
 
-// A fronteira eficiente é o "envelope superior" da nuvem simulada: divide a faixa
-// de volatilidade em faixas (bins) e, em cada uma, pega só o ponto de maior retorno —
-// por definição, esse é o melhor ponto pra aquele nível de risco. Faixas com poucas
-// amostras (extremos de volatilidade, raros de sortear com pesos aleatórios normalizados)
-// são descartadas — com 1-2 pontos aleatórios, "o melhor da faixa" é só sorte, não sinal.
-function mkComputeFrontier(points, nBins = 40, minCount = 5) {
-  const vols = points.map(p => p.vol);
-  const minV = Math.min(...vols), maxV = Math.max(...vols);
-  const binSize = (maxV - minV) / nBins || 1;
-  const bins = new Array(nBins + 1).fill(null);
-  const counts = new Array(nBins + 1).fill(0);
-  points.forEach(p => {
-    let idx = Math.floor((p.vol - minV) / binSize);
-    if (idx > nBins) idx = nBins;
-    if (idx < 0) idx = 0;
-    counts[idx]++;
-    if (!bins[idx] || p.ret > bins[idx].ret) bins[idx] = p;
+// ── Restrições: peso ≥ 0 (sem venda a descoberto) e soma = 100% ────────────────
+// Método de conjunto ativo: resolve sem restrição de sinal; se algum peso sair
+// negativo, remove o ativo mais negativo do conjunto "livre" (fixa em 0%) e resolve
+// de novo — repete até todos os pesos ficarem ≥ 0. Converge pro ótimo restrito exato
+// (não é aproximação): a cada remoção, o problema nos ativos remanescentes ainda é
+// resolvido pela mesma fórmula fechada, só que num subconjunto menor.
+function mkEnforceLongOnly(n, solveSubset) {
+  let free = Array.from({ length: n }, (_, i) => i);
+  while (free.length > 1) {
+    const subW = solveSubset(free);
+    let minIdx = -1, minVal = -1e-9;
+    subW.forEach((x, k) => { if (x < minVal) { minVal = x; minIdx = k; } });
+    if (minIdx === -1) {
+      const w = new Array(n).fill(0);
+      free.forEach((origIdx, k) => { w[origIdx] = Math.max(subW[k], 0); });
+      return w;
+    }
+    free.splice(minIdx, 1);
+  }
+  const w = new Array(n).fill(0);
+  w[free[0]] = 1;
+  return w;
+}
+function mkSubMatrix(cov, idx) { return idx.map(i => idx.map(j => cov[i][j])); }
+
+function mkGlobalMinVarPortfolio(means, cov) {
+  const n = means.length;
+  const w = mkEnforceLongOnly(n, free => {
+    const subCov = mkSubMatrix(cov, free);
+    const invCov = mkMatInverse(subCov);
+    const ones = new Array(free.length).fill(1);
+    const invCovOnes = mkMatVec(invCov, ones);
+    const A = mkDot(ones, invCovOnes);
+    return invCovOnes.map(x => x / A);
   });
-  return bins
-    .map((p, i) => (counts[i] >= minCount ? p : null))
-    .filter(Boolean)
-    .sort((a, b) => a.vol - b.vol);
+  return { w, ...mkPortfolioStats(w, means, cov) };
+}
+// Carteira de tangência (Máximo Sharpe), restrita a pesos ≥ 0.
+function mkTangencyPortfolio(means, cov, rf) {
+  const n = means.length;
+  const rfDaily = rf / 252;
+  const w = mkEnforceLongOnly(n, free => {
+    const subMeans = free.map(i => means[i]);
+    const subCov = mkSubMatrix(cov, free);
+    const invCov = mkMatInverse(subCov);
+    const excess = subMeans.map(m => m - rfDaily);
+    const invCovExcess = mkMatVec(invCov, excess);
+    const denom = invCovExcess.reduce((s, x) => s + x, 0);
+    return invCovExcess.map(x => x / denom);
+  });
+  return { w, ...mkPortfolioStats(w, means, cov, rf) };
+}
+// Traça a fronteira restrita variando o retorno-alvo entre o mínimo possível
+// (carteira de mínima variância restrita) e o máximo possível long-only (o maior
+// retorno entre os ativos individuais — nenhuma combinação long-only supera isso).
+function mkExactFrontier(means, cov, minVolPortfolio, nPoints = 60) {
+  const n = means.length;
+  const loRetAnn = minVolPortfolio.ret;
+  const hiRetAnn = Math.max(...means) * 252;
+  const points = [];
+  for (let i = 0; i <= nPoints; i++) {
+    const retAnn = loRetAnn + (hiRetAnn - loRetAnn) * (i / nPoints);
+    const w = mkEnforceLongOnly(n, free => {
+      const subMeans = free.map(idx => means[idx]);
+      const subCov = mkSubMatrix(cov, free);
+      const setup = mkExactFrontierSetup(subMeans, subCov);
+      return mkMinVarWeightsForReturn(setup, subMeans, retAnn / 252);
+    });
+    points.push({ w, ...mkPortfolioStats(w, means, cov) });
+  }
+  return points;
 }
 
 async function mkCalculate() {
@@ -2319,19 +2408,16 @@ async function mkCalculate() {
       if (fed.price != null) { rf = fed.price / 100; rfLabel = `Rf = ${num(fed.price, 2)}% (Fed Funds · ^IRX)`; }
     } catch (e) { console.error('markowitz rf (fed funds)', e); }
 
-    const points = mkRunSimulation(means, cov, validAssets.length, 4000, rf);
-    let minVol = points[0], maxSharpe = points[0];
-    for (const p of points) {
-      if (p.vol < minVol.vol) minVol = p;
-      if (p.sharpe > maxSharpe.sharpe) maxSharpe = p;
-    }
+    const minVol = mkGlobalMinVarPortfolio(means, cov);
+    const maxSharpe = mkTangencyPortfolio(means, cov, rf);
+    const frontier = mkExactFrontier(means, cov, minVol);
 
     const userWeightsRaw = validAssets.map(a => a.weight || 0);
     const wSum = userWeightsRaw.reduce((a, b) => a + b, 0);
     const userWeights = wSum > 0 ? userWeightsRaw.map(w => w / wSum) : validAssets.map(() => 1 / validAssets.length);
     const userStats = mkPortfolioStats(userWeights, means, cov, rf);
 
-    mkRenderChart(points, minVol, maxSharpe, userStats);
+    mkRenderChart(frontier, minVol, maxSharpe, userStats, rf);
     mkRenderTable(validAssets, minVol, maxSharpe, userWeights, userStats);
     document.getElementById('mk-results').style.display = '';
     statusEl.textContent = skippedMsg + rfLabel;
@@ -2343,16 +2429,27 @@ async function mkCalculate() {
   }
 }
 
-function mkRenderChart(points, minVol, maxSharpe, userStats) {
+function mkRenderChart(frontier, minVol, maxSharpe, userStats, rf = 0) {
   if (mkChart) mkChart.destroy();
-  const frontier = mkComputeFrontier(points);
+
+  // Linha de Mercado de Capitais (CML): reta de Rf até o ponto de Máximo Sharpe
+  // (ponto de tangência) — qualquer combinação nessa linha (ativo livre de risco +
+  // carteira de tangência) domina a fronteira eficiente em si.
+  const maxVolInFrontier = Math.max(...frontier.map(p => p.vol), maxSharpe.vol, userStats.vol);
+  const cmlSlope = maxSharpe.vol > 0 ? (maxSharpe.ret - rf) / maxSharpe.vol : 0;
+  const cmlEndVol = maxVolInFrontier * 1.05;
+  const cmlLine = [
+    { x: 0, y: rf * 100 },
+    { x: cmlEndVol * 100, y: (rf + cmlSlope * cmlEndVol) * 100 },
+  ];
+
   const ctx = document.getElementById('mk-chart').getContext('2d');
   mkChart = new Chart(ctx, {
     type: 'scatter',
     data: {
       datasets: [
-        { label: 'Simulações', data: points.map(p => ({ x: p.vol * 100, y: p.ret * 100 })), backgroundColor: 'rgba(72,80,104,.45)', pointRadius: 2, pointHoverRadius: 3 },
-        { type: 'line', label: 'Fronteira Eficiente', data: frontier.map(p => ({ x: p.vol * 100, y: p.ret * 100 })), borderColor: '#dde4f8', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.15 },
+        { type: 'line', label: 'Fronteira Eficiente', data: frontier.map(p => ({ x: p.vol * 100, y: p.ret * 100 })), borderColor: '#dde4f8', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+        { type: 'line', label: 'Linha de Mercado de Capitais', data: cmlLine, borderColor: '#44ccff', backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0, tension: 0 },
         { label: 'Mínima Volatilidade', data: [{ x: minVol.vol * 100, y: minVol.ret * 100 }], backgroundColor: '#00cc77', pointRadius: 11, pointHoverRadius: 13 },
         { label: 'Máximo Sharpe', data: [{ x: maxSharpe.vol * 100, y: maxSharpe.ret * 100 }], backgroundColor: '#ffcc44', pointRadius: 11, pointHoverRadius: 13 },
         { label: 'Sua Carteira', data: [{ x: userStats.vol * 100, y: userStats.ret * 100 }], backgroundColor: '#ff6600', pointRadius: 12, pointHoverRadius: 14 },
