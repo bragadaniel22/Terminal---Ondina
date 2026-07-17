@@ -846,6 +846,7 @@
       <button class="range-btn" data-r="ytd" onclick="loadModalChart('ytd')">YTD</button>
       <button class="range-btn" data-r="1y" onclick="loadModalChart('1y')">1A</button>
       <button class="range-btn" data-r="5y" onclick="loadModalChart('5y')">5A</button>
+      <button class="range-btn" id="modal-inception-btn" data-r="inception" onclick="loadModalChart('inception')" style="display:none">DESDE O INÍCIO</button>
     </div>
     <div class="modal-chart-box">
       <div class="modal-status" id="modal-chart-status"></div>
@@ -1787,6 +1788,10 @@ function openChart(ticker, name) {
   modalTicker = ticker;
   document.getElementById('modal-title').textContent = name;
   document.getElementById('modal-overlay').classList.add('active');
+  const inceptionBtn = document.getElementById('modal-inception-btn');
+  const hasEntry = !!SINGLES_ENTRY_DATES[ticker];
+  inceptionBtn.style.display = hasEntry ? '' : 'none';
+  if (!hasEntry && modalRange === 'inception') modalRange = '3mo';
   loadModalChart(modalRange);
 }
 
@@ -1855,6 +1860,93 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); closeMkMethodology(); }
 });
 
+// Formata "YYYY-MM-DD" direto como texto (sem passar por Date) — evita que o fuso
+// horário local "volte" um dia ao converter a data de entrada (que é UTC meia-noite).
+function fmtEntryDate(dateStr) {
+  const [y, m, d] = dateStr.split('-');
+  return `${d}/${m}/${y.slice(-2)}`;
+}
+// Escolhe o range de histórico (1y/2y/.../10y) que cobre com folga a data de entrada.
+function historyRangeCovering(dateStr) {
+  const years = (Date.now() - new Date(dateStr).getTime()) / (365.25 * 24 * 3600 * 1000);
+  if (years <= 1) return '1y';
+  if (years <= 2) return '2y';
+  if (years <= 3) return '3y';
+  if (years <= 5) return '5y';
+  return '10y';
+}
+
+// "Desde o Início": desempenho do papel a partir do dia em que a posição foi aberta
+// (fechamento daquela data = base 100). Papéis com 2 datas de entrada mostram 2 linhas.
+async function loadModalChartInception(ticker) {
+  const range = 'inception';
+  const statusEl = document.getElementById('modal-chart-status');
+  const entryDates = SINGLES_ENTRY_DATES[ticker];
+  if (!entryDates) { statusEl.textContent = 'sem data de entrada cadastrada pra este ativo'; return; }
+  statusEl.textContent = 'carregando…';
+
+  try {
+    const fetchRange = historyRangeCovering(entryDates[0]);
+    const series = await yahooHistory(ticker, fetchRange);
+    if (ticker !== modalTicker || modalRange !== range) return;
+    if (!series.length) throw new Error('sem dados');
+
+    const entryIdxs = entryDates.map(d => series.findIndex(pt => pt.ts >= new Date(d).getTime() / 1000));
+    if (entryIdxs.some(idx => idx === -1)) throw new Error('data de entrada fora do histórico disponível');
+
+    const startIdx = Math.min(...entryIdxs);
+    const trimmed = series.slice(startIdx);
+    const labels = trimmed.map(d => fmtDate(new Date(d.ts * 1000)));
+    const palette = ['#ff6600', '#44ccff'];
+
+    const datasets = entryDates.map((entryDate, i) => {
+      const basePrice = series[entryIdxs[i]].p;
+      const data = trimmed.map((d, j) => ((startIdx + j) >= entryIdxs[i] ? (d.p / basePrice) * 100 : null));
+      const label = entryDates.length > 1 ? `Entrada ${i + 1} (${fmtEntryDate(entryDate)})` : 'Desde a entrada';
+      return { label, data, borderColor: palette[i], backgroundColor: palette[i], borderWidth: 1.5, pointRadius: 0, tension: .05, fill: false, spanGaps: false };
+    });
+
+    statusEl.textContent = '';
+    const lastClose = trimmed[trimmed.length - 1].p;
+    setV('modal-last', num(lastClose, 2));
+    if (entryDates.length === 1) {
+      const lastNorm = datasets[0].data[datasets[0].data.length - 1];
+      const chg = lastNorm - 100;
+      setC('modal-chg', pct(chg), chg >= 0 ? 'pos' : 'neg');
+    } else {
+      setC('modal-chg', '', '');
+    }
+
+    if (modalChart) modalChart.destroy();
+    const ctx = document.getElementById('modal-chart').getContext('2d');
+    modalChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, animation: false, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: entryDates.length > 1, labels: { color: '#485068', font: { family: 'Courier New', size: 9 }, boxWidth: 10 } },
+          tooltip: {
+            backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
+            titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
+            titleFont: { family: 'Courier New', size: 9 }, bodyFont: { family: 'Courier New', size: 9 },
+            callbacks: { label: c => `${c.dataset.label}: ${num(c.parsed.y, 1)}` },
+          },
+        },
+        scales: {
+          x: { ticks: { color: '#485068', font: { family: 'Courier New', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#181828' } },
+          y: { ticks: { color: '#485068', font: { family: 'Courier New', size: 9 }, callback: v => v.toFixed(0) }, grid: { color: '#181828' } },
+        },
+      },
+    });
+  } catch (e) {
+    if (ticker !== modalTicker || modalRange !== range) return;
+    statusEl.textContent = 'erro ao carregar';
+    console.error('modal chart inception', ticker, e);
+  }
+}
+
 async function loadModalChart(range) {
   modalRange = range;
   const ticker = modalTicker;
@@ -1862,6 +1954,8 @@ async function loadModalChart(range) {
 
   const statusEl = document.getElementById('modal-chart-status');
   statusEl.textContent = 'carregando…';
+
+  if (range === 'inception') { await loadModalChartInception(ticker); return; }
 
   try {
     const series = await yahooHistory(ticker, range);
@@ -2521,6 +2615,21 @@ function mkRenderTable(assets, minVol, maxSharpe, userWeights, userStats) {
 }
 
 // ── Single Names ──────────────────────────────────────────────────────────────
+// Data(s) de entrada na posição — usado pelo gráfico "Desde o Início" do modal.
+// Papéis com duas datas (ex: aportes em momentos diferentes) mostram duas linhas.
+const SINGLES_ENTRY_DATES = {
+  AMZN:  ['2024-01-31'],
+  MSFT:  ['2024-01-31'],
+  NVDA:  ['2024-02-20', '2024-02-23'],
+  CRM:   ['2024-04-05', '2024-04-18'],
+  TMO:   ['2024-07-23', '2024-07-24'],
+  DHR:   ['2024-11-12', '2025-02-06'],
+  V:     ['2025-08-13'],
+  VST:   ['2025-11-04'],
+  GLD:   ['2025-10-22', '2026-01-30'],
+  GOOGL: ['2026-01-29'],
+};
+
 const SINGLES = [
   { t: 'AMZN',  val: 'sn-amzn-val',  chg: 'sn-amzn-chg',  sub: 'sn-amzn-sub',  tgt: 'sn-amzn-tgt',  base: 'AMZN · USD'  },
   { t: 'MSFT',  val: 'sn-msft-val',  chg: 'sn-msft-chg',  sub: 'sn-msft-sub',  tgt: 'sn-msft-tgt',  base: 'MSFT · USD'  },
