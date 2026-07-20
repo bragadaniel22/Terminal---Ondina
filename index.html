@@ -2093,27 +2093,40 @@ async function loadOneEtf(key, etf, range) {
   histResults.forEach((r, i) => { if (r.status === 'fulfilled' && r.value.length > 4) { validIdx.push(i); validSeries.push(r.value); } });
   if (!validSeries.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
 
-  // Ativos recém-listados (ex: SK Hynix ADR desde 10/07/2026) têm histórico mais curto
-  // que os demais. Em vez de exigir interseção exata de datas entre todos os ativos
-  // (o que colapsaria o índice inteiro para a janela do ativo mais novo), cada ativo
-  // entra no índice a partir da sua própria primeira data disponível, e o peso dos
-  // ativos ainda ausentes naquele dia é redistribuído entre os já listados.
-  const maps = validSeries.map(s => new Map(s.map(d => [d.ts, d.p])));
+  // Alinhamento por DIA CALENDÁRIO, não por timestamp exato — necessário porque a
+  // Samsung (005930.KS, pregão da Korea Exchange) fecha em horário completamente
+  // diferente dos ativos americanos, então seus timestamps nunca coincidem
+  // exatamente com os dos outros. Usar ts bruto fazia a Samsung "entrar e sair" do
+  // índice a cada dia, criando um serrilhado artificial no gráfico (mesmo problema
+  // já resolvido no Simulador ao misturar B3+NASDAQ — ver mkAlignSeries).
+  //
+  // Além disso, ativos recém-listados (ex: SK Hynix ADR desde 10/07/2026) têm
+  // histórico mais curto que os demais. Em vez de exigir interseção exata de datas
+  // entre todos os ativos (o que colapsaria o índice inteiro para a janela do ativo
+  // mais novo), cada ativo entra no índice a partir da sua própria primeira data
+  // disponível, e o peso dos ativos ainda ausentes naquele dia é redistribuído
+  // entre os já listados.
+  const dateKey = ts => new Date(ts * 1000).toISOString().slice(0, 10);
+  const maps = validSeries.map(s => {
+    const m = new Map();
+    s.forEach(d => { const k = dateKey(d.ts); if (!m.has(k)) m.set(k, d.p); });
+    return m;
+  });
   const firstPrices = validSeries.map(s => s[0].p);
-  const allTs = [...new Set(validSeries.flatMap(s => s.map(d => d.ts)))].sort((a, b) => a - b);
+  const allKeys = [...new Set(maps.flatMap(m => [...m.keys()]))].sort();
   const wSum = validIdx.reduce((a, i) => a + etf.holdings[i].weight, 0);
 
   const dates = [], indexSeries = [];
-  allTs.forEach(ts => {
+  allKeys.forEach(k => {
     let num = 0, den = 0;
     maps.forEach((m, si) => {
-      const p = m.get(ts);
+      const p = m.get(k);
       if (p == null) return;
       const w = etf.holdings[validIdx[si]].weight / wSum;
       num += w * (p / firstPrices[si] * 100);
       den += w;
     });
-    if (den > 0) { dates.push(new Date(ts * 1000)); indexSeries.push(num / den); }
+    if (den > 0) { dates.push(new Date(k + 'T00:00:00Z')); indexSeries.push(num / den); }
   });
   if (!indexSeries.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
 
