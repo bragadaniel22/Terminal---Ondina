@@ -144,6 +144,7 @@
     .etf-val .neg { color: var(--red); }
     .etf-holdings-head { display: flex; justify-content: space-between; padding: 6px 14px; font-size: 9px; letter-spacing: 1px; color: var(--dim); border-bottom: 1px solid var(--border); }
     .etf-weight { width: 48px; text-align: right; color: var(--dim); font-size: 11px; }
+    .etf-winret { font-size: 9px; margin-top: 2px; }
 
     /* MARKOWITZ */
     .mk-add-row { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); }
@@ -1763,6 +1764,111 @@ async function loadHeatmap() {
   });
 }
 
+// ── Seleção manual de intervalo no gráfico (clicar e arrastar, estilo Google Finance) ──
+// Plugin genérico do Chart.js: registrado globalmente, mas só desenha nos gráficos que
+// ativam `plugins: { dragRange: { enabled: true } }` na config (gráficos de preço/tempo —
+// não faz sentido em scatter de risco×retorno, então não é ligado lá).
+const dragRangePlugin = {
+  id: 'dragRange',
+  afterInit(chart) {
+    chart.$dragRange = { active: false, startIdx: null, endIdx: null };
+  },
+  afterEvent(chart, args) {
+    const opts = chart.config.options?.plugins?.dragRange;
+    if (!opts?.enabled) return;
+    const e = args.event;
+    const area = chart.chartArea;
+    if (!area) return;
+    const state = chart.$dragRange;
+    const n = (chart.data.labels || []).length;
+    if (!n) return;
+
+    const idxAt = (x) => {
+      const raw = chart.scales.x.getValueForPixel(Math.max(area.left, Math.min(area.right, x)));
+      return Math.max(0, Math.min(n - 1, Math.round(raw)));
+    };
+
+    const downTypes = ['mousedown', 'touchstart'];
+    const moveTypes = ['mousemove', 'touchmove'];
+    const upTypes   = ['mouseup', 'touchend', 'mouseout'];
+
+    if (downTypes.includes(e.type) && e.y >= area.top && e.y <= area.bottom && e.x >= area.left && e.x <= area.right) {
+      state.active = true;
+      state.startIdx = idxAt(e.x);
+      state.endIdx = state.startIdx;
+      args.changed = true;
+    } else if (moveTypes.includes(e.type) && state.active) {
+      state.endIdx = idxAt(e.x);
+      args.changed = true;
+    } else if (upTypes.includes(e.type) && state.active) {
+      state.active = false;
+      if (state.startIdx === state.endIdx) { state.startIdx = null; state.endIdx = null; }
+      args.changed = true;
+    }
+  },
+  afterDraw(chart) {
+    const opts = chart.config.options?.plugins?.dragRange;
+    if (!opts?.enabled) return;
+    const state = chart.$dragRange;
+    if (state.startIdx == null || state.endIdx == null || state.startIdx === state.endIdx) return;
+
+    const lo = Math.min(state.startIdx, state.endIdx);
+    const hi = Math.max(state.startIdx, state.endIdx);
+    const xScale = chart.scales.x;
+    const area = chart.chartArea;
+    const xLo = xScale.getPixelForValue(lo);
+    const xHi = xScale.getPixelForValue(hi);
+    const ctx = chart.ctx;
+
+    const dsIdx = chart.data.datasets
+      .map((_, i) => i)
+      .filter(i => chart.isDatasetVisible(i));
+    if (!dsIdx.length) return;
+
+    const lines = dsIdx.map(di => {
+      const ds = chart.data.datasets[di];
+      const v0 = ds.data[lo], v1 = ds.data[hi];
+      if (v0 == null || v1 == null) return null;
+      const delta = v1 - v0;
+      const pctv = v0 !== 0 ? (delta / v0) * 100 : 0;
+      return { label: ds.label || '', delta, pctv };
+    }).filter(Boolean);
+    if (!lines.length) return;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,102,0,.08)';
+    ctx.fillRect(xLo, area.top, xHi - xLo, area.bottom - area.top);
+    ctx.strokeStyle = 'rgba(255,102,0,.6)';
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 1;
+    [xLo, xHi].forEach(x => { ctx.beginPath(); ctx.moveTo(x, area.top); ctx.lineTo(x, area.bottom); ctx.stroke(); });
+    ctx.setLineDash([]);
+
+    const boxLines = lines.map(l => {
+      const sign = l.pctv >= 0 ? '+' : '';
+      return { text: `${l.label ? l.label + ': ' : ''}${sign}${num(l.delta, 2)} (${sign}${num(l.pctv, 2)}%)`, pos: l.pctv >= 0 };
+    });
+    ctx.font = "9px 'Courier New'";
+    const padding = 6, lineH = 12;
+    const boxW = Math.max(...boxLines.map(b => ctx.measureText(b.text).width)) + padding * 2;
+    const boxH = boxLines.length * lineH + padding * 2;
+    let boxX = Math.min(xLo, xHi) + 6;
+    if (boxX + boxW > area.right) boxX = Math.max(area.left, area.right - boxW - 4);
+    const boxY = area.top + 6;
+
+    ctx.fillStyle = 'rgba(12,12,24,.95)';
+    ctx.strokeStyle = '#252540';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    boxLines.forEach((b, i) => {
+      ctx.fillStyle = b.pos ? '#00cc77' : '#ff3344';
+      ctx.fillText(b.text, boxX + padding, boxY + padding + i * lineH + 8);
+    });
+    ctx.restore();
+  },
+};
+Chart.register(dragRangePlugin);
+
 // ── Portfolio Simulator ───────────────────────────────────────────────────────
 const PF_TICKERS = ['AMZN','MSFT','NVDA','CRM','TMO','DHR','V','VST','GLD','GOOGL'];
 const PF_COLORS  = ['#4488ff','#00cc77','#ffcc44','#ff66cc','#00cccc','#88ff44','#cc88ff','#ffaa44','#ff6688','#44ccff'];
@@ -1905,7 +2011,9 @@ async function loadModalChartInception(ticker) {
       options: {
         responsive: true, animation: false, maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
+        events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
         plugins: {
+          dragRange: { enabled: true },
           legend: { display: entryDates.length > 1, labels: { color: '#485068', font: { family: 'Courier New', size: 9 }, boxWidth: 10 } },
           tooltip: {
             backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
@@ -1961,7 +2069,9 @@ async function loadModalChart(range) {
       options: {
         responsive: true, animation: false, maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
+        events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
         plugins: {
+          dragRange: { enabled: true },
           legend: { display: false },
           tooltip: {
             backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
@@ -2072,6 +2182,8 @@ async function loadOneEtf(key, etf, range) {
     Promise.allSettled(etf.holdings.map(h => yahoo(h.ticker))),
   ]);
 
+  const rangeLabel = { '3mo': '3M', '6mo': '6M', ytd: 'YTD', '1y': '1A', '2y': '2A' }[range] || range;
+
   holdEl.innerHTML = `
     <div class="etf-holdings-head"><span>ATIVO</span><span>PESO</span></div>
     ${etf.holdings.map((h, i) => {
@@ -2081,10 +2193,17 @@ async function loadOneEtf(key, etf, range) {
       const price = q ? `${priceLabel} ${num(q.price, 2)}` : '—';
       const chg = q && q.chg != null ? pct(q.chg) : '—';
       const chgClass = q && q.chg != null ? (q.chg >= 0 ? 'pos' : 'neg') : 'dim2';
+
+      const hist = histResults[i].status === 'fulfilled' ? histResults[i].value : null;
+      const winRet = hist && hist.length > 1 ? (hist[hist.length - 1].p - hist[0].p) / hist[0].p * 100 : null;
+      const winRetHtml = winRet != null
+        ? `<div class="etf-winret ${winRet >= 0 ? 'pos' : 'neg'}">${winRet >= 0 ? '+' : ''}${num(winRet, 1)}% · ${rangeLabel}</div>`
+        : '';
+
       return `<div class="row row-click" onclick="openChart('${h.ticker}','${jsAttrSafe(h.label)}')">
         <div><div class="rname">${h.label}</div><div class="rsub">${h.ticker} · ${ccy}${h.note ? ` · <span class="dim2">${h.note}</span>` : ''}</div></div>
         <div class="etf-weight">${num(h.weight / totalW * 100, 1)}%</div>
-        <div class="rright"><div class="rval">${price}</div><div class="rchg ${chgClass}">${chg}</div></div>
+        <div class="rright"><div class="rval">${price}</div><div class="rchg ${chgClass}">${chg}</div>${winRetHtml}</div>
       </div>`;
     }).join('')}
   `;
@@ -2149,7 +2268,9 @@ async function loadOneEtf(key, etf, range) {
     options: {
       responsive: true, animation: false, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
+      events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
       plugins: {
+        dragRange: { enabled: true },
         legend: { display: false },
         tooltip: {
           backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
@@ -2265,7 +2386,9 @@ async function loadPortfolio(range) {
     options: {
       responsive: true, animation: false, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
+      events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
       plugins: {
+        dragRange: { enabled: true },
         legend: { labels: { color: '#485068', font: { family: 'Courier New', size: 10 }, boxWidth: 12, padding: 10, usePointStyle: false } },
         tooltip: {
           backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
