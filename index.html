@@ -2047,7 +2047,7 @@ const ETFS = {
   memoria: {
     name: 'Memória IA ETF',
     holdings: [
-      { ticker: 'SSNLF', label: 'Samsung Electronics (ADR)', weight: 0.35 },
+      { ticker: 'SSNLF', label: 'Samsung Electronics (ADR)', weight: 0.35, note: '⚠️ baixa liquidez · preço pode ficar defasado' },
       { ticker: 'MU',    label: 'Micron Technology',          weight: 0.27 },
       { ticker: 'SKHY',  label: 'SK Hynix (ADR)',             weight: 0.25 },
       { ticker: 'KXIAY', label: 'Kioxia Holdings (ADR)',      weight: 0.07 },
@@ -2080,7 +2080,7 @@ async function loadOneEtf(key, etf, range) {
       const chg = q && q.chg != null ? pct(q.chg) : '—';
       const chgClass = q && q.chg != null ? (q.chg >= 0 ? 'pos' : 'neg') : 'dim2';
       return `<div class="row row-click" onclick="openChart('${h.ticker}','${jsAttrSafe(h.label)}')">
-        <div><div class="rname">${h.label}</div><div class="rsub">${h.ticker} · USD</div></div>
+        <div><div class="rname">${h.label}</div><div class="rsub">${h.ticker} · USD${h.note ? ` · <span class="dim2">${h.note}</span>` : ''}</div></div>
         <div class="etf-weight">${num(h.weight / totalW * 100, 1)}%</div>
         <div class="rright"><div class="rval">${price}</div><div class="rchg ${chgClass}">${chg}</div></div>
       </div>`;
