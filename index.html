@@ -137,6 +137,13 @@
     .pf-card { cursor: pointer; transition: opacity .15s; }
     .pf-card:hover { background: rgba(255,255,255,.02); }
     .pf-card.pf-hidden { opacity: 0.22; }
+    .etf-disclaimer { font-size: 10px; color: var(--dim); padding: 10px 14px; border-top: 1px solid var(--border); }
+    .etf-grid { grid-template-columns: repeat(2, 1fr); }
+    .etf-val { font-size: 18px; font-weight: bold; }
+    .etf-val .pos { color: var(--green); }
+    .etf-val .neg { color: var(--red); }
+    .etf-holdings-head { display: flex; justify-content: space-between; padding: 6px 14px; font-size: 9px; letter-spacing: 1px; color: var(--dim); border-bottom: 1px solid var(--border); }
+    .etf-weight { width: 48px; text-align: right; color: var(--dim); font-size: 11px; }
 
     /* MARKOWITZ */
     .mk-add-row { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); }
@@ -395,6 +402,7 @@
   <button class="tab-btn" data-tab="single-names" onclick="switchTab(this)">SINGLE NAMES</button>
   <button class="tab-btn" data-tab="portfolio" onclick="switchTab(this)">PORTFÓLIO</button>
   <button class="tab-btn" data-tab="simulador" onclick="switchTab(this)">SIMULADOR</button>
+  <button class="tab-btn" data-tab="etfs" onclick="switchTab(this)">ETFS INTERNOS</button>
   <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
   <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">BUSCAR</button>
 </nav>
@@ -777,12 +785,47 @@
       </div>
       <div class="mk-disclaimer">
         ⚠ "Retorno" aqui = <strong>média aritmética anualizada</strong> dos retornos diários (padrão exigido pela matemática de Markowitz) — <strong>difere</strong> do retorno acumulado (CAGR) mostrado na aba PORTFÓLIO e nos cards de Single Names. Não compare os dois números diretamente.
-        <span class="sources-link" style="font-size:11px" onclick="openMkMethodology()">metodologia completa</span>
       </div>
       <div id="mk-table"></div>
     </div>
   </div>
 </div><!-- /tab-simulador -->
+
+<div id="tab-etfs" class="tab-panel">
+  <div class="card card-wide">
+    <div class="card-head">
+      <h2>🧪 ETFs Internos · Setores de IA</h2>
+      <div class="pf-range">
+        <button class="range-btn active" data-r="3mo" onclick="loadEtfs('3mo')">3M</button>
+        <button class="range-btn" data-r="6mo" onclick="loadEtfs('6mo')">6M</button>
+        <button class="range-btn" data-r="ytd" onclick="loadEtfs('ytd')">YTD</button>
+        <button class="range-btn" data-r="1y"  onclick="loadEtfs('1y')">1A</button>
+        <button class="range-btn" data-r="2y"  onclick="loadEtfs('2y')">2A</button>
+      </div>
+    </div>
+    <div class="etf-disclaimer">⚠️ ETFs próprios, montados internamente — não são produtos negociáveis. Índice ponderado calculado a partir das ações listadas abaixo, todas cotadas em USD.</div>
+  </div>
+
+  <div class="grid etf-grid">
+    <div class="card">
+      <div class="card-head"><h2>🖥️ Equipamento IA ETF</h2><div class="etf-val" id="etf-equip-val">…</div></div>
+      <div id="etf-equip-holdings"></div>
+      <div class="pf-chart-box">
+        <div class="pf-chart-title">Índice Ponderado · base 100</div>
+        <canvas id="etf-equip-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>🧠 Memória IA ETF</h2><div class="etf-val" id="etf-memoria-val">…</div></div>
+      <div id="etf-memoria-holdings"></div>
+      <div class="pf-chart-box">
+        <div class="pf-chart-title">Índice Ponderado · base 100</div>
+        <canvas id="etf-memoria-chart"></canvas>
+      </div>
+    </div>
+  </div>
+</div><!-- /tab-etfs -->
 
 <div id="tab-heatmap" class="tab-panel">
   <div class="card">
@@ -903,7 +946,7 @@
       </div>
       <div class="sources-section">
         <h3>🎯 Simulador · Fronteira Eficiente (Markowitz)</h3>
-        <p>Simulador em que você escolhe os ativos e pesos de uma carteira hipotética e vê qual combinação teria dado o melhor retorno pro risco assumido, com base no histórico. Metodologia completa disponível dentro da própria aba SIMULADOR.</p>
+        <p>Simulador em que você escolhe os ativos e pesos de uma carteira hipotética e vê qual combinação teria dado o melhor retorno pro risco assumido, com base no histórico (otimização exata de Markowitz, restrita a peso ≥ 0).</p>
       </div>
       <div class="sources-section">
         <h3>🗺 Heatmap</h3>
@@ -916,63 +959,6 @@
       <div class="sources-section">
         <h3>⏱ Atualização</h3>
         <p>Dados atualizados automaticamente a cada 60 segundos enquanto a página estiver aberta.</p>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="mk-methodology-overlay" onclick="if(event.target===this) closeMkMethodology()">
-  <div class="modal-box sources-box">
-    <button class="modal-close" onclick="closeMkMethodology()">✕</button>
-    <div class="modal-header">
-      <div class="modal-title">Metodologia · Simulador Markowitz</div>
-    </div>
-    <div class="sources-body">
-      <div class="sources-section">
-        <h3>📥 Dados de entrada</h3>
-        <p>Preço de fechamento diário via Yahoo Finance (mesmo endpoint <strong>/api/yahoo</strong> usado no resto do terminal), na janela escolhida (1A, 2A ou 3A). Ativos digitados por nome livre são resolvidos pra ticker via <strong>/api/quote-search</strong>. Mínimo de 2 ativos e 30 dias de histórico em comum entre eles pra rodar.</p>
-      </div>
-      <div class="sources-section">
-        <h3>🧮 Retorno diário de cada ativo</h3>
-        <p><strong>r(i,t) = [P(i,t) − P(i,t−1)] / P(i,t−1)</strong></p>
-        <p>Onde <strong>P(i,t)</strong> é o preço de fechamento do ativo <em>i</em> no dia <em>t</em>. Essa série de retornos diários é a base de todos os cálculos abaixo.</p>
-      </div>
-      <div class="sources-section">
-        <h3>📊 Retorno esperado — μ (mu)</h3>
-        <p><strong>μ(i) = média aritmética de r(i,t)</strong> ao longo de toda a janela, depois anualizada multiplicando por 252 (dias úteis/ano). É o retorno esperado de cada ativo isolado — o insumo básico de todo o resto do cálculo.</p>
-      </div>
-      <div class="sources-section">
-        <h3>🔗 Matriz de covariância — Σ (sigma)</h3>
-        <p><strong>Σ(i,j) = Σₜ [r(i,t) − μ(i)] × [r(j,t) − μ(j)] / (T − 1)</strong>, onde T é o número de dias da janela (covariância <em>amostral</em>, com o ajuste de Bessel T−1 — convenção padrão em estatística financeira).</p>
-        <p>Na diagonal (i = j), Σ(i,i) é a variância do próprio ativo <em>i</em>. Fora da diagonal, Σ(i,j) mede o quanto os ativos <em>i</em> e <em>j</em> se movem juntos — correlação baixa ou negativa entre dois ativos reduz o risco da carteira sem reduzir o retorno esperado. É essa matriz que captura matematicamente o benefício da diversificação.</p>
-      </div>
-      <div class="sources-section">
-        <h3>⚖ Retorno e risco de uma carteira com pesos w</h3>
-        <p><strong>Retorno da carteira = Σᵢ w(i) × μ(i)</strong> — soma ponderada dos retornos esperados de cada ativo.</p>
-        <p><strong>Variância da carteira = Σᵢ Σⱼ w(i) × w(j) × Σ(i,j)</strong> — soma de todos os pares de ativos (incluindo cada ativo com ele mesmo), ponderados pelo produto dos pesos e pela covariância entre eles. <strong>Volatilidade = raiz quadrada dessa variância</strong> (anualizada, multiplicando a variância por 252 antes da raiz).</p>
-        <p><strong>Sharpe = [retorno da carteira − Rf] ÷ volatilidade da carteira</strong>. <strong>Rf</strong> (taxa livre de risco) usa o Fed Funds Rate no momento do cálculo (proxy T-Bill 3M, ^IRX, mesmo dado da aba ÍNDICES) — aparece logo abaixo do botão de calcular. Se a busca do Fed Funds falhar, cai pra Rf = 0 automaticamente.</p>
-      </div>
-      <div class="sources-section">
-        <h3>📏 Linha de Mercado de Capitais (CML)</h3>
-        <p>A linha azul tracejada liga o ponto (risco = 0, retorno = Rf) ao ponto de <strong>Máximo Sharpe</strong> — o "ponto de tangência". Ao permitir combinar a carteira de ativos com o ativo livre de risco (Fed Funds), qualquer ponto <em>nessa reta</em> tem uma relação risco-retorno melhor do que qualquer ponto da fronteira eficiente em si: pontos entre Rf e o ponto de tangência representam uma mistura de caixa (Fed Funds) com a carteira ótima; pontos além do ponto de tangência representariam alavancagem (tomar dinheiro emprestado à taxa livre de risco pra investir mais que 100% na carteira ótima) — o simulador não recomenda isso, é só a continuação matemática da reta.</p>
-      </div>
-      <div class="sources-section">
-        <h3>🧮 Otimização exata (álgebra de matrizes)</h3>
-        <p>Pra cada nível de retorno-alvo, existe uma única carteira de menor variância possível — resolvida por álgebra de matrizes (fórmula clássica de Markowitz, mesma que o Excel Solver encontra por tentativa e erro): inverte a matriz de covariância (Σ⁻¹) e usa multiplicadores de Lagrange pra achar os pesos exatos, sem precisar simular nada. Repetindo isso pra ~60 níveis de retorno entre a Mínima Volatilidade e o maior retorno individual entre os ativos escolhidos, traça a curva completa da fronteira — por isso ela sai lisa, sem ruído.</p>
-        <p><strong>Restrições aplicadas: peso ≥ 0 (sem venda a descoberto) e soma dos pesos = 100%</strong>. A fórmula fechada de Markowitz, por si só, não respeita "peso ≥ 0" — pra impor isso, usamos o <strong>método de conjunto ativo</strong>: resolve sem essa restrição e, se algum ativo saísse com peso negativo, remove ele do cálculo (fixa em 0%) e resolve de novo só com os demais — repete até todos os pesos ficarem válidos. Isso converge pro ótimo restrito exato, não é uma aproximação.</p>
-        <p><strong>Mínima Volatilidade</strong> é o vértice dessa curva (menor variância possível respeitando as restrições). <strong>Máximo Sharpe</strong> é a carteira de tangência, também restrita a peso ≥ 0. <strong>Sua Carteira</strong> usa os pesos que você digitou (normalizados pra somar 100%), pelas mesmas fórmulas de retorno/risco.</p>
-      </div>
-      <div class="sources-section">
-        <h3>🌎 Alinhamento entre bolsas diferentes</h3>
-        <p>Ativos de bolsas diferentes (ex: B3 e NASDAQ) fecham em horários diferentes, então seus timestamps de barra diária nunca coincidem exatamente, mesmo no mesmo dia. Por isso o alinhamento entre séries é feito por <strong>dia calendário</strong> (a data, não o timestamp exato) — cada ativo contribui com o preço daquele dia, e só entram no cálculo os dias em que todos os ativos escolhidos têm dado disponível.</p>
-      </div>
-      <div class="sources-section">
-        <h3>📐 Premissas e limitações</h3>
-        <p>Anualização assume 252 dias úteis/ano. É uma leitura do <strong>passado</strong> (histórico da janela escolhida) — não é previsão de retorno futuro, nem considera custos de transação, impostos ou rebalanceamento.</p>
-      </div>
-      <div class="sources-section">
-        <h3>⚖ Retorno aritmético vs. composto (aba Portfólio)</h3>
-        <p>O "Retorno" mostrado aqui é μ×252 — média aritmética anualizada, padrão exigido pela matemática de Markowitz, porque as fórmulas de retorno e variância da carteira acima só valem com médias aritméticas (a soma ponderada de retornos compostos não representa o retorno real da carteira). Na aba Portfólio, o "Retorno" é o total composto (CAGR) do período. São cálculos diferentes, os dois corretos pro que cada um mede — só não devem ser comparados diretamente entre abas.</p>
       </div>
     </div>
   </div>
@@ -1612,6 +1598,7 @@ let snLoaded = false;
 let pfLoaded = false;
 let feedLoaded = false;
 let heatmapLoaded = false;
+let etfLoaded = false;
 function switchTab(btn) {
   const name = btn.dataset.tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -1620,6 +1607,7 @@ function switchTab(btn) {
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'single-names' && !snLoaded)      { snLoaded = true; loadSingleNames(); }
   if (name === 'portfolio'    && !pfLoaded)      { pfLoaded = true; loadPortfolio('3mo'); }
+  if (name === 'etfs'         && !etfLoaded)     { etfLoaded = true; loadEtfs('3mo'); }
   if (name === 'heatmap'      && !heatmapLoaded) { heatmapLoaded = true; loadHeatmap(); }
   if (name === 'feed'         && !feedLoaded)    { feedLoaded = true; loadFeed(); }
 }
@@ -1807,14 +1795,6 @@ function closeSources() {
   document.getElementById('sources-overlay').classList.remove('active');
 }
 
-function openMkMethodology() {
-  document.getElementById('mk-methodology-overlay').classList.add('active');
-}
-
-function closeMkMethodology() {
-  document.getElementById('mk-methodology-overlay').classList.remove('active');
-}
-
 async function openTickerNews(ticker, label) {
   document.getElementById('ticker-news-title').textContent = label;
   document.getElementById('ticker-news-overlay').classList.add('active');
@@ -1857,7 +1837,7 @@ function renderTickerNewsList(items) {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); closeMkMethodology(); }
+  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); }
 });
 
 // Formata "YYYY-MM-DD" direto como texto (sem passar por Date) — evita que o fuso
@@ -2050,6 +2030,110 @@ function alignSeries(allSeries) {
     dates: common.map(ts => new Date(ts * 1000)),
     series: maps.map(m => common.map(ts => m.get(ts))),
   };
+}
+
+// ── ETFs Internos ─────────────────────────────────────────────────────────────
+const ETFS = {
+  equip: {
+    name: 'Equipamento IA ETF',
+    holdings: [
+      { ticker: 'ASML',  label: 'ASML Holding (ADR)',    weight: 0.3308 },
+      { ticker: 'AMAT',  label: 'Applied Materials',      weight: 0.2163 },
+      { ticker: 'LRCX',  label: 'Lam Research',           weight: 0.2036 },
+      { ticker: 'KLAC',  label: 'KLA Corporation',        weight: 0.1476 },
+      { ticker: 'TOELY', label: 'Tokyo Electron (ADR)',   weight: 0.1018 },
+    ],
+  },
+  memoria: {
+    name: 'Memória IA ETF',
+    holdings: [
+      { ticker: 'SSNLF', label: 'Samsung Electronics (ADR)', weight: 0.35 },
+      { ticker: 'MU',    label: 'Micron Technology',          weight: 0.27 },
+      { ticker: 'SKHY',  label: 'SK Hynix (ADR)',             weight: 0.25 },
+      { ticker: 'KXIAY', label: 'Kioxia Holdings (ADR)',      weight: 0.07 },
+      { ticker: 'SNDK',  label: 'SanDisk Corporation',        weight: 0.06 },
+    ],
+  },
+};
+let etfCharts = {};
+
+async function loadEtfs(range) {
+  document.querySelectorAll('#tab-etfs .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === range));
+  await Promise.all(Object.entries(ETFS).map(([key, etf]) => loadOneEtf(key, etf, range)));
+}
+
+async function loadOneEtf(key, etf, range) {
+  const holdEl = document.getElementById(`etf-${key}-holdings`);
+  const valEl  = document.getElementById(`etf-${key}-val`);
+  const totalW = etf.holdings.reduce((a, h) => a + h.weight, 0);
+
+  const [histResults, quoteResults] = await Promise.all([
+    Promise.allSettled(etf.holdings.map(h => yahooHistory(h.ticker, range))),
+    Promise.allSettled(etf.holdings.map(h => yahoo(h.ticker))),
+  ]);
+
+  holdEl.innerHTML = `
+    <div class="etf-holdings-head"><span>ATIVO</span><span>PESO</span></div>
+    ${etf.holdings.map((h, i) => {
+      const q = quoteResults[i].status === 'fulfilled' ? quoteResults[i].value : null;
+      const price = q ? `US$ ${num(q.price, 2)}` : '—';
+      const chg = q && q.chg != null ? pct(q.chg) : '—';
+      const chgClass = q && q.chg != null ? (q.chg >= 0 ? 'pos' : 'neg') : 'dim2';
+      return `<div class="row row-click" onclick="openChart('${h.ticker}','${jsAttrSafe(h.label)}')">
+        <div><div class="rname">${h.label}</div><div class="rsub">${h.ticker} · USD</div></div>
+        <div class="etf-weight">${num(h.weight / totalW * 100, 1)}%</div>
+        <div class="rright"><div class="rval">${price}</div><div class="rchg ${chgClass}">${chg}</div></div>
+      </div>`;
+    }).join('')}
+  `;
+
+  const validIdx = [], validSeries = [];
+  histResults.forEach((r, i) => { if (r.status === 'fulfilled' && r.value.length > 4) { validIdx.push(i); validSeries.push(r.value); } });
+  if (!validSeries.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
+
+  const { dates, series } = alignSeries(validSeries);
+  if (!dates.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
+
+  const wSum = validIdx.reduce((a, i) => a + etf.holdings[i].weight, 0);
+  const normalized = series.map(s => s.map(p => (p / s[0]) * 100));
+  const indexSeries = dates.map((_, di) =>
+    normalized.reduce((acc, s, si) => acc + s[di] * (etf.holdings[validIdx[si]].weight / wSum), 0)
+  );
+
+  const totalRet = (indexSeries[indexSeries.length - 1] - 100) / 100;
+  valEl.innerHTML = `<span class="${totalRet >= 0 ? 'pos' : 'neg'}">${totalRet >= 0 ? '+' : ''}${num(totalRet * 100, 1)}%</span>`;
+
+  const labels = dates.map(fmtDate);
+  if (etfCharts[key]) etfCharts[key].destroy();
+  const ctx = document.getElementById(`etf-${key}-chart`).getContext('2d');
+  etfCharts[key] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: etf.name, data: indexSeries,
+        borderColor: '#ff6600', backgroundColor: '#ff6600', borderWidth: 2, fill: false,
+        pointRadius: 0, tension: 0,
+      }],
+    },
+    options: {
+      responsive: true, animation: false, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
+          titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
+          titleFont: { family: 'Courier New', size: 8 }, bodyFont: { family: 'Courier New', size: 8 },
+          callbacks: { label: c => `Índice: ${c.parsed.y.toFixed(1)}` },
+        },
+      },
+      scales: {
+        x: { ticks: { color: '#485068', font: { family: 'Courier New', size: 10 }, maxTicksLimit: 8 }, grid: { color: '#181828' } },
+        y: { ticks: { color: '#485068', font: { family: 'Courier New', size: 10 }, callback: v => v.toFixed(0) }, grid: { color: '#181828' } },
+      },
+    },
+  });
 }
 
 function calcStats(prices) {
