@@ -2091,14 +2091,29 @@ async function loadOneEtf(key, etf, range) {
   histResults.forEach((r, i) => { if (r.status === 'fulfilled' && r.value.length > 4) { validIdx.push(i); validSeries.push(r.value); } });
   if (!validSeries.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
 
-  const { dates, series } = alignSeries(validSeries);
-  if (!dates.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
-
+  // Ativos recém-listados (ex: SK Hynix ADR desde 10/07/2026) têm histórico mais curto
+  // que os demais. Em vez de exigir interseção exata de datas entre todos os ativos
+  // (o que colapsaria o índice inteiro para a janela do ativo mais novo), cada ativo
+  // entra no índice a partir da sua própria primeira data disponível, e o peso dos
+  // ativos ainda ausentes naquele dia é redistribuído entre os já listados.
+  const maps = validSeries.map(s => new Map(s.map(d => [d.ts, d.p])));
+  const firstPrices = validSeries.map(s => s[0].p);
+  const allTs = [...new Set(validSeries.flatMap(s => s.map(d => d.ts)))].sort((a, b) => a - b);
   const wSum = validIdx.reduce((a, i) => a + etf.holdings[i].weight, 0);
-  const normalized = series.map(s => s.map(p => (p / s[0]) * 100));
-  const indexSeries = dates.map((_, di) =>
-    normalized.reduce((acc, s, si) => acc + s[di] * (etf.holdings[validIdx[si]].weight / wSum), 0)
-  );
+
+  const dates = [], indexSeries = [];
+  allTs.forEach(ts => {
+    let num = 0, den = 0;
+    maps.forEach((m, si) => {
+      const p = m.get(ts);
+      if (p == null) return;
+      const w = etf.holdings[validIdx[si]].weight / wSum;
+      num += w * (p / firstPrices[si] * 100);
+      den += w;
+    });
+    if (den > 0) { dates.push(new Date(ts * 1000)); indexSeries.push(num / den); }
+  });
+  if (!indexSeries.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
 
   const totalRet = (indexSeries[indexSeries.length - 1] - 100) / 100;
   valEl.innerHTML = `<span class="${totalRet >= 0 ? 'pos' : 'neg'}">${totalRet >= 0 ? '+' : ''}${num(totalRet * 100, 1)}%</span>`;
