@@ -803,7 +803,7 @@
         <button class="range-btn" data-r="2y"  onclick="loadEtfs('2y')">2A</button>
       </div>
     </div>
-    <div class="etf-disclaimer">⚠️ ETFs próprios, montados internamente — não são produtos negociáveis. Índice ponderado calculado a partir das ações listadas abaixo, todas cotadas em USD.</div>
+    <div class="etf-disclaimer">⚠️ ETFs próprios, montados internamente — não são produtos negociáveis. Índice ponderado calculado a partir do retorno % (base 100) das ações listadas abaixo — todas cotadas em USD, exceto a Samsung Electronics (KRW · Korea Exchange · usada por sua liquidez, só o retorno percentual entra no cálculo).</div>
   </div>
 
   <div class="grid etf-grid">
@@ -2047,7 +2047,7 @@ const ETFS = {
   memoria: {
     name: 'Memória IA ETF',
     holdings: [
-      { ticker: 'SSNLF', label: 'Samsung Electronics (ADR)', weight: 0.35, note: '⚠️ baixa liquidez · preço pode ficar defasado' },
+      { ticker: '005930.KS', label: 'Samsung Electronics', weight: 0.35, priceCcy: 'KRW', note: '📈 cotada em KRW · só o retorno % entra no índice (base 100)' },
       { ticker: 'MU',    label: 'Micron Technology',          weight: 0.27 },
       { ticker: 'SKHY',  label: 'SK Hynix (ADR)',             weight: 0.25 },
       { ticker: 'KXIAY', label: 'Kioxia Holdings (ADR)',      weight: 0.07 },
@@ -2076,11 +2076,13 @@ async function loadOneEtf(key, etf, range) {
     <div class="etf-holdings-head"><span>ATIVO</span><span>PESO</span></div>
     ${etf.holdings.map((h, i) => {
       const q = quoteResults[i].status === 'fulfilled' ? quoteResults[i].value : null;
-      const price = q ? `US$ ${num(q.price, 2)}` : '—';
+      const ccy = h.priceCcy || 'USD';
+      const priceLabel = ccy === 'USD' ? 'US$' : ccy;
+      const price = q ? `${priceLabel} ${num(q.price, 2)}` : '—';
       const chg = q && q.chg != null ? pct(q.chg) : '—';
       const chgClass = q && q.chg != null ? (q.chg >= 0 ? 'pos' : 'neg') : 'dim2';
       return `<div class="row row-click" onclick="openChart('${h.ticker}','${jsAttrSafe(h.label)}')">
-        <div><div class="rname">${h.label}</div><div class="rsub">${h.ticker} · USD${h.note ? ` · <span class="dim2">${h.note}</span>` : ''}</div></div>
+        <div><div class="rname">${h.label}</div><div class="rsub">${h.ticker} · ${ccy}${h.note ? ` · <span class="dim2">${h.note}</span>` : ''}</div></div>
         <div class="etf-weight">${num(h.weight / totalW * 100, 1)}%</div>
         <div class="rright"><div class="rval">${price}</div><div class="rchg ${chgClass}">${chg}</div></div>
       </div>`;
