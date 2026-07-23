@@ -668,13 +668,13 @@
         <div class="rsub" id="sn-crm-sub">CRM</div>
         <div class="rtgt" id="sn-crm-tgt"></div>
       </div>
-      <div class="ntnb-cell row-click" onclick="openChart('TMO','Thermo Fisher')">
-        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('TMO','Thermo Fisher')">🔍</button>
-        <div class="rname">THERMO FISHER</div>
-        <div class="rval" id="sn-tmo-val">…</div>
-        <div class="rchg" id="sn-tmo-chg">—</div>
-        <div class="rsub" id="sn-tmo-sub">TMO</div>
-        <div class="rtgt" id="sn-tmo-tgt"></div>
+      <div class="ntnb-cell row-click" onclick="openChart('SMH','VanEck Semiconductor ETF')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('SMH','VanEck Semiconductor ETF')">🔍</button>
+        <div class="rname">SMH · SEMICONDUCTOR ETF</div>
+        <div class="rval" id="sn-smh-val">…</div>
+        <div class="rchg" id="sn-smh-chg">—</div>
+        <div class="rsub" id="sn-smh-sub">SMH</div>
+        <div class="rtgt" id="sn-smh-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('DHR','Danaher')">
         <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('DHR','Danaher')">🔍</button>
@@ -1722,7 +1722,10 @@ async function loadHeatmap() {
 
   wrap.innerHTML = '';
   results.forEach(group => {
-    const items = group.data.map(d => ({ ...d, value: Math.max(Math.abs(d.chg) || 0, 0.15) }));
+    // raiz quadrada comprime a disparidade entre variações grandes e pequenas — sem isso,
+    // um ativo com variação muito menor que seus vizinhos na mesma linha do treemap
+    // squarified acaba espremido numa célula degenerada (ex: 3% de largura, texto ilegível)
+    const items = group.data.map(d => ({ ...d, value: Math.sqrt(Math.max(Math.abs(d.chg) || 0, 0.15)) }));
     const layout = computeTreemap(items, 760, group.height);
     const validChgs = group.data.map(d => d.chg).filter(c => c != null && !isNaN(c));
     const avgChg = validChgs.length ? validChgs.reduce((a, b) => a + b, 0) / validChgs.length : null;
@@ -1870,7 +1873,7 @@ const dragRangePlugin = {
 Chart.register(dragRangePlugin);
 
 // ── Portfolio Simulator ───────────────────────────────────────────────────────
-const PF_TICKERS = ['AMZN','MSFT','NVDA','CRM','TMO','DHR','V','VST','GLD','GOOGL'];
+const PF_TICKERS = ['AMZN','MSFT','NVDA','CRM','SMH','DHR','V','VST','GLD','GOOGL'];
 const PF_COLORS  = ['#4488ff','#00cc77','#ffcc44','#ff66cc','#00cccc','#88ff44','#cc88ff','#ffaa44','#ff6688','#44ccff'];
 const PF_BENCHMARK = { ticker: '^GSPC', label: 'S&P 500', color: '#dde4f8' };
 // ── Modal de gráfico individual (clique em índice) ────────────────────────────
@@ -1973,9 +1976,21 @@ async function loadModalChartInception(ticker) {
 
   try {
     const fetchRange = historyRangeCovering(entryDates[0]);
-    const series = await yahooHistory(ticker, fetchRange);
+    let series = await yahooHistory(ticker, fetchRange);
     if (ticker !== modalTicker || modalRange !== range) return;
     if (!series.length) throw new Error('sem dados');
+
+    // Se há um preço de entrada registrado manualmente pra essa data (operação feita no
+    // mesmo dia, antes do fechamento do pregão aparecer no histórico do Yahoo), garante
+    // que a data exista na série usando esse preço como fechamento provisório.
+    const priceOverrides = SINGLES_ENTRY_PRICE_OVERRIDES[ticker];
+    if (priceOverrides) {
+      Object.entries(priceOverrides).forEach(([dateStr, price]) => {
+        const ts = new Date(dateStr).getTime() / 1000;
+        const exists = series.some(d => Math.abs(d.ts - ts) < 12 * 3600);
+        if (!exists) series = [...series, { ts, p: price }].sort((a, b) => a.ts - b.ts);
+      });
+    }
 
     const entryIdxs = entryDates.map(d => series.findIndex(pt => pt.ts >= new Date(d).getTime() / 1000));
     if (entryIdxs.some(idx => idx === -1)) throw new Error('data de entrada fora do histórico disponível');
@@ -1986,7 +2001,7 @@ async function loadModalChartInception(ticker) {
     const palette = ['#ff6600', '#44ccff'];
 
     const datasets = entryDates.map((entryDate, i) => {
-      const basePrice = series[entryIdxs[i]].p;
+      const basePrice = priceOverrides?.[entryDate] ?? series[entryIdxs[i]].p;
       const data = trimmed.map((d, j) => ((startIdx + j) >= entryIdxs[i] ? (d.p / basePrice) * 100 : null));
       const label = entryDates.length > 1 ? `Entrada ${i + 1} (${fmtEntryDate(entryDate)})` : 'Desde a entrada';
       return { label, data, borderColor: palette[i], backgroundColor: palette[i], borderWidth: 1.5, pointRadius: 0, tension: .05, fill: false, spanGaps: false };
@@ -2538,7 +2553,7 @@ async function mkAddAsset() {
 // ── Atalho: popula direto com os 10 Single Names, peso igual ────────────────────
 const MK_SINGLES_NAMES = {
   AMZN: 'Amazon.com Inc.', MSFT: 'Microsoft Corporation', NVDA: 'NVIDIA Corporation',
-  CRM: 'Salesforce Inc.', TMO: 'Thermo Fisher Scientific', DHR: 'Danaher Corporation',
+  CRM: 'Salesforce Inc.', SMH: 'VanEck Semiconductor ETF', DHR: 'Danaher Corporation',
   V: 'Visa Inc.', VST: 'Vistra Corp.', GLD: 'SPDR Gold Shares', GOOGL: 'Alphabet Inc.',
 };
 function mkAddSingleNames() {
@@ -2859,12 +2874,19 @@ const SINGLES_ENTRY_DATES = {
   MSFT:  ['2024-01-31'],
   NVDA:  ['2024-02-20', '2024-02-23'],
   CRM:   ['2024-04-05', '2024-04-18'],
-  TMO:   ['2024-07-23', '2024-07-24'],
+  SMH:   ['2026-07-23'],
   DHR:   ['2024-11-12', '2025-02-06'],
   V:     ['2025-08-13'],
   VST:   ['2025-11-04'],
   GLD:   ['2025-10-22', '2026-01-30'],
   GOOGL: ['2026-01-29'],
+};
+// Preço de entrada real registrado manualmente (quando a operação é feita no mesmo dia
+// e o fechamento oficial do pregão ainda não está disponível no histórico do Yahoo, ou
+// quando o preço efetivamente pago difere do fechamento do dia) — usado como base 100
+// no "Desde o Início" no lugar do fechamento da série, quando presente.
+const SINGLES_ENTRY_PRICE_OVERRIDES = {
+  SMH: { '2026-07-23': 575.88 },
 };
 
 const SINGLES = [
@@ -2872,7 +2894,7 @@ const SINGLES = [
   { t: 'MSFT',  val: 'sn-msft-val',  chg: 'sn-msft-chg',  sub: 'sn-msft-sub',  tgt: 'sn-msft-tgt',  base: 'MSFT · USD'  },
   { t: 'NVDA',  val: 'sn-nvda-val',  chg: 'sn-nvda-chg',  sub: 'sn-nvda-sub',  tgt: 'sn-nvda-tgt',  base: 'NVDA · USD'  },
   { t: 'CRM',   val: 'sn-crm-val',   chg: 'sn-crm-chg',   sub: 'sn-crm-sub',   tgt: 'sn-crm-tgt',   base: 'CRM · USD'   },
-  { t: 'TMO',   val: 'sn-tmo-val',   chg: 'sn-tmo-chg',   sub: 'sn-tmo-sub',   tgt: 'sn-tmo-tgt',   base: 'TMO · USD'   },
+  { t: 'SMH',   val: 'sn-smh-val',   chg: 'sn-smh-chg',   sub: 'sn-smh-sub',   tgt: 'sn-smh-tgt',   base: 'SMH · USD'   },
   { t: 'DHR',   val: 'sn-dhr-val',   chg: 'sn-dhr-chg',   sub: 'sn-dhr-sub',   tgt: 'sn-dhr-tgt',   base: 'DHR · USD'   },
   { t: 'V',     val: 'sn-v-val',     chg: 'sn-v-chg',     sub: 'sn-v-sub',     tgt: 'sn-v-tgt',     base: 'V · USD'     },
   { t: 'VST',   val: 'sn-vst-val',   chg: 'sn-vst-chg',   sub: 'sn-vst-sub',   tgt: 'sn-vst-tgt',   base: 'VST · USD'   },
