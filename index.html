@@ -797,6 +797,7 @@
     <div class="card-head">
       <h2>🧪 ETFs Internos · Setores de IA</h2>
       <div class="pf-range">
+        <button class="range-btn" data-r="intraday" onclick="loadEtfs('intraday')">INTRADIA</button>
         <button class="range-btn active" data-r="3mo" onclick="loadEtfs('3mo')">3M</button>
         <button class="range-btn" data-r="6mo" onclick="loadEtfs('6mo')">6M</button>
         <button class="range-btn" data-r="ytd" onclick="loadEtfs('ytd')">YTD</button>
@@ -804,7 +805,7 @@
         <button class="range-btn" data-r="2y"  onclick="loadEtfs('2y')">2A</button>
       </div>
     </div>
-    <div class="etf-disclaimer">⚠️ ETFs próprios, montados internamente — não são produtos negociáveis. Índice ponderado calculado a partir do retorno % (base 100) das ações listadas abaixo. Sempre que disponível, usamos o papel original na bolsa de origem em vez do ADR (mais liquidez e track record) — moeda de cotação não afeta o índice, só o retorno percentual entra no cálculo.</div>
+    <div class="etf-disclaimer">⚠️ ETFs próprios, montados internamente — não são produtos negociáveis. Índice ponderado calculado a partir do retorno % (base 100) das ações listadas abaixo. Sempre que disponível, usamos o papel original na bolsa de origem em vez do ADR (mais liquidez e track record) — moeda de cotação não afeta o índice, só o retorno percentual entra no cálculo. No modo <b>INTRADIA</b>, cada ativo entra com o pregão mais recente da sua própria bolsa — se uma bolsa já fechou (ex: Ásia, de madrugada no horário de Brasília), seu último preço fica "congelado" no índice até reabrir, enquanto as bolsas ainda abertas continuam se movendo.</div>
   </div>
 
   <div class="grid etf-grid">
@@ -812,7 +813,7 @@
       <div class="card-head"><h2>🖥️ Equipamento IA ETF</h2><div class="etf-val" id="etf-equip-val">…</div></div>
       <div id="etf-equip-holdings"></div>
       <div class="pf-chart-box">
-        <div class="pf-chart-title">Índice Ponderado · base 100</div>
+        <div class="pf-chart-title" id="etf-equip-chart-title">Índice Ponderado · base 100</div>
         <canvas id="etf-equip-chart"></canvas>
       </div>
     </div>
@@ -821,7 +822,7 @@
       <div class="card-head"><h2>🧠 Memória IA ETF</h2><div class="etf-val" id="etf-memoria-val">…</div></div>
       <div id="etf-memoria-holdings"></div>
       <div class="pf-chart-box">
-        <div class="pf-chart-title">Índice Ponderado · base 100</div>
+        <div class="pf-chart-title" id="etf-memoria-chart-title">Índice Ponderado · base 100</div>
         <canvas id="etf-memoria-chart"></canvas>
       </div>
     </div>
@@ -2184,12 +2185,139 @@ let etfCharts = {};
 
 async function loadEtfs(range) {
   document.querySelectorAll('#tab-etfs .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === range));
+  if (range === 'intraday') {
+    await Promise.all(Object.entries(ETFS).map(([key, etf]) => loadOneEtfIntraday(key, etf)));
+    return;
+  }
   await Promise.all(Object.entries(ETFS).map(([key, etf]) => loadOneEtf(key, etf, range)));
+}
+
+// Busca o pregão intraday mais recente do ativo (1 dia, candles de 5min) — o Yahoo
+// retorna automaticamente a última sessão disponível daquela bolsa especificamente,
+// seja ela hoje (em andamento ou já fechada) ou a última sessão anterior, então isso já
+// resolve sozinho o caso de bolsas em fusos diferentes que estejam fechadas agora.
+async function yahooIntraday(ticker) {
+  const r = await fetch(`/api/yahoo?t=${encodeURIComponent(ticker)}&range=1d&interval=5m`);
+  if (!r.ok) throw new Error(`${ticker}: ${r.status}`);
+  const d = await r.json();
+  const res = d?.chart?.result?.[0];
+  if (!res) throw new Error(`sem dados: ${ticker}`);
+  const m = res.meta;
+  const ts = res.timestamp || [];
+  const px = res.indicators.quote?.[0]?.close || [];
+  const series = ts.map((t, i) => ({ ts: t, p: px[i] })).filter(x => x.p != null);
+  let prevClose = m.chartPreviousClose ?? m.previousClose ?? m.regularMarketPreviousClose ?? null;
+  if (!prevClose && series.length) prevClose = series[0].p;
+  return { series, prevClose };
+}
+
+async function loadOneEtfIntraday(key, etf) {
+  const holdEl = document.getElementById(`etf-${key}-holdings`);
+  const valEl  = document.getElementById(`etf-${key}-val`);
+  const titleEl = document.getElementById(`etf-${key}-chart-title`);
+  const totalW = etf.holdings.reduce((a, h) => a + h.weight, 0);
+  if (titleEl) titleEl.textContent = 'Índice Ponderado · intraday (variação % do dia)';
+
+  const [intraResults, quoteResults] = await Promise.all([
+    Promise.allSettled(etf.holdings.map(h => yahooIntraday(h.ticker))),
+    Promise.allSettled(etf.holdings.map(h => yahoo(h.ticker))),
+  ]);
+
+  holdEl.innerHTML = `
+    <div class="etf-holdings-head"><span>ATIVO</span><span>PESO</span></div>
+    ${etf.holdings.map((h, i) => {
+      const q = quoteResults[i].status === 'fulfilled' ? quoteResults[i].value : null;
+      const ccy = h.priceCcy || 'USD';
+      const priceLabel = ccy === 'USD' ? 'US$' : ccy;
+      const price = q ? `${priceLabel} ${num(q.price, 2)}` : '—';
+      const chg = q && q.chg != null ? pct(q.chg) : '—';
+      const chgClass = q && q.chg != null ? (q.chg >= 0 ? 'pos' : 'neg') : 'dim2';
+      const lockHtml = q?.marketOpen === false ? '<span class="dim2"> 🔒 fechada</span>' : '';
+      return `<div class="row row-click" onclick="openChart('${h.ticker}','${jsAttrSafe(h.label)}')">
+        <div><div class="rname">${h.label}</div><div class="rsub">${h.ticker} · ${ccy}${lockHtml}${h.note ? ` · <span class="dim2">${h.note}</span>` : ''}</div></div>
+        <div class="etf-weight">${num(h.weight / totalW * 100, 1)}%</div>
+        <div class="rright"><div class="rval">${price}</div><div class="rchg ${chgClass}">${chg}</div></div>
+      </div>`;
+    }).join('')}
+  `;
+
+  const valid = [];
+  intraResults.forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value.series.length && r.value.prevClose) {
+      valid.push({ weight: etf.holdings[i].weight, series: r.value.series, prevClose: r.value.prevClose });
+    }
+  });
+  if (!valid.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
+
+  const wSum = valid.reduce((a, v) => a + v.weight, 0);
+  const maps = valid.map(v => new Map(v.series.map(d => [d.ts, d.p])));
+  const firstTs = valid.map(v => v.series[0].ts);
+  const allTs = [...new Set(valid.flatMap(v => v.series.map(d => d.ts)))].sort((a, b) => a - b);
+  // "último preço conhecido" por ativo — permanece parado (congelado) depois que a bolsa
+  // daquele ativo fecha, enquanto os outros ativos (de bolsas ainda abertas) continuam
+  // atualizando o índice combinado normalmente.
+  const lastKnown = valid.map(() => null);
+
+  const dates = [], indexSeries = [];
+  allTs.forEach(ts => {
+    let num2 = 0, den = 0;
+    maps.forEach((m, vi) => {
+      if (ts < firstTs[vi]) return; // essa bolsa ainda não tinha aberto nesse instante
+      const p = m.get(ts);
+      if (p != null) lastKnown[vi] = p;
+      const cur = lastKnown[vi];
+      if (cur == null) return;
+      const w = valid[vi].weight / wSum;
+      num2 += w * (cur / valid[vi].prevClose * 100);
+      den += w;
+    });
+    if (den > 0) { dates.push(new Date(ts * 1000)); indexSeries.push(num2 / den); }
+  });
+  if (!indexSeries.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
+
+  const totalRet = (indexSeries[indexSeries.length - 1] - 100) / 100;
+  valEl.innerHTML = `<span class="${totalRet >= 0 ? 'pos' : 'neg'}">${totalRet >= 0 ? '+' : ''}${num(totalRet * 100, 1)}%</span>`;
+
+  const labels = dates.map(fmtShortDateTime);
+  if (etfCharts[key]) etfCharts[key].destroy();
+  const ctx = document.getElementById(`etf-${key}-chart`).getContext('2d');
+  etfCharts[key] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: etf.name, data: indexSeries,
+        borderColor: '#ff6600', backgroundColor: '#ff6600', borderWidth: 2, fill: false,
+        pointRadius: 0, tension: 0,
+      }],
+    },
+    options: {
+      responsive: true, animation: false, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
+      plugins: {
+        dragRange: { enabled: true },
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
+          titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
+          titleFont: { family: 'Courier New', size: 8 }, bodyFont: { family: 'Courier New', size: 8 },
+          callbacks: { label: c => `Índice: ${c.parsed.y.toFixed(2)}` },
+        },
+      },
+      scales: {
+        x: { ticks: { color: '#485068', font: { family: 'Courier New', size: 8 }, maxTicksLimit: 8 }, grid: { color: '#181828' } },
+        y: { ticks: { color: '#485068', font: { family: 'Courier New', size: 8 }, callback: v => v.toFixed(1) }, grid: { color: '#181828' } },
+      },
+    },
+  });
 }
 
 async function loadOneEtf(key, etf, range) {
   const holdEl = document.getElementById(`etf-${key}-holdings`);
   const valEl  = document.getElementById(`etf-${key}-val`);
+  const titleEl = document.getElementById(`etf-${key}-chart-title`);
+  if (titleEl) titleEl.textContent = 'Índice Ponderado · base 100';
   const totalW = etf.holdings.reduce((a, h) => a + h.weight, 0);
 
   const [histResults, quoteResults] = await Promise.all([
