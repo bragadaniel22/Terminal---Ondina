@@ -1,8 +1,8 @@
 export default async function handler(req, res) {
-  const { t, range = '5d' } = req.query;
+  const { t, range = '5d', interval = '1d' } = req.query;
   if (!t) return res.status(400).json({ error: 'ticker obrigatório' });
 
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?range=${range}&interval=1d&includePrePost=false`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?range=${range}&interval=${interval}&includePrePost=false`;
 
   try {
     const r = await fetch(url, {
