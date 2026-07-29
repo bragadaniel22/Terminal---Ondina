@@ -660,13 +660,13 @@
         <div class="rsub" id="sn-nvda-sub">NVDA</div>
         <div class="rtgt" id="sn-nvda-tgt"></div>
       </div>
-      <div class="ntnb-cell row-click" onclick="openChart('CRM','Salesforce')">
-        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('CRM','Salesforce')">🔍</button>
-        <div class="rname">SALESFORCE</div>
-        <div class="rval" id="sn-crm-val">…</div>
-        <div class="rchg" id="sn-crm-chg">—</div>
-        <div class="rsub" id="sn-crm-sub">CRM</div>
-        <div class="rtgt" id="sn-crm-tgt"></div>
+      <div class="ntnb-cell row-click" onclick="openChart('ASML','ASML Holding')">
+        <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('ASML','ASML Holding')">🔍</button>
+        <div class="rname">ASML HOLDING</div>
+        <div class="rval" id="sn-asml-val">…</div>
+        <div class="rchg" id="sn-asml-chg">—</div>
+        <div class="rsub" id="sn-asml-sub">ASML</div>
+        <div class="rtgt" id="sn-asml-tgt"></div>
       </div>
       <div class="ntnb-cell row-click" onclick="openChart('SMH','VanEck Semiconductor ETF')">
         <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('SMH','VanEck Semiconductor ETF')">🔍</button>
@@ -1874,7 +1874,7 @@ const dragRangePlugin = {
 Chart.register(dragRangePlugin);
 
 // ── Portfolio Simulator ───────────────────────────────────────────────────────
-const PF_TICKERS = ['AMZN','MSFT','NVDA','CRM','SMH','DHR','V','VST','GLD','GOOGL'];
+const PF_TICKERS = ['AMZN','MSFT','NVDA','ASML','SMH','DHR','V','VST','GLD','GOOGL'];
 const PF_COLORS  = ['#4488ff','#00cc77','#ffcc44','#ff66cc','#00cccc','#88ff44','#cc88ff','#ffaa44','#ff6688','#44ccff'];
 const PF_BENCHMARK = { ticker: '^GSPC', label: 'S&P 500', color: '#dde4f8' };
 // ── Modal de gráfico individual (clique em índice) ────────────────────────────
@@ -2681,7 +2681,7 @@ async function mkAddAsset() {
 // ── Atalho: popula direto com os 10 Single Names, peso igual ────────────────────
 const MK_SINGLES_NAMES = {
   AMZN: 'Amazon.com Inc.', MSFT: 'Microsoft Corporation', NVDA: 'NVIDIA Corporation',
-  CRM: 'Salesforce Inc.', SMH: 'VanEck Semiconductor ETF', DHR: 'Danaher Corporation',
+  ASML: 'ASML Holding N.V.', SMH: 'VanEck Semiconductor ETF', DHR: 'Danaher Corporation',
   V: 'Visa Inc.', VST: 'Vistra Corp.', GLD: 'SPDR Gold Shares', GOOGL: 'Alphabet Inc.',
 };
 function mkAddSingleNames() {
@@ -3001,7 +3001,6 @@ const SINGLES_ENTRY_DATES = {
   AMZN:  ['2024-01-31'],
   MSFT:  ['2024-01-31'],
   NVDA:  ['2024-02-20', '2024-02-23'],
-  CRM:   ['2024-04-05', '2024-04-18'],
   SMH:   ['2026-07-23'],
   DHR:   ['2024-11-12', '2025-02-06'],
   V:     ['2025-08-13'],
@@ -3021,7 +3020,7 @@ const SINGLES = [
   { t: 'AMZN',  val: 'sn-amzn-val',  chg: 'sn-amzn-chg',  sub: 'sn-amzn-sub',  tgt: 'sn-amzn-tgt',  base: 'AMZN · USD'  },
   { t: 'MSFT',  val: 'sn-msft-val',  chg: 'sn-msft-chg',  sub: 'sn-msft-sub',  tgt: 'sn-msft-tgt',  base: 'MSFT · USD'  },
   { t: 'NVDA',  val: 'sn-nvda-val',  chg: 'sn-nvda-chg',  sub: 'sn-nvda-sub',  tgt: 'sn-nvda-tgt',  base: 'NVDA · USD'  },
-  { t: 'CRM',   val: 'sn-crm-val',   chg: 'sn-crm-chg',   sub: 'sn-crm-sub',   tgt: 'sn-crm-tgt',   base: 'CRM · USD'   },
+  { t: 'ASML',  val: 'sn-asml-val',  chg: 'sn-asml-chg',  sub: 'sn-asml-sub',  tgt: 'sn-asml-tgt',  base: 'ASML · USD'  },
   { t: 'SMH',   val: 'sn-smh-val',   chg: 'sn-smh-chg',   sub: 'sn-smh-sub',   tgt: 'sn-smh-tgt',   base: 'SMH · USD'   },
   { t: 'DHR',   val: 'sn-dhr-val',   chg: 'sn-dhr-chg',   sub: 'sn-dhr-sub',   tgt: 'sn-dhr-tgt',   base: 'DHR · USD'   },
   { t: 'V',     val: 'sn-v-val',     chg: 'sn-v-chg',     sub: 'sn-v-sub',     tgt: 'sn-v-tgt',     base: 'V · USD'     },
