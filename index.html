@@ -535,6 +535,11 @@
       <div class="rright"><div class="rval" id="hsi-val">…</div><div class="rchg" id="hsi-chg">—</div></div>
     </div>
 
+    <div class="row row-click" onclick="openChart('^KS11','KOSPI')">
+      <div><div class="rname">KOSPI<span class="lock" id="kospi-lock"></span></div><div class="rsub" id="kospi-sub">^KS11 · KRW</div></div>
+      <div class="rright"><div class="rval" id="kospi-val">…</div><div class="rchg" id="kospi-chg">—</div></div>
+    </div>
+
     <div class="row row-click" onclick="openChart('^NSEI','Nifty 50')">
       <div><div class="rname">NIFTY 50<span class="lock" id="nifty-lock"></span></div><div class="rsub" id="nifty-sub">^NSEI · INR</div></div>
       <div class="rright"><div class="rval" id="nifty-val">…</div><div class="rchg" id="nifty-chg">—</div></div>
@@ -924,7 +929,7 @@
       </div>
       <div class="sources-section">
         <h3>🌏 Ásia &amp; Pacífico</h3>
-        <p>Yahoo Finance: Nikkei 225, Hang Seng, Nifty 50 e ASX 200.</p>
+        <p>Yahoo Finance: Nikkei 225, Hang Seng, KOSPI, Nifty 50 e ASX 200.</p>
       </div>
       <div class="sources-section">
         <h3>📈 Juros Globais</h3>
@@ -1209,6 +1214,7 @@ async function loadAsia() {
   const list = [
     { t: '^N225', val: 'nk-val',    chg: 'nk-chg',    sub: 'nk-sub',    base: '^N225 · JPY',  d: 2 },
     { t: '^HSI',  val: 'hsi-val',   chg: 'hsi-chg',   sub: 'hsi-sub',   base: '^HSI · HKD',   d: 2 },
+    { t: '^KS11', val: 'kospi-val', chg: 'kospi-chg', sub: 'kospi-sub', base: '^KS11 · KRW',  d: 2 },
     { t: '^NSEI', val: 'nifty-val', chg: 'nifty-chg', sub: 'nifty-sub', base: '^NSEI · INR',  d: 2 },
     { t: '^AXJO', val: 'asx-val',   chg: 'asx-chg',   sub: 'asx-sub',   base: '^AXJO · AUD',  d: 2 },
   ];
