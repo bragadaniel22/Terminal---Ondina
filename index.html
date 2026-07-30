@@ -598,7 +598,7 @@
 
   <!-- ── NTN-B ── -->
   <div class="card card-wide">
-    <div class="card-head"><h2>📊 NTN-B · Curva Inflação (IPCA+)</h2><span id="ntnb-date">ANBIMA · merc. secundário</span></div>
+    <div class="card-head"><h2>📊 NTN-B · Curva Inflação (IPCA+)</h2><div style="display:flex;align-items:center;gap:8px;"><span id="ntnb-date">ANBIMA · merc. secundário</span><span class="sources-link" onclick="openNtnbHistory()">📈 histórico</span></div></div>
     <div class="ntnb-grid">
       <div class="ntnb-cell">
         <div class="rname">NTN-B 2028</div>
@@ -905,6 +905,25 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="ntnb-history-overlay" onclick="if(event.target===this) closeNtnbHistory()">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeNtnbHistory()">✕</button>
+    <div class="modal-header">
+      <div class="modal-title">NTN-B · Histórico de Taxas (IPCA+)</div>
+      <div class="modal-sub"><span class="dim2" style="font-size:10px">ANBIMA · merc. secundário · vértice de cada título</span></div>
+    </div>
+    <div class="modal-range">
+      <button class="range-btn active" data-r="22" onclick="loadNtnbHistory(22)">1M</button>
+      <button class="range-btn" data-r="65" onclick="loadNtnbHistory(65)">3M</button>
+      <button class="range-btn" data-r="130" onclick="loadNtnbHistory(130)">6M</button>
+    </div>
+    <div class="modal-chart-box">
+      <div class="modal-status" id="ntnb-history-status"></div>
+      <canvas id="ntnb-history-chart"></canvas>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="sources-overlay" onclick="if(event.target===this) closeSources()">
   <div class="modal-box sources-box">
     <button class="modal-close" onclick="closeSources()">✕</button>
@@ -941,7 +960,7 @@
       </div>
       <div class="sources-section">
         <h3>📊 NTN-B</h3>
-        <p>ANBIMA, arquivo diário de mercado secundário — taxas indicativas por vencimento.</p>
+        <p>ANBIMA, arquivo diário de mercado secundário — taxas indicativas por vencimento. Botão "📈 histórico" no card mostra a evolução das taxas ao longo do tempo (1M/3M/6M), buscando o arquivo diário da ANBIMA de cada pregão do período.</p>
       </div>
       <div class="sources-section">
         <h3>📈 Single Names</h3>
@@ -1931,6 +1950,79 @@ function closeTickerNews() {
   document.getElementById('ticker-news-overlay').classList.remove('active');
 }
 
+// ── NTN-B · Histórico de Taxas ──────────────────────────────────────────────
+let ntnbHistoryChart = null;
+const NTNB_MATURITIES = [
+  { year: '2028', label: 'ago/28', color: '#4488ff' },
+  { year: '2029', label: 'mai/29', color: '#00cc77' },
+  { year: '2030', label: 'ago/30', color: '#ffcc44' },
+  { year: '2032', label: 'ago/32', color: '#ff66cc' },
+  { year: '2035', label: 'mai/35', color: '#00cccc' },
+  { year: '2045', label: 'mai/45', color: '#ff6600' },
+];
+
+function openNtnbHistory() {
+  document.getElementById('ntnb-history-overlay').classList.add('active');
+  loadNtnbHistory(22);
+}
+
+function closeNtnbHistory() {
+  document.getElementById('ntnb-history-overlay')?.classList.remove('active');
+}
+
+async function loadNtnbHistory(days) {
+  document.querySelectorAll('#ntnb-history-overlay .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === String(days)));
+  const statusEl = document.getElementById('ntnb-history-status');
+  statusEl.textContent = 'carregando…';
+
+  try {
+    const r = await fetch(`/api/ntnb-history?days=${days}`);
+    if (!r.ok) throw new Error(`NTN-B histórico: ${r.status}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const history = d.history || [];
+    if (!history.length) throw new Error('sem dados');
+    statusEl.textContent = '';
+
+    const labels = history.map(h => h.date.slice(0, 5)); // DD/MM
+    const datasets = NTNB_MATURITIES.map(m => ({
+      label: `NTN-B ${m.label}`,
+      data: history.map(h => h.rates?.[m.year] ?? null),
+      borderColor: m.color, backgroundColor: m.color, borderWidth: 1.5,
+      pointRadius: 0, tension: .05, fill: false, spanGaps: true,
+    }));
+
+    if (ntnbHistoryChart) ntnbHistoryChart.destroy();
+    const ctx = document.getElementById('ntnb-history-chart').getContext('2d');
+    ntnbHistoryChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, animation: false, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
+        plugins: {
+          dragRange: { enabled: true },
+          legend: { labels: { color: '#485068', font: { family: 'Courier New', size: 9 }, boxWidth: 10, padding: 8 } },
+          tooltip: {
+            backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
+            titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
+            titleFont: { family: 'Courier New', size: 9 }, bodyFont: { family: 'Courier New', size: 9 },
+            callbacks: { label: c => `${c.dataset.label}: ${num(c.parsed.y, 2)}%` },
+          },
+        },
+        scales: {
+          x: { ticks: { color: '#485068', font: { family: 'Courier New', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#181828' } },
+          y: { ticks: { color: '#485068', font: { family: 'Courier New', size: 9 }, callback: v => v.toFixed(1) + '%' }, grid: { color: '#181828' } },
+        },
+      },
+    });
+  } catch (e) {
+    statusEl.textContent = 'erro ao carregar';
+    console.error('NTN-B histórico', e);
+  }
+}
+
 function renderTickerNewsList(items) {
   const el = document.getElementById('ticker-news-list');
   if (!items.length) {
@@ -1953,7 +2045,7 @@ function renderTickerNewsList(items) {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); }
+  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); closeNtnbHistory(); }
 });
 
 // Formata "YYYY-MM-DD" direto como texto (sem passar por Date) — evita que o fuso
