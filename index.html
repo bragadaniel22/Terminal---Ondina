@@ -218,8 +218,8 @@
 
     /* CNBC · pacote de destaque (hero + secundários), igual à home da CNBC */
     .cnbc-hero-wrap { padding: 14px; border-bottom: 1px solid var(--border); display: flex; gap: 14px; flex-wrap: wrap; }
-    .cnbc-hero-card { flex: 1 1 320px; min-width: 280px; cursor: pointer; }
-    .cnbc-hero-img { width: 100%; height: 190px; object-fit: cover; background: var(--border-hi); }
+    .cnbc-hero-card { flex: 1 1 320px; max-width: 640px; min-width: 280px; cursor: pointer; }
+    .cnbc-hero-img { width: 100%; aspect-ratio: 16 / 10; height: auto; object-fit: cover; background: var(--border-hi); }
     .cnbc-hero-title { font-size: 15px; font-weight: bold; color: var(--bright); line-height: 1.35; margin-top: 10px; }
     .cnbc-hero-title:hover { color: var(--orange); }
     .cnbc-hero-sub { list-style: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
