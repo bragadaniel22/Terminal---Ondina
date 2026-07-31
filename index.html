@@ -146,56 +146,6 @@
     .etf-weight { width: 48px; text-align: right; color: var(--dim); font-size: 11px; }
     .etf-winret { font-size: 9px; margin-top: 2px; }
 
-    /* MARKOWITZ */
-    .mk-add-row { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); }
-    .mk-add-row input {
-      flex: 1; font-family: inherit; font-size: 11px; color: var(--bright);
-      background: var(--bg); border: 1px solid var(--border-hi); padding: 7px 10px;
-    }
-    .mk-add-row input:focus { outline: none; border-color: var(--orange); }
-    .mk-asset-list { display: flex; flex-direction: column; }
-    .mk-asset-row {
-      display: flex; align-items: center; gap: 10px; padding: 9px 14px;
-      border-bottom: 1px solid var(--border);
-    }
-    .mk-asset-row:last-child { border-bottom: none; }
-    .mk-asset-name { flex: 1; min-width: 0; }
-    .mk-asset-weight { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-    .mk-weight-input {
-      width: 52px; font-family: inherit; font-size: 11px; color: var(--bright);
-      background: var(--bg); border: 1px solid var(--border-hi); padding: 4px 6px; text-align: right;
-    }
-    .mk-weight-input:focus { outline: none; border-color: var(--orange); }
-    .mk-weight-pct { font-size: 10px; color: var(--dim); }
-    .mk-remove-btn {
-      font-family: inherit; background: transparent; border: none; color: var(--dim);
-      cursor: pointer; font-size: 12px; padding: 2px 4px; flex-shrink: 0;
-    }
-    .mk-remove-btn:hover { color: var(--red); }
-    .mk-calc-btn {
-      display: block; width: calc(100% - 24px); margin: 12px; padding: 10px;
-      font-family: inherit; font-size: 10px; letter-spacing: 2px;
-      color: var(--bright); background: rgba(255,102,0,.08); border: 1px solid var(--orange);
-      cursor: pointer; text-transform: uppercase;
-    }
-    .mk-calc-btn:hover:not(:disabled) { background: rgba(255,102,0,.16); }
-    .mk-calc-btn:disabled { opacity: .35; cursor: not-allowed; border-color: var(--border-hi); color: var(--dim); }
-    .mk-status { padding: 0 12px 12px; font-size: 10px; color: var(--dim); }
-    .mk-disclaimer {
-      padding: 8px 12px; margin: 0 12px 10px; font-size: 10px; line-height: 1.6; color: var(--orange);
-      background: rgba(255,102,0,.06); border-left: 2px solid var(--orange);
-    }
-    .mk-disclaimer strong { color: var(--bright); }
-    .mk-results { border-top: 1px solid var(--border); }
-    .mk-table-block { padding: 14px; border-top: 1px solid var(--border); }
-    .mk-table-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; font-weight: bold; }
-    .mk-table-stats { display: flex; gap: 16px; font-size: 10px; color: var(--dim); margin-bottom: 10px; }
-    .mk-table-stats b { color: var(--bright); font-weight: bold; }
-    .mk-alloc-list { display: flex; flex-wrap: wrap; gap: 6px 18px; }
-    .mk-alloc-row { display: flex; gap: 6px; font-size: 10px; }
-    .mk-alloc-row .rname { color: var(--text); }
-    .mk-alloc-row .rval { color: var(--bright); font-weight: bold; }
-
     /* TABS */
     .tabs {
       display: flex; gap: 0; margin-bottom: 14px;
@@ -402,7 +352,6 @@
   <button class="tab-btn active" data-tab="indices" onclick="switchTab(this)">ÍNDICES</button>
   <button class="tab-btn" data-tab="single-names" onclick="switchTab(this)">SINGLE NAMES</button>
   <button class="tab-btn" data-tab="portfolio" onclick="switchTab(this)">PORTFÓLIO</button>
-  <button class="tab-btn" data-tab="simulador" onclick="switchTab(this)">SIMULADOR</button>
   <button class="tab-btn" data-tab="etfs" onclick="switchTab(this)">ETFS INTERNOS</button>
   <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
   <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">BUSCAR</button>
@@ -598,34 +547,34 @@
 
   <!-- ── NTN-B ── -->
   <div class="card card-wide">
-    <div class="card-head"><h2>📊 NTN-B · Curva Inflação (IPCA+)</h2><div style="display:flex;align-items:center;gap:8px;"><span id="ntnb-date">ANBIMA · merc. secundário</span><span class="sources-link" onclick="openNtnbHistory()">📈 histórico</span></div></div>
+    <div class="card-head"><h2>📊 NTN-B · Curva Inflação (IPCA+)</h2><div style="display:flex;align-items:center;gap:8px;"><span id="ntnb-date">ANBIMA · merc. secundário</span><span class="sources-link" onclick="openNtnbHistory()">📈 consolidado</span></div></div>
     <div class="ntnb-grid">
-      <div class="ntnb-cell">
+      <div class="ntnb-cell row-click" onclick="openNtnbHistory('2028')">
         <div class="rname">NTN-B 2028</div>
         <div class="rval hl" id="ntnb-2028">…</div>
         <div class="rsub" id="ntnb-2028-sub">ago/28</div>
       </div>
-      <div class="ntnb-cell">
+      <div class="ntnb-cell row-click" onclick="openNtnbHistory('2029')">
         <div class="rname">NTN-B 2029</div>
         <div class="rval hl" id="ntnb-2029">…</div>
         <div class="rsub" id="ntnb-2029-sub">mai/29</div>
       </div>
-      <div class="ntnb-cell">
+      <div class="ntnb-cell row-click" onclick="openNtnbHistory('2030')">
         <div class="rname">NTN-B 2030</div>
         <div class="rval hl" id="ntnb-2030">…</div>
         <div class="rsub" id="ntnb-2030-sub">ago/30</div>
       </div>
-      <div class="ntnb-cell">
+      <div class="ntnb-cell row-click" onclick="openNtnbHistory('2032')">
         <div class="rname">NTN-B 2032</div>
         <div class="rval hl" id="ntnb-2032">…</div>
         <div class="rsub" id="ntnb-2032-sub">ago/32</div>
       </div>
-      <div class="ntnb-cell">
+      <div class="ntnb-cell row-click" onclick="openNtnbHistory('2035')">
         <div class="rname">NTN-B 2035</div>
         <div class="rval hl" id="ntnb-2035">…</div>
         <div class="rsub" id="ntnb-2035-sub">mai/35</div>
       </div>
-      <div class="ntnb-cell">
+      <div class="ntnb-cell row-click" onclick="openNtnbHistory('2045')">
         <div class="rname">NTN-B 2045</div>
         <div class="rval hl" id="ntnb-2045">…</div>
         <div class="rsub" id="ntnb-2045-sub">mai/45</div>
@@ -762,41 +711,6 @@
   </div>
 </div><!-- /tab-portfolio -->
 
-<div id="tab-simulador" class="tab-panel">
-  <div class="card card-wide">
-    <div class="card-head">
-      <h2>🎯 Fronteira Eficiente · Markowitz</h2>
-      <div class="pf-range" id="mk-range-row">
-        <button class="range-btn" data-mkr="ytd" onclick="mkSelectRange(this)">YTD</button>
-        <button class="range-btn" data-mkr="1y" onclick="mkSelectRange(this)">1A</button>
-        <button class="range-btn active" data-mkr="2y" onclick="mkSelectRange(this)">2A</button>
-        <button class="range-btn" data-mkr="3y" onclick="mkSelectRange(this)">3A</button>
-        <button class="range-btn" data-mkr="5y" onclick="mkSelectRange(this)">5A</button>
-      </div>
-    </div>
-    <div class="mk-add-row">
-      <input type="text" id="mk-ticker-input" placeholder="adicionar ativo… (ex: AAPL, Nvidia, Ibovespa)" onkeydown="if(event.key==='Enter') mkAddAsset()">
-      <button class="range-btn" onclick="mkAddAsset()">+ ADICIONAR</button>
-      <button class="range-btn" onclick="mkAddSingleNames()">MEUS SINGLE NAMES</button>
-    </div>
-    <div id="mk-asset-list" class="mk-asset-list">
-      <div class="row"><div class="rname dim2">adicione pelo menos 2 ativos e clique em calcular</div></div>
-    </div>
-    <button class="mk-calc-btn" id="mk-calc-btn" onclick="mkCalculate()" disabled>▶ CALCULAR FRONTEIRA EFICIENTE</button>
-    <div id="mk-status" class="mk-status"></div>
-    <div id="mk-results" class="mk-results" style="display:none">
-      <div class="pf-chart-box">
-        <div class="pf-chart-title">Risco × Retorno · Otimização Exata (anualizado)</div>
-        <canvas id="mk-chart"></canvas>
-      </div>
-      <div class="mk-disclaimer">
-        ⚠ "Retorno" aqui = <strong>média aritmética anualizada</strong> dos retornos diários (padrão exigido pela matemática de Markowitz) — <strong>difere</strong> do retorno acumulado (CAGR) mostrado na aba PORTFÓLIO e nos cards de Single Names. Não compare os dois números diretamente.
-      </div>
-      <div id="mk-table"></div>
-    </div>
-  </div>
-</div><!-- /tab-simulador -->
-
 <div id="tab-etfs" class="tab-panel">
   <div class="card card-wide">
     <div class="card-head">
@@ -909,13 +823,19 @@
   <div class="modal-box">
     <button class="modal-close" onclick="closeNtnbHistory()">✕</button>
     <div class="modal-header">
-      <div class="modal-title">NTN-B · Histórico de Taxas (IPCA+)</div>
-      <div class="modal-sub"><span class="dim2" style="font-size:10px">ANBIMA · merc. secundário · vértice de cada título</span></div>
+      <div class="modal-title" id="ntnb-history-title">NTN-B · Histórico de Taxas (IPCA+)</div>
+      <div class="modal-sub">
+        <span class="modal-last" id="ntnb-history-last"></span>
+        <span class="modal-chg" id="ntnb-history-chg"></span>
+        <span class="dim2" style="font-size:10px" id="ntnb-history-note">ANBIMA · merc. secundário · vértice de cada título</span>
+      </div>
     </div>
     <div class="modal-range">
+      <button class="range-btn" data-r="5" onclick="loadNtnbHistory(5)">5D</button>
       <button class="range-btn active" data-r="22" onclick="loadNtnbHistory(22)">1M</button>
       <button class="range-btn" data-r="65" onclick="loadNtnbHistory(65)">3M</button>
       <button class="range-btn" data-r="130" onclick="loadNtnbHistory(130)">6M</button>
+      <button class="range-btn" data-r="260" onclick="loadNtnbHistory(260)">1A</button>
     </div>
     <div class="modal-chart-box">
       <div class="modal-status" id="ntnb-history-status"></div>
@@ -960,7 +880,7 @@
       </div>
       <div class="sources-section">
         <h3>📊 NTN-B</h3>
-        <p>ANBIMA, arquivo diário de mercado secundário — taxas indicativas por vencimento. Botão "📈 histórico" no card mostra a evolução das taxas ao longo do tempo (1M/3M/6M), buscando o arquivo diário da ANBIMA de cada pregão do período.</p>
+        <p>ANBIMA, arquivo diário de mercado secundário — taxas indicativas por vencimento. Botão "📈 consolidado" no card mostra a evolução das 6 curvas juntas ao longo do tempo (5D/1M/3M/6M/1A); clicar numa célula individual mostra o histórico só daquele vencimento.</p>
       </div>
       <div class="sources-section">
         <h3>📈 Single Names</h3>
@@ -969,10 +889,6 @@
       <div class="sources-section">
         <h3>📊 Portfólio</h3>
         <p>Histórico de preços via Yahoo Finance. Retorno, volatilidade e Sharpe calculados internamente — sem taxa livre de risco (Rf = 0).</p>
-      </div>
-      <div class="sources-section">
-        <h3>🎯 Simulador · Fronteira Eficiente (Markowitz)</h3>
-        <p>Simulador em que você escolhe os ativos e pesos de uma carteira hipotética e vê qual combinação teria dado o melhor retorno pro risco assumido, com base no histórico (otimização exata de Markowitz, restrita a peso ≥ 0).</p>
       </div>
       <div class="sources-section">
         <h3>🗺 Heatmap</h3>
@@ -1655,8 +1571,8 @@ function getHeatmapGroups() {
     },
     {
       title: 'Europa + Ásia + Emerging Markets', height: 200,
-      tickers: ['^STOXX50E', '^GDAXI', '^N225', '^HSI', '^NSEI', '^AXJO', 'EEM'],
-      labels: { '^STOXX50E': 'STOXX50', '^GDAXI': 'DAX', '^N225': 'NIKKEI', '^HSI': 'HANG SENG', '^NSEI': 'NIFTY', '^AXJO': 'ASX', 'EEM': 'MSCI EM' },
+      tickers: ['^STOXX50E', '^GDAXI', '^N225', '^HSI', '^KS11', '^NSEI', '^AXJO', 'EEM'],
+      labels: { '^STOXX50E': 'STOXX50', '^GDAXI': 'DAX', '^N225': 'NIKKEI', '^HSI': 'HANG SENG', '^KS11': 'KOSPI', '^NSEI': 'NIFTY', '^AXJO': 'ASX', 'EEM': 'MSCI EM' },
     },
     {
       title: 'Commodities e Cripto', height: 160,
@@ -1961,9 +1877,25 @@ const NTNB_MATURITIES = [
   { year: '2045', label: 'mai/45', color: '#ff6600' },
 ];
 
-function openNtnbHistory() {
+let ntnbHistoryFocus = null; // null = mostra as 6 curvas juntas; '2028' etc. = só aquele vencimento
+let ntnbHistoryDays = 22;
+
+// Chamado tanto pelo link geral "📈 consolidado" (sem argumento, mostra as 6 curvas juntas
+// pra comparar) quanto pelo clique em cada célula individual (mostra só aquele vencimento).
+function openNtnbHistory(year) {
+  ntnbHistoryFocus = year || null;
+  const titleEl = document.getElementById('ntnb-history-title');
+  const noteEl = document.getElementById('ntnb-history-note');
+  if (ntnbHistoryFocus) {
+    const m = NTNB_MATURITIES.find(x => x.year === year);
+    titleEl.textContent = `NTN-B ${m ? m.label : year} · Histórico (IPCA+)`;
+    noteEl.textContent = 'ANBIMA · merc. secundário';
+  } else {
+    titleEl.textContent = 'NTN-B · Histórico de Taxas (IPCA+)';
+    noteEl.textContent = 'ANBIMA · merc. secundário · vértice de cada título';
+  }
   document.getElementById('ntnb-history-overlay').classList.add('active');
-  loadNtnbHistory(22);
+  loadNtnbHistory(ntnbHistoryDays);
 }
 
 function closeNtnbHistory() {
@@ -1971,8 +1903,11 @@ function closeNtnbHistory() {
 }
 
 async function loadNtnbHistory(days) {
+  ntnbHistoryDays = days;
   document.querySelectorAll('#ntnb-history-overlay .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === String(days)));
   const statusEl = document.getElementById('ntnb-history-status');
+  const lastEl = document.getElementById('ntnb-history-last');
+  const chgEl = document.getElementById('ntnb-history-chg');
   statusEl.textContent = 'carregando…';
 
   try {
@@ -1982,15 +1917,42 @@ async function loadNtnbHistory(days) {
     if (d.error) throw new Error(d.error);
     const history = d.history || [];
     if (!history.length) throw new Error('sem dados');
-    statusEl.textContent = '';
+
+    // A ANBIMA só mantém alguns meses de arquivo diário nesse endpoint público — pedir
+    // uma janela maior (ex: 1A) não estoura, mas pode devolver menos pregões do que o
+    // esperado. Mostra o período real coberto pra não parecer que faltou dado por erro.
+    const firstDt = history[0].date.slice(0, 5), lastDt = history[history.length - 1].date.slice(0, 5);
+    let info = `${history.length} pregões · ${firstDt} a ${lastDt}`;
+    if (days > 150 && history.length < days * 0.5) {
+      info += ' · ANBIMA não mantém histórico diário mais antigo que isso nesse arquivo público';
+    }
+    statusEl.textContent = info;
+
+    const maturities = ntnbHistoryFocus
+      ? NTNB_MATURITIES.filter(m => m.year === ntnbHistoryFocus)
+      : NTNB_MATURITIES;
 
     const labels = history.map(h => h.date.slice(0, 5)); // DD/MM
-    const datasets = NTNB_MATURITIES.map(m => ({
+    const datasets = maturities.map(m => ({
       label: `NTN-B ${m.label}`,
       data: history.map(h => h.rates?.[m.year] ?? null),
-      borderColor: m.color, backgroundColor: m.color, borderWidth: 1.5,
+      borderColor: m.color, backgroundColor: m.color, borderWidth: ntnbHistoryFocus ? 2 : 1.5,
       pointRadius: 0, tension: .05, fill: false, spanGaps: true,
     }));
+
+    if (ntnbHistoryFocus) {
+      const series = datasets[0].data.filter(v => v != null);
+      if (series.length >= 2) {
+        const first = series[0], last = series[series.length - 1];
+        const chg = last - first;
+        lastEl.textContent = `${num(last, 2)}%`;
+        setC('ntnb-history-chg', `${chg >= 0 ? '+' : ''}${num(chg, 2)} p.p.`, chg >= 0 ? 'pos' : 'neg');
+      } else {
+        lastEl.textContent = ''; chgEl.textContent = ''; chgEl.className = 'modal-chg';
+      }
+    } else {
+      lastEl.textContent = ''; chgEl.textContent = ''; chgEl.className = 'modal-chg';
+    }
 
     if (ntnbHistoryChart) ntnbHistoryChart.destroy();
     const ctx = document.getElementById('ntnb-history-chart').getContext('2d');
@@ -2003,7 +1965,7 @@ async function loadNtnbHistory(days) {
         events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
         plugins: {
           dragRange: { enabled: true },
-          legend: { labels: { color: '#485068', font: { family: 'Courier New', size: 9 }, boxWidth: 10, padding: 8 } },
+          legend: { display: !ntnbHistoryFocus, labels: { color: '#485068', font: { family: 'Courier New', size: 9 }, boxWidth: 10, padding: 8 } },
           tooltip: {
             backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
             titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
@@ -2458,7 +2420,7 @@ async function loadOneEtf(key, etf, range) {
   // diferente dos ativos americanos, então seus timestamps nunca coincidem
   // exatamente com os dos outros. Usar ts bruto fazia a Samsung "entrar e sair" do
   // índice a cada dia, criando um serrilhado artificial no gráfico (mesmo problema
-  // já resolvido no Simulador ao misturar B3+NASDAQ — ver mkAlignSeries).
+  // mesmo tipo de problema que ocorre ao misturar ativos de bolsas com fusos diferentes).
   //
   // Além disso, ativos recém-listados (ex: SK Hynix ADR desde 10/07/2026) têm
   // histórico mais curto que os demais. Em vez de exigir interseção exata de datas
@@ -2707,389 +2669,6 @@ async function loadPortfolio(range) {
     },
     plugins: [labelPlugin],
   });
-}
-
-// ── Markowitz · Fronteira Eficiente ─────────────────────────────────────────────
-// Simulador em memória — nada é salvo em cache/localStorage, então recarregar a
-// página (ou fechar o terminal) já limpa tudo sozinho, sem código extra pra isso.
-let mkAssets = []; // { ticker, name, weight }
-let mkRange = '2y';
-let mkChart = null;
-
-function mkSelectRange(btn) {
-  mkRange = btn.dataset.mkr;
-  btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b === btn));
-}
-
-function mkRenderAssetList() {
-  const el = document.getElementById('mk-asset-list');
-  const calcBtn = document.getElementById('mk-calc-btn');
-  if (!mkAssets.length) {
-    el.innerHTML = '<div class="row"><div class="rname dim2">adicione pelo menos 2 ativos e clique em calcular</div></div>';
-  } else {
-    el.innerHTML = mkAssets.map((a, i) => `
-      <div class="mk-asset-row">
-        <div class="mk-asset-name">
-          <div class="rname">${escapeHtml(a.ticker)}</div>
-          <div class="rsub">${escapeHtml(a.name)}</div>
-        </div>
-        <div class="mk-asset-weight">
-          <input type="number" class="mk-weight-input" value="${a.weight}" min="0" step="1" oninput="mkUpdateWeight(${i}, this.value)">
-          <span class="mk-weight-pct">%</span>
-        </div>
-        <button class="mk-remove-btn" onclick="mkRemoveAsset(${i})" title="remover">✕</button>
-      </div>`).join('');
-  }
-  calcBtn.disabled = mkAssets.length < 2;
-}
-
-function mkUpdateWeight(idx, value) {
-  mkAssets[idx].weight = parseFloat(value) || 0;
-}
-
-function mkRemoveAsset(idx) {
-  mkAssets.splice(idx, 1);
-  mkRenderAssetList();
-  document.getElementById('mk-results').style.display = 'none';
-}
-
-async function mkAddAsset() {
-  const input = document.getElementById('mk-ticker-input');
-  const query = input.value.trim();
-  if (!query) return;
-  const statusEl = document.getElementById('mk-status');
-  statusEl.textContent = 'buscando…';
-  try {
-    const r = await fetch(`/api/quote-search?q=${encodeURIComponent(query)}`);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    const top = (d.quotes || [])[0];
-    if (!top) { statusEl.textContent = `nenhum ativo encontrado pra "${query}"`; return; }
-    if (mkAssets.some(a => a.ticker === top.symbol)) { statusEl.textContent = `${top.symbol} já está na lista`; input.value = ''; return; }
-    mkAssets.push({ ticker: top.symbol, name: top.name, weight: Math.round(100 / (mkAssets.length + 1)) });
-    input.value = '';
-    statusEl.textContent = '';
-    mkRenderAssetList();
-  } catch (e) {
-    statusEl.textContent = 'erro ao buscar ativo';
-    console.error('markowitz add', query, e);
-  }
-}
-
-// ── Atalho: popula direto com os 10 Single Names, peso igual ────────────────────
-const MK_SINGLES_NAMES = {
-  AMZN: 'Amazon.com Inc.', MSFT: 'Microsoft Corporation', NVDA: 'NVIDIA Corporation',
-  ASML: 'ASML Holding N.V.', SMH: 'VanEck Semiconductor ETF', DHR: 'Danaher Corporation',
-  V: 'Visa Inc.', VST: 'Vistra Corp.', GLD: 'SPDR Gold Shares', GOOGL: 'Alphabet Inc.',
-};
-function mkAddSingleNames() {
-  mkAssets = PF_TICKERS.map(t => ({ ticker: t, name: MK_SINGLES_NAMES[t] || t, weight: 10 }));
-  document.getElementById('mk-status').textContent = '';
-  document.getElementById('mk-results').style.display = 'none';
-  mkRenderAssetList();
-}
-
-// ── Matemática: retornos diários, covariância, otimização exata ────────────────
-// Alinha por DIA CALENDÁRIO (não por timestamp exato) — necessário porque ativos
-// de bolsas diferentes (ex: B3 vs NASDAQ) fecham em horários diferentes, então
-// seus timestamps de barra diária nunca coincidem exatamente, mesmo no mesmo dia.
-function mkAlignSeries(allSeries) {
-  const dateKey = ts => new Date(ts * 1000).toISOString().slice(0, 10);
-  const maps = allSeries.map(s => {
-    const m = new Map();
-    s.forEach(d => { const k = dateKey(d.ts); if (!m.has(k)) m.set(k, d.p); });
-    return m;
-  });
-  const keySets = maps.map(m => new Set(m.keys()));
-  const common = [...keySets[0]].filter(k => keySets.every(s => s.has(k))).sort();
-  return {
-    dateKeys: common,
-    series: maps.map(m => common.map(k => m.get(k))),
-  };
-}
-function mkDailyReturns(prices) {
-  return prices.slice(1).map((p, i) => (p - prices[i]) / prices[i]);
-}
-function mkMean(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }
-// Covariância AMOSTRAL (divide por T−1, não por T) — convenção padrão em finanças
-// (estimador não-viesado), usada nas referências de Markowitz consultadas.
-function mkCovariance(a, b, ma, mb) {
-  let s = 0;
-  for (let i = 0; i < a.length; i++) s += (a[i] - ma) * (b[i] - mb);
-  return s / (a.length - 1);
-}
-function mkBuildStats(returnsMatrix) {
-  const n = returnsMatrix.length;
-  const means = returnsMatrix.map(mkMean);
-  const cov = Array.from({ length: n }, () => new Array(n).fill(0));
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) cov[i][j] = mkCovariance(returnsMatrix[i], returnsMatrix[j], means[i], means[j]);
-  }
-  return { means, cov };
-}
-function mkPortfolioStats(w, means, cov, rf = 0) {
-  const n = w.length;
-  let ret = 0;
-  for (let i = 0; i < n; i++) ret += w[i] * means[i];
-  let variance = 0;
-  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) variance += w[i] * w[j] * cov[i][j];
-  const annRet = ret * 252;
-  const annVol = Math.sqrt(Math.max(variance, 0) * 252);
-  const sharpe = annVol > 0 ? (annRet - rf) / annVol : 0;
-  return { ret: annRet, vol: annVol, sharpe };
-}
-// ── Otimização exata (álgebra de matrizes) ──────────────────────────────────────
-// Mesma matemática do Solver do Excel (minimizar variância sujeito a soma dos pesos
-// = 100% e retorno-alvo = R), só que resolvida analiticamente via inversão de matriz,
-// em vez de tentativa e erro por simulação. Fórmula clássica de Markowitz/Merton
-// (duplo-fundo): permite peso negativo (venda a descoberto) — ver nota na metodologia.
-function mkMatInverse(M) {
-  const n = M.length;
-  const A = M.map((row, i) => [...row, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
-  for (let col = 0; col < n; col++) {
-    let pivotRow = col;
-    for (let r = col + 1; r < n; r++) if (Math.abs(A[r][col]) > Math.abs(A[pivotRow][col])) pivotRow = r;
-    [A[col], A[pivotRow]] = [A[pivotRow], A[col]];
-    const pivot = A[col][col];
-    if (Math.abs(pivot) < 1e-12) throw new Error('matriz de covariância não pode ser invertida — ativos redundantes/correlação perfeita ou poucos dados. Tente outra janela ou outros ativos');
-    for (let j = 0; j < 2 * n; j++) A[col][j] /= pivot;
-    for (let r = 0; r < n; r++) {
-      if (r === col) continue;
-      const factor = A[r][col];
-      for (let j = 0; j < 2 * n; j++) A[r][j] -= factor * A[col][j];
-    }
-  }
-  return A.map(row => row.slice(n));
-}
-function mkMatVec(M, v) { return M.map(row => row.reduce((s, x, j) => s + x * v[j], 0)); }
-function mkDot(a, b) { return a.reduce((s, x, i) => s + x * b[i], 0); }
-
-function mkExactFrontierSetup(means, cov) {
-  const n = means.length;
-  const invCov = mkMatInverse(cov);
-  const ones = new Array(n).fill(1);
-  const invCovOnes = mkMatVec(invCov, ones);
-  const invCovMu = mkMatVec(invCov, means);
-  const A = mkDot(ones, invCovOnes);
-  const B = mkDot(ones, invCovMu);
-  const C = mkDot(means, invCovMu);
-  const D = A * C - B * B;
-  return { invCov, A, B, C, D };
-}
-// Peso de menor variância pra um retorno-alvo exato (diário, não anualizado), SEM
-// restrição de sinal — usado internamente pelo método de conjunto ativo abaixo.
-function mkMinVarWeightsForReturn(setup, means, targetRet) {
-  const { invCov, A, B, C, D } = setup;
-  const lambda = (C - B * targetRet) / D;
-  const gamma = (A * targetRet - B) / D;
-  const vec = means.map((m, i) => lambda * 1 + gamma * m);
-  return mkMatVec(invCov, vec);
-}
-
-// ── Restrições: peso ≥ 0 (sem venda a descoberto) e soma = 100% ────────────────
-// Método de conjunto ativo: resolve sem restrição de sinal; se algum peso sair
-// negativo, remove o ativo mais negativo do conjunto "livre" (fixa em 0%) e resolve
-// de novo — repete até todos os pesos ficarem ≥ 0. Converge pro ótimo restrito exato
-// (não é aproximação): a cada remoção, o problema nos ativos remanescentes ainda é
-// resolvido pela mesma fórmula fechada, só que num subconjunto menor.
-function mkEnforceLongOnly(n, solveSubset) {
-  let free = Array.from({ length: n }, (_, i) => i);
-  while (free.length > 1) {
-    const subW = solveSubset(free);
-    let minIdx = -1, minVal = -1e-9;
-    subW.forEach((x, k) => { if (x < minVal) { minVal = x; minIdx = k; } });
-    if (minIdx === -1) {
-      const w = new Array(n).fill(0);
-      free.forEach((origIdx, k) => { w[origIdx] = Math.max(subW[k], 0); });
-      return w;
-    }
-    free.splice(minIdx, 1);
-  }
-  const w = new Array(n).fill(0);
-  w[free[0]] = 1;
-  return w;
-}
-function mkSubMatrix(cov, idx) { return idx.map(i => idx.map(j => cov[i][j])); }
-
-function mkGlobalMinVarPortfolio(means, cov, rf = 0) {
-  const n = means.length;
-  const w = mkEnforceLongOnly(n, free => {
-    const subCov = mkSubMatrix(cov, free);
-    const invCov = mkMatInverse(subCov);
-    const ones = new Array(free.length).fill(1);
-    const invCovOnes = mkMatVec(invCov, ones);
-    const A = mkDot(ones, invCovOnes);
-    return invCovOnes.map(x => x / A);
-  });
-  return { w, ...mkPortfolioStats(w, means, cov, rf) };
-}
-// Carteira de tangência (Máximo Sharpe), restrita a pesos ≥ 0.
-function mkTangencyPortfolio(means, cov, rf) {
-  const n = means.length;
-  const rfDaily = rf / 252;
-  const w = mkEnforceLongOnly(n, free => {
-    const subMeans = free.map(i => means[i]);
-    const subCov = mkSubMatrix(cov, free);
-    const invCov = mkMatInverse(subCov);
-    const excess = subMeans.map(m => m - rfDaily);
-    const invCovExcess = mkMatVec(invCov, excess);
-    const denom = invCovExcess.reduce((s, x) => s + x, 0);
-    return invCovExcess.map(x => x / denom);
-  });
-  return { w, ...mkPortfolioStats(w, means, cov, rf) };
-}
-// Traça a fronteira restrita variando o retorno-alvo entre o mínimo possível
-// (carteira de mínima variância restrita) e o máximo possível long-only (o maior
-// retorno entre os ativos individuais — nenhuma combinação long-only supera isso).
-function mkExactFrontier(means, cov, minVolPortfolio, rf = 0, nPoints = 60) {
-  const n = means.length;
-  const loRetAnn = minVolPortfolio.ret;
-  const hiRetAnn = Math.max(...means) * 252;
-  const points = [];
-  for (let i = 0; i <= nPoints; i++) {
-    const retAnn = loRetAnn + (hiRetAnn - loRetAnn) * (i / nPoints);
-    const w = mkEnforceLongOnly(n, free => {
-      const subMeans = free.map(idx => means[idx]);
-      const subCov = mkSubMatrix(cov, free);
-      const setup = mkExactFrontierSetup(subMeans, subCov);
-      return mkMinVarWeightsForReturn(setup, subMeans, retAnn / 252);
-    });
-    points.push({ w, ...mkPortfolioStats(w, means, cov, rf) });
-  }
-  return points;
-}
-
-async function mkCalculate() {
-  if (mkAssets.length < 2) return;
-  const calcBtn = document.getElementById('mk-calc-btn');
-  const statusEl = document.getElementById('mk-status');
-  calcBtn.disabled = true;
-  statusEl.textContent = 'baixando histórico…';
-
-  try {
-    const results = await Promise.allSettled(mkAssets.map(a => yahooHistory(a.ticker, mkRange)));
-    const validIdx = [];
-    const validSeries = [];
-    results.forEach((r, i) => {
-      if (r.status === 'fulfilled' && r.value.length > 30) { validIdx.push(i); validSeries.push(r.value); }
-    });
-    if (validSeries.length < 2) throw new Error('histórico insuficiente pra pelo menos 2 ativos');
-
-    const validAssets = validIdx.map(i => mkAssets[i]);
-    let skippedMsg = '';
-    if (validIdx.length < mkAssets.length) {
-      const skipped = mkAssets.filter((_, i) => !validIdx.includes(i)).map(a => a.ticker).join(', ');
-      skippedMsg = `sem histórico suficiente pra: ${skipped} — seguindo com os demais. `;
-    }
-
-    const { dateKeys, series } = mkAlignSeries(validSeries);
-    if (dateKeys.length < 30) throw new Error('poucas datas em comum entre os ativos escolhidos — tente outra janela ou outros ativos');
-
-    const returnsMatrix = series.map(mkDailyReturns);
-    const { means, cov } = mkBuildStats(returnsMatrix);
-
-    let rf = 0, rfLabel = 'Rf = 0';
-    try {
-      const fed = await yahoo('^IRX');
-      if (fed.price != null) { rf = fed.price / 100; rfLabel = `Rf = ${num(fed.price, 2)}% (Fed Funds · ^IRX)`; }
-    } catch (e) { console.error('markowitz rf (fed funds)', e); }
-
-    const minVol = mkGlobalMinVarPortfolio(means, cov, rf);
-    const maxSharpe = mkTangencyPortfolio(means, cov, rf);
-    const frontier = mkExactFrontier(means, cov, minVol, rf);
-
-    const userWeightsRaw = validAssets.map(a => a.weight || 0);
-    const wSum = userWeightsRaw.reduce((a, b) => a + b, 0);
-    const userWeights = wSum > 0 ? userWeightsRaw.map(w => w / wSum) : validAssets.map(() => 1 / validAssets.length);
-    const userStats = mkPortfolioStats(userWeights, means, cov, rf);
-
-    mkRenderChart(frontier, minVol, maxSharpe, userStats, rf);
-    mkRenderTable(validAssets, minVol, maxSharpe, userWeights, userStats);
-    document.getElementById('mk-results').style.display = '';
-    statusEl.textContent = skippedMsg + rfLabel;
-  } catch (e) {
-    statusEl.textContent = 'erro ao calcular — ' + e.message;
-    console.error('markowitz calc', e);
-  } finally {
-    calcBtn.disabled = mkAssets.length < 2;
-  }
-}
-
-function mkRenderChart(frontier, minVol, maxSharpe, userStats, rf = 0) {
-  if (mkChart) mkChart.destroy();
-
-  // Linha de Mercado de Capitais (CML): reta de Rf até o ponto de Máximo Sharpe
-  // (ponto de tangência) — qualquer combinação nessa linha (ativo livre de risco +
-  // carteira de tangência) domina a fronteira eficiente em si.
-  const maxVolInFrontier = Math.max(...frontier.map(p => p.vol), maxSharpe.vol, userStats.vol);
-  const cmlSlope = maxSharpe.vol > 0 ? (maxSharpe.ret - rf) / maxSharpe.vol : 0;
-  const cmlEndVol = maxVolInFrontier * 1.05;
-  const cmlLine = [
-    { x: 0, y: rf * 100 },
-    { x: cmlEndVol * 100, y: (rf + cmlSlope * cmlEndVol) * 100 },
-  ];
-
-  const ctx = document.getElementById('mk-chart').getContext('2d');
-  mkChart = new Chart(ctx, {
-    type: 'scatter',
-    data: {
-      datasets: [
-        { type: 'line', label: 'Fronteira Eficiente', data: frontier.map(p => ({ x: p.vol * 100, y: p.ret * 100 })), borderColor: '#dde4f8', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.3 },
-        { type: 'line', label: 'Linha de Mercado de Capitais', data: cmlLine, borderColor: '#44ccff', backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0, tension: 0 },
-        { label: 'Mínima Volatilidade', data: [{ x: minVol.vol * 100, y: minVol.ret * 100 }], backgroundColor: '#00cc77', pointRadius: 11, pointHoverRadius: 13 },
-        { label: 'Máximo Sharpe', data: [{ x: maxSharpe.vol * 100, y: maxSharpe.ret * 100 }], backgroundColor: '#ffcc44', pointRadius: 11, pointHoverRadius: 13 },
-        { label: 'Sua Carteira', data: [{ x: userStats.vol * 100, y: userStats.ret * 100 }], backgroundColor: '#ff6600', pointRadius: 12, pointHoverRadius: 14 },
-      ],
-    },
-    options: {
-      responsive: true, animation: false, maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: '#485068', font: { family: 'Courier New', size: 10 }, boxWidth: 12, padding: 10 } },
-        tooltip: {
-          backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
-          titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
-          titleFont: { family: 'Courier New', size: 9 }, bodyFont: { family: 'Courier New', size: 8 },
-          callbacks: {
-            title: c => c[0].dataset.label,
-            label: c => [`Retorno: ${c.parsed.y.toFixed(1)}%`, `Vol.: ${c.parsed.x.toFixed(1)}%`],
-          },
-        },
-      },
-      scales: {
-        x: {
-          title: { display: true, text: 'Volatilidade (anualizada)', color: '#485068', font: { family: 'Courier New', size: 10 } },
-          ticks: { color: '#485068', font: { family: 'Courier New', size: 10 }, callback: v => v.toFixed(0) + '%' },
-          grid: { color: '#181828' },
-        },
-        y: {
-          title: { display: true, text: 'Retorno (anualizado)', color: '#485068', font: { family: 'Courier New', size: 10 } },
-          ticks: { color: '#485068', font: { family: 'Courier New', size: 10 }, callback: v => v.toFixed(0) + '%' },
-          grid: { color: '#181828' },
-        },
-      },
-    },
-  });
-}
-
-function mkRenderTable(assets, minVol, maxSharpe, userWeights, userStats) {
-  const portfolios = [
-    { title: 'Mínima Volatilidade', color: '#00cc77', weights: minVol.w, stats: minVol },
-    { title: 'Máximo Sharpe', color: '#ffcc44', weights: maxSharpe.w, stats: maxSharpe },
-    { title: 'Sua Carteira', color: '#ff6600', weights: userWeights, stats: userStats },
-  ];
-  const el = document.getElementById('mk-table');
-  el.innerHTML = portfolios.map(p => `
-    <div class="mk-table-block">
-      <div class="mk-table-title" style="color:${p.color}">${p.title}</div>
-      <div class="mk-table-stats">
-        <span>Retorno: <b class="${p.stats.ret >= 0 ? 'pos' : 'neg'}">${pct(p.stats.ret * 100)}</b></span>
-        <span>Vol.: <b>${num(p.stats.vol * 100, 1)}%</b></span>
-        <span>Sharpe: <b>${num(p.stats.sharpe, 2)}</b></span>
-      </div>
-      <div class="mk-alloc-list">
-        ${assets.map((a, i) => `<div class="mk-alloc-row"><span class="rname">${escapeHtml(a.ticker)}</span><span class="rval">${num(p.weights[i] * 100, 1)}%</span></div>`).join('')}
-      </div>
-    </div>`).join('');
 }
 
 // ── Single Names ──────────────────────────────────────────────────────────────
