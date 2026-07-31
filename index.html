@@ -216,6 +216,22 @@
     }
     .news-summary-box.active { display: block; }
 
+    /* CNBC · pacote de destaque (hero + secundários), igual à home da CNBC */
+    .cnbc-hero-wrap { padding: 14px; border-bottom: 1px solid var(--border); display: flex; gap: 14px; flex-wrap: wrap; }
+    .cnbc-hero-card { flex: 1 1 320px; min-width: 280px; cursor: pointer; }
+    .cnbc-hero-img { width: 100%; height: 190px; object-fit: cover; background: var(--border-hi); }
+    .cnbc-hero-title { font-size: 15px; font-weight: bold; color: var(--bright); line-height: 1.35; margin-top: 10px; }
+    .cnbc-hero-title:hover { color: var(--orange); }
+    .cnbc-hero-sub { list-style: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+    .cnbc-hero-sub li { padding: 5px 0; font-size: 11px; }
+    .cnbc-hero-sub a { color: var(--text); text-decoration: none; }
+    .cnbc-hero-sub a:hover { color: var(--orange); }
+    .cnbc-secondary-col { flex: 1 1 240px; min-width: 220px; display: flex; flex-direction: column; gap: 12px; }
+    .cnbc-secondary-card { display: flex; gap: 10px; cursor: pointer; }
+    .cnbc-secondary-img { width: 96px; height: 64px; object-fit: cover; flex-shrink: 0; background: var(--border-hi); }
+    .cnbc-secondary-title { font-size: 11.5px; color: var(--bright); line-height: 1.35; }
+    .cnbc-secondary-card:hover .cnbc-secondary-title { color: var(--orange); }
+
     .feed-subtabs { grid-column: 1 / -1; display: flex; gap: 6px; }
     .feed-subpanel { display: none; }
     .feed-subpanel.active { display: contents; }
@@ -355,6 +371,7 @@
   <button class="tab-btn" data-tab="etfs" onclick="switchTab(this)">ETFS INTERNOS</button>
   <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
   <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">BUSCAR</button>
+  <button class="tab-btn" data-tab="cnbc" onclick="switchTab(this)">CNBC (BETA)</button>
 </nav>
 
 <div id="tab-indices" class="tab-panel active">
@@ -794,6 +811,27 @@
 </div>
 </div><!-- /tab-feed -->
 
+<div id="tab-cnbc" class="tab-panel">
+  <div class="feed-search-wrap">
+    <span class="feed-search-icon">🔍</span>
+    <input type="text" id="cnbc-search-input" placeholder="buscar nas manchetes da CNBC… (ex: Fed, Amazon, tarifas)" oninput="renderCnbcList()">
+  </div>
+  <div class="card card-wide">
+    <div class="card-head">
+      <h2>📰 CNBC · Manchetes · últimas 24h</h2>
+      <span class="sources-link" onclick="loadCnbc(true)">↻ atualizar</span>
+    </div>
+    <div class="etf-disclaimer">⚠️ Mostra tudo que a CNBC publicou nas últimas 24h nesses feeds. Categorias de volume muito alto (ex: Top News) podem não ter as 24h inteiras disponíveis — a CNBC só expõe os ~30 itens mais recentes por feed, sem paginação. Passe o mouse sobre cada categoria pra ver quanto tempo pra trás ela realmente cobre agora.</div>
+    <div class="pf-range" id="cnbc-filter-row">
+      <button class="range-btn active" data-cnbcf="all" onclick="filterCnbc(this, null)">TODAS</button>
+    </div>
+    <div id="cnbc-top-story" style="display:none"></div>
+    <div class="news-list" id="cnbc-news-list">
+      <div class="row"><div class="rname dim2">carregando manchetes…</div></div>
+    </div>
+  </div>
+</div><!-- /tab-cnbc -->
+
 <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this) closeChart()">
   <div class="modal-box">
     <button class="modal-close" onclick="closeChart()">✕</button>
@@ -897,6 +935,10 @@
       <div class="sources-section">
         <h3>📰 Feed</h3>
         <p>Notícias via Yahoo Finance. Resumo por IA (sob demanda, por notícia) via Google Gemini, quando configurado.</p>
+      </div>
+      <div class="sources-section">
+        <h3>📰 CNBC</h3>
+        <p>Manchetes via feeds RSS oficiais da CNBC (Top News, World, Markets, Technology, Finance, Economy, Energy) — busca ao vivo a cada abertura da aba, sem cache/banco. Trazemos só título, link e resumo oficial do feed; o artigo completo abre no site da CNBC.</p>
       </div>
       <div class="sources-section">
         <h3>⏱ Atualização</h3>
@@ -1383,6 +1425,94 @@ async function summarizeNews(storeKey, idx) {
   }
 }
 
+// ── CNBC · agregador de manchetes via RSS ────────────────────────────────────
+let cnbcAllItems = [];
+let cnbcTopStory = null;
+let cnbcCoverage = {};
+let cnbcFilter = null; // null = todas; senão, nome do feed (ex: 'Markets') ou 'Top News'
+
+async function loadCnbc(force) {
+  const listEl = document.getElementById('cnbc-news-list');
+  if (force) listEl.innerHTML = '<div class="row"><div class="rname dim2">atualizando…</div></div>';
+  try {
+    const r = await fetch('/api/cnbc-news');
+    const d = await r.json();
+    if (d.error && !(d.items || []).length) throw new Error(d.error);
+    cnbcAllItems = d.items || [];
+    cnbcTopStory = d.topStory || null;
+    cnbcCoverage = d.coverage || {};
+
+    // pills de categoria vêm de `coverage` (todos os feeds buscados), não só de quem
+    // tem item dentro das últimas 24h — assim uma categoria de baixo volume não some
+    // da lista de filtros só porque não publicou nada nas últimas 24h.
+    const feeds = Object.keys(cnbcCoverage);
+    const filterRow = document.getElementById('cnbc-filter-row');
+    filterRow.innerHTML = `
+      <button class="range-btn ${!cnbcFilter ? 'active' : ''}" onclick="filterCnbc(this, null)">TODAS</button>
+      ${feeds.map(f => {
+        const cov = cnbcCoverage[f];
+        const title = cov?.hoursAvailable != null ? `feed cobre ${cov.hoursAvailable < 24 ? 'só ' : ''}${num(cov.hoursAvailable, 1)}h pra trás` : '';
+        return `<button class="range-btn ${cnbcFilter === f ? 'active' : ''}" title="${jsAttrSafe(title)}" onclick="filterCnbc(this, '${jsAttrSafe(f)}')">${escapeHtml(f).toUpperCase()}</button>`;
+      }).join('')}
+    `;
+
+    renderCnbcList();
+  } catch (e) {
+    listEl.innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar manchetes da CNBC</div></div>';
+    console.error('cnbc news', e);
+  }
+}
+
+function filterCnbc(btn, feed) {
+  cnbcFilter = feed;
+  document.querySelectorAll('#cnbc-filter-row .range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCnbcList();
+}
+
+function renderCnbcList() {
+  let items = cnbcFilter ? cnbcAllItems.filter(it => it.feed === cnbcFilter) : cnbcAllItems;
+
+  const query = document.getElementById('cnbc-search-input')?.value.trim().toLowerCase();
+  if (query) {
+    items = items.filter(it =>
+      it.title?.toLowerCase().includes(query) || it.summary?.toLowerCase().includes(query)
+    );
+  }
+
+  renderCnbcTopStory(!query);
+  renderNewsList(items, 'cnbc', 'cnbc-news-list');
+}
+
+// Pacote de destaque (hero + 2 secundários, igual à home da CNBC) — só aparece na
+// categoria "TOP NEWS" e some durante uma busca (a busca vale pra lista inteira).
+function renderCnbcTopStory(show) {
+  const box = document.getElementById('cnbc-top-story');
+  if (!show || cnbcFilter !== 'Top News' || !cnbcTopStory) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+  const { hero, secondary } = cnbcTopStory;
+  box.style.display = '';
+  box.innerHTML = `
+    <div class="cnbc-hero-wrap">
+      <div class="cnbc-hero-card" onclick="window.open('${jsAttrSafe(hero.link)}','_blank')">
+        ${hero.image ? `<img class="cnbc-hero-img" src="${hero.image}" loading="lazy" onerror="this.style.display='none'">` : ''}
+        <div class="cnbc-hero-title">${escapeHtml(hero.title)}</div>
+        ${hero.subItems?.length ? `<ul class="cnbc-hero-sub">${hero.subItems.map(s => `<li><a href="${s.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a></li>`).join('')}</ul>` : ''}
+      </div>
+      <div class="cnbc-secondary-col">
+        ${(secondary || []).map(s => `
+          <div class="cnbc-secondary-card" onclick="window.open('${jsAttrSafe(s.link)}','_blank')">
+            ${s.image ? `<img class="cnbc-secondary-img" src="${s.image}" loading="lazy" onerror="this.style.display='none'">` : ''}
+            <div class="cnbc-secondary-title">${escapeHtml(s.title)}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
 async function loadFeed() {
   try {
     const items = await fetchMarketNews();
@@ -1542,6 +1672,7 @@ let pfLoaded = false;
 let feedLoaded = false;
 let heatmapLoaded = false;
 let etfLoaded = false;
+let cnbcLoaded = false;
 function switchTab(btn) {
   const name = btn.dataset.tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -1553,6 +1684,7 @@ function switchTab(btn) {
   if (name === 'etfs'         && !etfLoaded)     { etfLoaded = true; loadEtfs('3mo'); }
   if (name === 'heatmap'      && !heatmapLoaded) { heatmapLoaded = true; loadHeatmap(); }
   if (name === 'feed'         && !feedLoaded)    { feedLoaded = true; loadFeed(); }
+  if (name === 'cnbc'         && !cnbcLoaded)    { cnbcLoaded = true; loadCnbc(); }
 }
 
 // ── Heatmap · Portfólio ─────────────────────────────────────────────────────
