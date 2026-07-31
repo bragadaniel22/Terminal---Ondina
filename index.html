@@ -372,6 +372,7 @@
   <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
   <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">BUSCAR</button>
   <button class="tab-btn" data-tab="cnbc" onclick="switchTab(this)">CNBC (BETA)</button>
+  <button class="tab-btn" data-tab="bonds" onclick="switchTab(this)">BONDS (BETA)</button>
 </nav>
 
 <div id="tab-indices" class="tab-panel active">
@@ -832,6 +833,19 @@
     </div>
   </div>
 </div><!-- /tab-cnbc -->
+
+<div id="tab-bonds" class="tab-panel">
+  <div class="card card-wide">
+    <div class="card-head">
+      <h2>💵 Bonds · Carteira</h2>
+      <span class="sources-link" onclick="loadBonds(true)">↻ atualizar</span>
+    </div>
+    <div class="etf-disclaimer">⚠️ Preço via bondterminal.com (fonte pública, não-oficial — pode mudar sem aviso). Só aparecem aqui os bonds da carteira que essa fonte realmente tem preço; o resto foi descartado. "🔴 live" = preço em tempo real; "📅 histórico" = último fechamento disponível (data ao lado).</div>
+    <div id="bonds-list">
+      <div class="row"><div class="rname dim2">carregando…</div></div>
+    </div>
+  </div>
+</div><!-- /tab-bonds -->
 
 <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this) closeChart()">
   <div class="modal-box">
@@ -1667,6 +1681,7 @@ let feedLoaded = false;
 let heatmapLoaded = false;
 let etfLoaded = false;
 let cnbcLoaded = false;
+let bondsLoaded = false;
 function switchTab(btn) {
   const name = btn.dataset.tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -1679,6 +1694,36 @@ function switchTab(btn) {
   if (name === 'heatmap'      && !heatmapLoaded) { heatmapLoaded = true; loadHeatmap(); }
   if (name === 'feed'         && !feedLoaded)    { feedLoaded = true; loadFeed(); }
   if (name === 'cnbc'         && !cnbcLoaded)    { cnbcLoaded = true; loadCnbc(); }
+  if (name === 'bonds'        && !bondsLoaded)   { bondsLoaded = true; loadBonds(); }
+}
+
+async function loadBonds(force) {
+  const el = document.getElementById('bonds-list');
+  if (force) el.innerHTML = '<div class="row"><div class="rname dim2">atualizando…</div></div>';
+  try {
+    const r = await fetch('/api/bonds');
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const bonds = d.bonds || [];
+    if (!bonds.length) { el.innerHTML = '<div class="row"><div class="rname err">nenhum bond disponível nessa fonte agora</div></div>'; return; }
+
+    const regions = [...new Set(bonds.map(b => b.region))];
+    el.innerHTML = regions.map(region => `
+      <div class="section-div">${escapeHtml(region)}</div>
+      ${bonds.filter(b => b.region === region).map(b => {
+        const srcBadge = b.priceSource === 'live' ? '🔴 live' : `📅 ${b.priceDate || 'histórico'}`;
+        const chg = b.changePercent != null ? pct(b.changePercent) : '';
+        const chgCls = b.changePercent >= 0 ? 'pos' : (b.changePercent < 0 ? 'neg' : 'dim2');
+        return `<div class="row">
+          <div><div class="rname">${escapeHtml(b.label)}</div><div class="rsub">${b.isin} · ${srcBadge}</div></div>
+          <div class="rright"><div class="rval">${num(b.price, 2)}</div><div class="rchg ${chgCls}">${chg}</div></div>
+        </div>`;
+      }).join('')}
+    `).join('') + `<div class="row"><div class="rsub dim2">${d.totalAvailable} de ${d.totalRequested} bonds da carteira disponíveis nessa fonte</div></div>`;
+  } catch (e) {
+    el.innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar bonds</div></div>';
+    console.error('bonds', e);
+  }
 }
 
 // ── Heatmap · Portfólio ─────────────────────────────────────────────────────
