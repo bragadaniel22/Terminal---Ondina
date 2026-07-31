@@ -821,9 +821,10 @@
       <h2>📰 CNBC · Manchetes · últimas 24h</h2>
       <span class="sources-link" onclick="loadCnbc(true)">↻ atualizar</span>
     </div>
-    <div class="etf-disclaimer">⚠️ Mostra tudo que a CNBC publicou nas últimas 24h nesses feeds. Categorias de volume muito alto (ex: Top News) podem não ter as 24h inteiras disponíveis — a CNBC só expõe os ~30 itens mais recentes por feed, sem paginação. Passe o mouse sobre cada categoria pra ver quanto tempo pra trás ela realmente cobre agora.</div>
+    <div class="etf-disclaimer">⚠️ Mostra tudo que a CNBC publicou nas últimas 24h nesses feeds (Top News, World, Markets, Technology, Finance, Economy, Energy) — TODAS junta tudo em ordem cronológica, TOP NEWS mostra só as principais, com o pacote de destaque.</div>
     <div class="pf-range" id="cnbc-filter-row">
       <button class="range-btn active" data-cnbcf="all" onclick="filterCnbc(this, null)">TODAS</button>
+      <button class="range-btn" data-cnbcf="Top News" onclick="filterCnbc(this, 'Top News')">TOP NEWS</button>
     </div>
     <div id="cnbc-top-story" style="display:none"></div>
     <div class="news-list" id="cnbc-news-list">
@@ -1442,19 +1443,12 @@ async function loadCnbc(force) {
     cnbcTopStory = d.topStory || null;
     cnbcCoverage = d.coverage || {};
 
-    // pills de categoria vêm de `coverage` (todos os feeds buscados), não só de quem
-    // tem item dentro das últimas 24h — assim uma categoria de baixo volume não some
-    // da lista de filtros só porque não publicou nada nas últimas 24h.
-    const feeds = Object.keys(cnbcCoverage);
-    const filterRow = document.getElementById('cnbc-filter-row');
-    filterRow.innerHTML = `
-      <button class="range-btn ${!cnbcFilter ? 'active' : ''}" onclick="filterCnbc(this, null)">TODAS</button>
-      ${feeds.map(f => {
-        const cov = cnbcCoverage[f];
-        const title = cov?.hoursAvailable != null ? `feed cobre ${cov.hoursAvailable < 24 ? 'só ' : ''}${num(cov.hoursAvailable, 1)}h pra trás` : '';
-        return `<button class="range-btn ${cnbcFilter === f ? 'active' : ''}" title="${jsAttrSafe(title)}" onclick="filterCnbc(this, '${jsAttrSafe(f)}')">${escapeHtml(f).toUpperCase()}</button>`;
-      }).join('')}
-    `;
+    // Só duas opções: TODAS (cronológico, tudo junto) e TOP NEWS (com o pacote de
+    // destaque). As outras categorias (World, Markets, Tech, Finance, Economy, Energy)
+    // continuam sendo buscadas no back-end — só não aparecem como filtro na interface.
+    document.querySelectorAll('#cnbc-filter-row .range-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.cnbcf === (cnbcFilter || 'all'));
+    });
 
     renderCnbcList();
   } catch (e) {
