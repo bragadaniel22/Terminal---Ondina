@@ -4,11 +4,18 @@ export default async function handler(req, res) {
 
   const TARGETS = ['20280815', '20290515', '20300815', '20320815', '20350515', '20450515'];
   const requested = parseInt(req.query.days, 10);
+  // até 1 ano de pregões (260 dias úteis)
+  const spanDays = Math.min(isNaN(requested) ? 65 : requested, 260);
+  const allBizDays = lastBusinessDays(spanDays); // mais recente primeiro
+
   // trava de segurança: cada dia é um arquivo ANBIMA buscado individualmente (não existe
-  // endpoint de histórico em lote), então limitamos a janela pra não estourar o timeout
-  // da função serverless nem gerar centenas de requisições de uma vez.
-  const days = Math.min(isNaN(requested) ? 65 : requested, 130);
-  const dates = lastBusinessDays(days);
+  // endpoint de histórico em lote). Pra janelas maiores (6M/1A), amostramos 1 em cada N
+  // dias em vez de buscar todos — mantém o total de requisições limitado (~90 no pior
+  // caso) sem estourar o timeout da função serverless. Janelas menores (5D/1M/3M) sempre
+  // saem em resolução diária completa, já que cabem dentro do limite sozinhas.
+  const MAX_SAMPLES = 90;
+  const stride = Math.max(1, Math.ceil(spanDays / MAX_SAMPLES));
+  const dates = allBizDays.filter((_, i) => i % stride === 0);
 
   const results = await Promise.allSettled(dates.map(async (dt) => {
     const [day, month, year] = dt.split('/');
