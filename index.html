@@ -1917,16 +1917,7 @@ async function loadNtnbHistory(days) {
     if (d.error) throw new Error(d.error);
     const history = d.history || [];
     if (!history.length) throw new Error('sem dados');
-
-    // A ANBIMA só mantém alguns meses de arquivo diário nesse endpoint público — pedir
-    // uma janela maior (ex: 1A) não estoura, mas pode devolver menos pregões do que o
-    // esperado. Mostra o período real coberto pra não parecer que faltou dado por erro.
-    const firstDt = history[0].date.slice(0, 5), lastDt = history[history.length - 1].date.slice(0, 5);
-    let info = `${history.length} pregões · ${firstDt} a ${lastDt}`;
-    if (days > 150 && history.length < days * 0.5) {
-      info += ' · ANBIMA não mantém histórico diário mais antigo que isso nesse arquivo público';
-    }
-    statusEl.textContent = info;
+    statusEl.textContent = '';
 
     const maturities = ntnbHistoryFocus
       ? NTNB_MATURITIES.filter(m => m.year === ntnbHistoryFocus)
