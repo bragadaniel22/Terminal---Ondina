@@ -1481,7 +1481,7 @@ function renderCnbcList() {
   }
 
   renderCnbcTopStory(!query);
-  renderNewsList(items, 'cnbc', 'cnbc-news-list');
+  renderNewsList(items.map(it => ({ ...it, thumbnail: it.image })), 'cnbc', 'cnbc-news-list');
 }
 
 // Pacote de destaque (hero + 2 secundários, igual à home da CNBC) — só aparece na
