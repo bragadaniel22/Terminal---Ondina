@@ -1,7 +1,10 @@
 // Preço + analytics (yield, duration, G-spread) de bonds via API oficial autenticada
 // do bondterminal.com (v1, com API key — bem mais completa que o endpoint público que
-// usávamos antes). Buscamos todos os ISINs da carteira em paralelo e devolvemos só os
-// que a fonte realmente cobre — o resto é descartado silenciosamente.
+// usávamos antes). Buscamos todos os ISINs da carteira em paralelo. SEMPRE devolvemos
+// os 16 ISINs da carteira nessa resposta (metadados region/label/isin não dependem da
+// fonte) — quando a fonte não retorna preço pra um bond, ele vem com `available: false`
+// e sem os campos de preço/analytics, em vez de ser descartado. O front-end decide o que
+// fazer (cai pro último dado em cache local) — ver `loadBonds()` em index.html.
 const BONDS = [
   { region: 'Brasil', label: 'Eletrobrás 30', isin: 'USP22835AB13' },
   { region: 'Brasil', label: 'Rede Dor 30', isin: 'USL7915TAA09' },
@@ -49,13 +52,24 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   const apiKey = process.env.BONDS_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'BONDS_API_KEY não configurada' });
+  if (!apiKey) {
+    // Sem a chave configurada, ainda devolvemos o esqueleto completo da carteira
+    // (region/label/isin) pra o front-end poder cair pro cache local em vez de
+    // simplesmente não ter nenhum ISIN pra mostrar.
+    return res.json({
+      bonds: BONDS.map((b) => ({ ...b, available: false })),
+      totalRequested: BONDS.length,
+      totalAvailable: 0,
+      error: 'BONDS_API_KEY não configurada',
+    });
+  }
 
   const results = await Promise.allSettled(BONDS.map(async (b) => {
     const d = await fetchAnalytics(b.isin, apiKey);
-    if (!d) return null;
+    if (!d) return { ...b, available: false };
     return {
       ...b,
+      available: true,
       price: d.price,
       priceDate: d.market?.timestamp || null,
       changePercent: d.market?.change?.percent1D ?? null,
@@ -66,9 +80,8 @@ export default async function handler(req, res) {
     };
   }));
 
-  const bonds = results
-    .map((r) => (r.status === 'fulfilled' ? r.value : null))
-    .filter(Boolean);
+  const bonds = results.map((r, i) => (r.status === 'fulfilled' ? r.value : { ...BONDS[i], available: false }));
+  const totalAvailable = bonds.filter((b) => b.available).length;
 
-  return res.json({ bonds, totalRequested: BONDS.length, totalAvailable: bonds.length });
+  return res.json({ bonds, totalRequested: BONDS.length, totalAvailable });
 }
