@@ -237,18 +237,24 @@ const EXCLUDE_RE = buildKeywordRegex(EXCLUDE_KEYWORDS);
 // precisar remover nada da lista — uma notícia de verdade sobre o tema costuma trazer mais de
 // um termo junto (ex: "Selic" + "Copom", ou "Nvidia" + "data center").
 const MIN_KEYWORD_MATCHES = 2;
+// "Top Picks" — sub-aba mais exigente (ver index.html), matéria com 3+ termos distintos.
+const TOP_PICK_MIN_MATCHES = 3;
 
-function matchesKeywords(title, summary) {
-  const text = normalize(`${title} ${summary}`);
-  if (EXCLUDE_RE.test(text)) return false;
+// Conta quantas palavras-chave DISTINTAS batem (sem early-exit, pra saber tanto se qualifica
+// pra entrar na lista quanto se qualifica pro Top Picks, mais exigente).
+function countKeywordMatches(text) {
   let count = 0;
   for (const re of KEYWORD_PATTERNS) {
-    if (re.test(text)) {
-      count++;
-      if (count >= MIN_KEYWORD_MATCHES) return true;
-    }
+    if (re.test(text)) count++;
   }
-  return false;
+  return count;
+}
+
+function evaluateKeywords(title, summary) {
+  const text = normalize(`${title} ${summary}`);
+  if (EXCLUDE_RE.test(text)) return { include: false, topPick: false };
+  const count = countKeywordMatches(text);
+  return { include: count >= MIN_KEYWORD_MATCHES, topPick: count >= TOP_PICK_MIN_MATCHES };
 }
 
 // ── Limpeza de título/resumo (mesma lógica do fetcher.py) ───────────────────────────────────
@@ -381,11 +387,12 @@ async function fetchSource(source) {
       if (summary.startsWith(title)) summary = summary.slice(title.length).trim();
       if (summary.length <= source.name.length + 2) summary = '';
 
-      if (!matchesKeywords(title, summary)) continue;
+      const { include, topPick } = evaluateKeywords(title, summary);
+      if (!include) continue;
 
       items.push({
         source: source.name, region: source.region, title, link: raw.link,
-        publisher: source.name, summary, time: raw.time,
+        publisher: source.name, summary, time: raw.time, topPick,
       });
     }
   });
