@@ -1437,11 +1437,7 @@ function renderNewsList(items, storeKey, containerId) {
   }
   el.innerHTML = items.map((n, i) => {
     const d = n.time ? new Date(n.time * 1000) : null;
-    const thumb = n.thumbnail
-      ? `<img class="news-thumb" src="${n.thumbnail}" loading="lazy" onerror="this.style.display='none'">`
-      : `<div class="news-thumb"></div>`;
     return `<div class="news-item">
-      ${thumb}
       <div class="news-body">
         <a class="news-title" href="${n.link}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a>
         <div class="news-meta">${escapeHtml(n.publisher || 'Yahoo Finance')}${d ? ' · ' + fmtShortDateTime(d) : ''}</div>
@@ -1524,7 +1520,7 @@ function renderCnbcList() {
   }
 
   renderCnbcTopStory(!query);
-  renderNewsList(items.map(it => ({ ...it, thumbnail: it.image })), 'cnbc', 'cnbc-news-list');
+  renderNewsList(items, 'cnbc', 'cnbc-news-list');
 }
 
 // Pacote de destaque (hero + 2 secundários, igual à home da CNBC) — só aparece na
