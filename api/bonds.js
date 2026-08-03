@@ -1,6 +1,7 @@
-// Preço de bonds via API interna (não-oficial, pode mudar) do bondterminal.com.
-// Buscamos todos os ISINs da carteira em paralelo e devolvemos só os que têm preço —
-// o resto é descartado silenciosamente porque simplesmente não existem nessa fonte.
+// Preço + analytics (yield, duration, G-spread) de bonds via API oficial autenticada
+// do bondterminal.com (v1, com API key — bem mais completa que o endpoint público que
+// usávamos antes). Buscamos todos os ISINs da carteira em paralelo e devolvemos só os
+// que a fonte realmente cobre — o resto é descartado silenciosamente.
 const BONDS = [
   { region: 'Brasil', label: 'Eletrobrás 30', isin: 'USP22835AB13' },
   { region: 'Brasil', label: 'Rede Dor 30', isin: 'USL7915TAA09' },
@@ -24,19 +25,19 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-// A fonte usa cache + circuit breaker próprios — um bond que tem preço pode devolver
-// "unavailable" num blip passageiro (cache expirado + refetch upstream falhou naquele
-// instante). Em vez de descartar na primeira tentativa, tenta de novo algumas vezes
-// antes de considerar realmente indisponível — isso é o que estava causando a lista
-// mudar a cada atualização.
-async function fetchLivePrice(isin, attempts = 3) {
+// A fonte pode falhar num blip passageiro pro mesmo bond — tenta de novo antes de
+// considerar realmente indisponível (mesmo comportamento que já tínhamos).
+async function fetchAnalytics(isin, apiKey, attempts = 3) {
   for (let i = 0; i < attempts; i++) {
     try {
-      const r = await fetch(`https://bondterminal.com/api/bonds/live-price/${encodeURIComponent(isin)}`, {
-        headers: { 'User-Agent': UA },
+      const r = await fetch(`https://bondterminal.com/api/v1/bonds/${encodeURIComponent(isin)}/analytics`, {
+        headers: { 'User-Agent': UA, 'Authorization': `Bearer ${apiKey}` },
       });
-      const d = await r.json();
-      if (d.price != null && d.priceSource !== 'unavailable') return d;
+      if (r.status === 404) return null; // bond não coberto por essa fonte — não adianta repetir
+      if (r.ok) {
+        const d = await r.json();
+        if (d.price != null) return d;
+      }
     } catch (_) {}
     if (i < attempts - 1) await sleep(500 + i * 300);
   }
@@ -47,15 +48,21 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-store');
 
+  const apiKey = process.env.BONDTERMINAL_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'BONDTERMINAL_API_KEY não configurada' });
+
   const results = await Promise.allSettled(BONDS.map(async (b) => {
-    const d = await fetchLivePrice(b.isin);
+    const d = await fetchAnalytics(b.isin, apiKey);
     if (!d) return null;
     return {
       ...b,
       price: d.price,
-      priceSource: d.priceSource, // 'live' | 'historical' — nunca chamamos histórico de "negociado agora"
-      priceDate: d.historicalPriceDate || null,
-      changePercent: d.changePercent ?? d.changes?.percent1D ?? null,
+      priceDate: d.market?.timestamp || null,
+      changePercent: d.market?.change?.percent1D ?? null,
+      ytw: d.yields?.ytw ?? null,
+      duration: d.risk?.modifiedDuration ?? null,
+      gSpread: d.spreads?.gSpread ?? null,
+      analytics: d, // guardado inteiro pro popup de Key Metrics (nenhuma chamada extra)
     };
   }));
 
