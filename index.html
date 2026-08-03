@@ -396,12 +396,12 @@
       <div class="rright"><div class="rval" id="ibov-val">…</div><div class="rchg" id="ibov-chg">—</div></div>
     </div>
 
-    <div class="row">
+    <div class="row row-click" onclick="openDiHistory('DI1F30','DI FUTURO JAN/30')">
       <div><div class="rname">DI FUTURO JAN/30</div><div class="rsub" id="di30-sub">B3 · DI1F30</div></div>
       <div class="rright"><div class="rval hl" id="di30-val">…</div><div class="rchg" id="di30-chg">% a.a.</div></div>
     </div>
 
-    <div class="row">
+    <div class="row row-click" onclick="openDiHistory('DI1F35','DI FUTURO JAN/35')">
       <div><div class="rname">DI FUTURO JAN/35</div><div class="rsub" id="di35-sub">B3 · DI1F35</div></div>
       <div class="rright"><div class="rval hl" id="di35-val">…</div><div class="rchg" id="di35-chg">% a.a.</div></div>
     </div>
@@ -883,6 +883,28 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="di-history-overlay" onclick="if(event.target===this) closeDiHistory()">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeDiHistory()">✕</button>
+    <div class="modal-header">
+      <div class="modal-title" id="di-history-title">—</div>
+      <div class="modal-sub">
+        <span class="modal-last" id="di-history-last"></span>
+        <span class="modal-chg" id="di-history-chg"></span>
+        <span class="dim2" style="font-size:10px">ADVFN · fechamento diário (delayed, ~3 meses de histórico)</span>
+      </div>
+    </div>
+    <div class="modal-range">
+      <button class="range-btn active" data-r="22" onclick="loadDiHistory(22)">1M</button>
+      <button class="range-btn" data-r="65" onclick="loadDiHistory(65)">3M</button>
+    </div>
+    <div class="modal-chart-box">
+      <div class="modal-status" id="di-history-status"></div>
+      <canvas id="di-history-chart"></canvas>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="sources-overlay" onclick="if(event.target===this) closeSources()">
   <div class="modal-box sources-box">
     <button class="modal-close" onclick="closeSources()">✕</button>
@@ -1287,7 +1309,85 @@ function renderOneDI(d, fromCache, pfx, symbol) {
   if (!fromCache && d.date) {
     tag = ` · ${d.date.slice(8,10)}/${d.date.slice(5,7)} ${d.date.slice(11,16)}`;
   }
-  setSub(pfx+'-sub', `B3 · ${symbol}` + tag);
+  const src = !fromCache && d.source === 'tradingview' ? ' · via TradingView (B3 fora do ar)' : '';
+  setSub(pfx+'-sub', `B3 · ${symbol}` + tag + src);
+}
+
+// ── DI Futuro · gráfico de histórico ─────────────────────────────────────────
+// A ADVFN devolve sempre a mesma janela fixa (~64 pregões, ~3 meses) num único request —
+// diferente do NTN-B (que busca dia a dia na ANBIMA), aqui buscamos uma vez por símbolo e
+// só fatiamos localmente pro range escolhido, sem bater de novo na API a cada clique de botão.
+let diHistoryChart = null;
+let diHistorySymbol = null;
+const diHistoryCache = {}; // symbol -> [{date, value}, ...] (histórico completo já buscado)
+
+function openDiHistory(symbol, label) {
+  diHistorySymbol = symbol;
+  document.getElementById('di-history-title').textContent = `${label} · Histórico`;
+  document.getElementById('di-history-overlay').classList.add('active');
+  loadDiHistory(22);
+}
+
+function closeDiHistory() {
+  document.getElementById('di-history-overlay')?.classList.remove('active');
+}
+
+async function loadDiHistory(days) {
+  document.querySelectorAll('#di-history-overlay .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === String(days)));
+  const statusEl = document.getElementById('di-history-status');
+  const lastEl = document.getElementById('di-history-last');
+  const chgEl = document.getElementById('di-history-chg');
+  statusEl.textContent = 'carregando…';
+
+  try {
+    if (!diHistoryCache[diHistorySymbol]) {
+      const r = await fetch(`/api/di-history?symbol=${diHistorySymbol}`);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      if (!d.history?.length) throw new Error('sem histórico');
+      diHistoryCache[diHistorySymbol] = d.history;
+    }
+    const full = diHistoryCache[diHistorySymbol];
+    const history = full.slice(-days);
+    statusEl.textContent = '';
+
+    const labels = history.map(h => fmtDate(new Date(h.date * 1000)));
+    const prices = history.map(h => h.value);
+    const first = prices[0], last = prices[prices.length - 1];
+    const chg = last - first;
+    lastEl.textContent = `${num(last, 2)}%`;
+    setC('di-history-chg', `${chg >= 0 ? '+' : ''}${num(chg, 2)} p.p.`, chg >= 0 ? 'pos' : 'neg');
+
+    const lineColor = chg >= 0 ? '#00cc77' : '#ff3344';
+    if (diHistoryChart) diHistoryChart.destroy();
+    const ctx = document.getElementById('di-history-chart').getContext('2d');
+    diHistoryChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [{ data: prices, borderColor: lineColor, backgroundColor: lineColor, borderWidth: 1.5, pointRadius: 0, tension: .05, fill: false }] },
+      options: {
+        responsive: true, animation: false, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
+        plugins: {
+          dragRange: { enabled: true },
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0c0c18', borderColor: '#252540', borderWidth: 1,
+            titleColor: '#a8b4cc', bodyColor: '#a8b4cc',
+            titleFont: { family: 'Courier New', size: 9 }, bodyFont: { family: 'Courier New', size: 9 },
+            callbacks: { label: c => `${num(c.parsed.y, 2)}%` },
+          },
+        },
+        scales: {
+          x: { ticks: { color: '#485068', font: { family: 'Courier New', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#181828' } },
+          y: { ticks: { color: '#485068', font: { family: 'Courier New', size: 9 }, callback: v => v.toFixed(1) + '%' }, grid: { color: '#181828' } },
+        },
+      },
+    });
+  } catch (e) {
+    statusEl.textContent = 'erro ao carregar';
+    console.error('DI histórico', e);
+  }
 }
 
 // ── Pré-Mercado US ───────────────────────────────────────────────────────────
@@ -2120,7 +2220,7 @@ function renderTickerNewsList(items) {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); closeNtnbHistory(); }
+  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); closeNtnbHistory(); closeDiHistory(); }
 });
 
 // Formata "YYYY-MM-DD" direto como texto (sem passar por Date) — evita que o fuso
