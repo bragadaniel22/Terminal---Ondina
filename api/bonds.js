@@ -29,22 +29,32 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 // A fonte pode falhar num blip passageiro pro mesmo bond — tenta de novo antes de
-// considerar realmente indisponível (mesmo comportamento que já tínhamos).
+// considerar realmente indisponível (mesmo comportamento que já tínhamos). Guarda o
+// motivo da última falha (`lastReason`) só pra diagnóstico — não afeta o comportamento,
+// mas ajuda a distinguir "chave inválida" (401 uniforme em todos os bonds) de "fonte sem
+// esse ISIN" (404) ou de instabilidade real da fonte.
 async function fetchAnalytics(isin, apiKey, attempts = 3) {
+  let lastReason = null;
   for (let i = 0; i < attempts; i++) {
     try {
       const r = await fetch(`https://bondterminal.com/api/v1/bonds/${encodeURIComponent(isin)}/analytics`, {
         headers: { 'User-Agent': UA, 'Authorization': `Bearer ${apiKey}` },
       });
-      if (r.status === 404) return null; // bond não coberto por essa fonte — não adianta repetir
+      if (r.status === 404) return { data: null, reason: '404 (sem cobertura pra esse ISIN)' };
       if (r.ok) {
         const d = await r.json();
-        if (d.price != null) return d;
+        if (d.price != null) return { data: d, reason: null };
+        lastReason = 'HTTP 200 sem price no payload';
+      } else {
+        const body = await r.text().catch(() => '');
+        lastReason = `HTTP ${r.status}${body ? ': ' + body.slice(0, 150) : ''}`;
       }
-    } catch (_) {}
+    } catch (e) {
+      lastReason = `exceção: ${e.message}`;
+    }
     if (i < attempts - 1) await sleep(500 + i * 300);
   }
-  return null;
+  return { data: null, reason: lastReason };
 }
 
 export default async function handler(req, res) {
@@ -65,8 +75,8 @@ export default async function handler(req, res) {
   }
 
   const results = await Promise.allSettled(BONDS.map(async (b) => {
-    const d = await fetchAnalytics(b.isin, apiKey);
-    if (!d) return { ...b, available: false };
+    const { data: d, reason } = await fetchAnalytics(b.isin, apiKey);
+    if (!d) return { ...b, available: false, reason };
     return {
       ...b,
       available: true,
