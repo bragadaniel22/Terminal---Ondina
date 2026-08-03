@@ -19,7 +19,6 @@ export async function fetchNewsForTickers(tickers) {
         publisher: n.publisher,
         link: n.link,
         time: n.providerPublishTime ?? null,
-        thumbnail: n.thumbnail?.resolutions?.[0]?.url ?? null,
       });
     }
   }

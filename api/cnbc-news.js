@@ -13,36 +13,6 @@ const FEEDS = [
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
 
-// Lê só os primeiros `maxBytes` da página do artigo (a tag og:image sempre fica no
-// <head>, bem no início do HTML) e cancela o download assim que encontra — evita baixar
-// a página inteira (que pode ter centenas de KB) só pra pegar uma URL de imagem.
-async function fetchOgImage(url, maxBytes = 65536, timeoutMs = 4000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: controller.signal });
-    if (!r.ok || !r.body) return null;
-    const reader = r.body.getReader();
-    const decoder = new TextDecoder();
-    let text = '', received = 0;
-    while (received < maxBytes) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.length;
-      text += decoder.decode(value, { stream: true });
-      const m = text.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i)
-        || text.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:image"/i);
-      if (m) { reader.cancel().catch(() => {}); return decodeHtmlEntities(m[1]); }
-    }
-    reader.cancel().catch(() => {});
-    return null;
-  } catch (_) {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-store');
@@ -105,16 +75,7 @@ export default async function handler(req, res) {
     coverage[feed.label] = { count: feedItems.length, hoursAvailable: hoursAvailable != null ? Math.round(hoursAvailable * 10) / 10 : null };
   });
 
-  // Imagem de capa pra cada matéria do RSS (que não vem com imagem nenhuma — só
-  // texto/link). O <meta property="og:image"> de cada artigo fica no <head>, então lê só
-  // os primeiros ~64KB da página (não a página inteira) até achar a tag e aí já cancela o
-  // download — bem mais leve que baixar o artigo completo pra cada uma das ~50-80 matérias.
-  const withImages = await Promise.allSettled(
-    last24h.map(async (it) => ({ ...it, image: await fetchOgImage(it.link) }))
-  );
-  const finalItems = withImages.map((r, i) => (r.status === 'fulfilled' ? r.value : last24h[i]));
-
-  return res.json({ items: finalItems, errors, topStory, coverage });
+  return res.json({ items: last24h, errors, topStory, coverage });
 }
 
 // Pacote de destaque (hero + 2 cards secundários) igual à home da CNBC — uma única
