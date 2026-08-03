@@ -921,6 +921,17 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="bond-metrics-overlay" onclick="if(event.target===this) closeBondMetrics()">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeBondMetrics()">✕</button>
+    <div class="modal-header">
+      <div class="modal-title" id="bond-metrics-title">—</div>
+      <div class="modal-sub"><span class="dim2" style="font-size:10px" id="bond-metrics-sub"></span></div>
+    </div>
+    <div id="bond-metrics-body" style="padding:16px;"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="sources-overlay" onclick="if(event.target===this) closeSources()">
   <div class="modal-box sources-box">
     <button class="modal-close" onclick="closeSources()">✕</button>
@@ -1736,12 +1747,19 @@ async function loadBonds(force) {
     el.innerHTML = regions.map(region => `
       <div class="section-div">${escapeHtml(region)}</div>
       ${bonds.filter(b => b.region === region).map(b => {
-        const srcBadge = b.priceSource === 'live' ? '🔴 live' : `📅 ${b.priceDate || 'histórico'}`;
+        const dateBadge = b.priceDate ? `📅 ${b.priceDate}` : '';
         const chg = b.changePercent != null ? pct(b.changePercent) : '';
         const chgCls = b.changePercent >= 0 ? 'pos' : (b.changePercent < 0 ? 'neg' : 'dim2');
-        return `<div class="row row-click" onclick="openBondHistory('${b.isin}')">
-          <div><div class="rname">${escapeHtml(b.label)}</div><div class="rsub">${b.isin} · ${srcBadge}</div></div>
-          <div class="rright"><div class="rval">${num(b.price, 2)}</div><div class="rchg ${chgCls}">${chg}</div></div>
+        const metric = (val, suf) => val != null ? `${num(val, 2)}${suf}` : '—';
+        return `<div class="row">
+          <div class="row-click" style="flex:1;min-width:0" onclick="openBondMetrics('${b.isin}')">
+            <div class="rname">${escapeHtml(b.label)}</div>
+            <div class="rsub">${b.isin} · ${dateBadge}</div>
+            <div class="rsub dim2">Dur: ${metric(b.duration, '')} · YTW: ${metric(b.ytw, '%')} · G-Sp: ${metric(b.gSpread, 'bps')}</div>
+          </div>
+          <div class="rright row-click" onclick="openBondHistory('${b.isin}')">
+            <div class="rval">${num(b.price, 2)}</div><div class="rchg ${chgCls}">${chg}</div>
+          </div>
         </div>`;
       }).join('')}
     `).join('') + `<div class="row"><div class="rsub dim2">${d.totalAvailable} de ${d.totalRequested} bonds da carteira disponíveis nessa fonte</div></div>`;
@@ -1762,6 +1780,67 @@ function openBondHistory(isin) {
   document.getElementById('bond-history-title').textContent = bond ? `${bond.label} · ${isin}` : isin;
   document.getElementById('bond-history-overlay').classList.add('active');
   loadBondHistory('1y');
+}
+
+// ── Bonds · Key Metrics ──────────────────────────────────────────────────────
+// Usa o objeto `analytics` já trazido junto da lista — sem chamada extra à API.
+function openBondMetrics(isin) {
+  const bond = bondsStore.find(b => b.isin === isin);
+  const a = bond?.analytics;
+  document.getElementById('bond-metrics-title').textContent = bond ? `${bond.label} · ${isin}` : isin;
+  document.getElementById('bond-metrics-sub').textContent = a ? `bondterminal.com · settlement ${a.settlement || ''}` : '';
+  const body = document.getElementById('bond-metrics-body');
+  if (!a) { body.innerHTML = '<div class="dim2">sem dados de analytics</div>'; document.getElementById('bond-metrics-overlay').classList.add('active'); return; }
+
+  const m = (v, d = 2) => v != null ? num(v, d) : '—';
+  const groups = [
+    { title: 'Price', rows: [
+      ['Clean Price', m(a.pricing?.cleanPrice)],
+      ['Dirty Price', m(a.pricing?.dirtyPrice)],
+      ['Accrued Interest', m(a.pricing?.accruedInterest, 4)],
+    ]},
+    { title: 'Size & Outstanding', rows: [
+      ['Amount Issued', a.issuance ? `USD ${num(a.issuance.originalAmountMillions,0)}m` : '—'],
+      ['Outstanding', a.issuance ? `USD ${num(a.issuance.currentOutstandingMillions,0)}m` : '—'],
+      ['Outstanding %', a.issuance ? `${num(a.issuance.outstandingRatio*100,1)}%` : '—'],
+    ]},
+    { title: 'Dates', rows: [
+      ['Next Coupon Date', a.schedule?.nextCouponDate || '—'],
+      ['Days to Next Coupon', a.schedule?.daysToNextCoupon ?? '—'],
+      ['Average Life', m(a.schedule?.averageLife)],
+    ]},
+    { title: 'Yield / Cash Flow', rows: [
+      ['YTM', `${m(a.yields?.ytm)}%`],
+      ['YTW', `${m(a.yields?.ytw)}%`],
+      ['YTC', `${m(a.yields?.ytc)}%`],
+      ['Current Yield', `${m(a.yields?.currentYield)}%`],
+    ]},
+    { title: 'Risk Measures', rows: [
+      ['Mod Duration', m(a.risk?.modifiedDuration)],
+      ['Macaulay Duration', m(a.risk?.macaulayDuration)],
+      ['Convexity', m(a.risk?.convexity)],
+      ['DV01 /100', m(a.risk?.dv01, 4)],
+    ]},
+    { title: 'Spreads', rows: [
+      ['G-Spread', `${m(a.spreads?.gSpread,1)} bps`],
+      ['Z-Spread', `${m(a.spreads?.zSpread,1)} bps`],
+      [`Treasury (${a.spreads?.treasuryTenor || ''})`, `${m(a.spreads?.treasuryYield)}%`],
+    ]},
+  ];
+
+  body.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;">
+    ${groups.map(g => `
+      <div>
+        <div class="pf-chart-title" style="margin-bottom:8px">${g.title}</div>
+        ${g.rows.map(([label, val]) => `<div class="row" style="padding:5px 0"><div class="rsub">${label}</div><div class="rval" style="font-size:11px">${val}</div></div>`).join('')}
+      </div>
+    `).join('')}
+  </div>`;
+  document.getElementById('bond-metrics-overlay').classList.add('active');
+}
+
+function closeBondMetrics() {
+  document.getElementById('bond-metrics-overlay')?.classList.remove('active');
 }
 
 function closeBondHistory() {
@@ -2265,7 +2344,7 @@ function renderTickerNewsList(items) {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); closeNtnbHistory(); closeBondHistory(); }
+  if (e.key === 'Escape') { closeChart(); closeSources(); closeTickerNews(); closeNtnbHistory(); closeBondHistory(); closeBondMetrics(); }
 });
 
 // Formata "YYYY-MM-DD" direto como texto (sem passar por Date) — evita que o fuso
