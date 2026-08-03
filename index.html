@@ -891,12 +891,15 @@
       <div class="modal-sub">
         <span class="modal-last" id="di-history-last"></span>
         <span class="modal-chg" id="di-history-chg"></span>
-        <span class="dim2" style="font-size:10px">ADVFN · fechamento diário (delayed, ~3 meses de histórico)</span>
+        <span class="dim2" style="font-size:10px">TradingView · fechamento diário (delayed ~15min)</span>
       </div>
     </div>
     <div class="modal-range">
-      <button class="range-btn active" data-r="22" onclick="loadDiHistory(22)">1M</button>
-      <button class="range-btn" data-r="65" onclick="loadDiHistory(65)">3M</button>
+      <button class="range-btn" data-r="22" onclick="loadDiHistory(22)">1M</button>
+      <button class="range-btn active" data-r="65" onclick="loadDiHistory(65)">3M</button>
+      <button class="range-btn" data-r="130" onclick="loadDiHistory(130)">6M</button>
+      <button class="range-btn" data-r="260" onclick="loadDiHistory(260)">1A</button>
+      <button class="range-btn" data-r="500" onclick="loadDiHistory(500)">2A</button>
     </div>
     <div class="modal-chart-box">
       <div class="modal-status" id="di-history-status"></div>
@@ -1314,9 +1317,10 @@ function renderOneDI(d, fromCache, pfx, symbol) {
 }
 
 // ── DI Futuro · gráfico de histórico ─────────────────────────────────────────
-// A ADVFN devolve sempre a mesma janela fixa (~64 pregões, ~3 meses) num único request —
-// diferente do NTN-B (que busca dia a dia na ANBIMA), aqui buscamos uma vez por símbolo e
-// só fatiamos localmente pro range escolhido, sem bater de novo na API a cada clique de botão.
+// O TradingView devolve ~500 barras diárias (≈2 anos) num único request via protocolo
+// WebSocket (api/di-history.js) — diferente do NTN-B (que busca dia a dia na ANBIMA), aqui
+// buscamos uma vez por símbolo e só fatiamos localmente pro range escolhido, sem bater de
+// novo na API a cada clique de botão.
 let diHistoryChart = null;
 let diHistorySymbol = null;
 const diHistoryCache = {}; // symbol -> [{date, value}, ...] (histórico completo já buscado)
@@ -1325,7 +1329,7 @@ function openDiHistory(symbol, label) {
   diHistorySymbol = symbol;
   document.getElementById('di-history-title').textContent = `${label} · Histórico`;
   document.getElementById('di-history-overlay').classList.add('active');
-  loadDiHistory(22);
+  loadDiHistory(65);
 }
 
 function closeDiHistory() {
@@ -1341,7 +1345,7 @@ async function loadDiHistory(days) {
 
   try {
     if (!diHistoryCache[diHistorySymbol]) {
-      const r = await fetch(`/api/di-history?symbol=${diHistorySymbol}`);
+      const r = await fetch(`/api/b3?s=${diHistorySymbol}&history=1`);
       const d = await r.json();
       if (d.error) throw new Error(d.error);
       if (!d.history?.length) throw new Error('sem histórico');
@@ -1508,7 +1512,7 @@ async function summarizeNews(storeKey, idx) {
   box.classList.add('active');
   box.textContent = 'resumindo…';
   try {
-    const r = await fetch(`/api/summarize-news?url=${encodeURIComponent(item.link)}&title=${encodeURIComponent(item.title || '')}`);
+    const r = await fetch(`/api/news?action=summarize&url=${encodeURIComponent(item.link)}&title=${encodeURIComponent(item.title || '')}`);
     const d = await r.json();
     if (d.error === 'rate_limit') {
       box.textContent = '⏳ Limite de uso do Gemini atingido (5 por minuto no plano gratuito). Aguarde um minuto e tente de novo.';
@@ -2133,7 +2137,7 @@ async function loadNtnbHistory(days) {
   statusEl.textContent = 'carregando…';
 
   try {
-    const r = await fetch(`/api/ntnb-history?days=${days}`);
+    const r = await fetch(`/api/ntnb?days=${days}`);
     if (!r.ok) throw new Error(`NTN-B histórico: ${r.status}`);
     const d = await r.json();
     if (d.error) throw new Error(d.error);

@@ -187,7 +187,10 @@ while ($listener.IsListening) {
     }
 
     # ── Feed de notícias · mercado americano ────────────────────────────────
-    if ($path -eq '/api/news') {
+    # Fundido com o antigo /api/summarize-news nessa sessão (Hobby limita a 12 Serverless
+    # Functions por deployment — ver METODOLOGIA.md seção 19.1.1). ?action=summarize aciona
+    # o resumo por IA; sem esse parâmetro, comportamento de sempre (lista de notícias).
+    if ($path -eq '/api/news' -and $req.QueryString['action'] -ne 'summarize') {
         try {
             $tickerParam = $req.QueryString['t']
             if ($tickerParam) {
@@ -295,118 +298,6 @@ while ($listener.IsListening) {
         continue
     }
 
-    # ── Bonds · histórico de preço via bondterminal.com ──────────────────────
-    if ($path -eq '/api/bonds-history') {
-        try {
-            $isin = $req.QueryString['isin']
-            $range = if ($req.QueryString['range']) { $req.QueryString['range'] } else { '1y' }
-            if (-not $isin) { throw "isin obrigatório" }
-            $wc = [System.Net.WebClient]::new()
-            $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-            $wc.Encoding = [System.Text.Encoding]::UTF8
-            $json = $wc.DownloadString("https://bondterminal.com/api/bonds/$isin/market-history?range=$range")
-            $d = $json | ConvertFrom-Json
-            $result = @{ history = $d.price } | ConvertTo-Json -Depth 6
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
-            $res.ContentType = 'application/json; charset=utf-8'
-            $res.Headers.Add('Access-Control-Allow-Origin', '*')
-            $res.ContentLength64 = $bytes.Length
-            $res.OutputStream.Write($bytes, 0, $bytes.Length)
-        } catch {
-            $errMsg = $_.Exception.Message -replace '"', '\"'
-            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$errMsg`"}")
-            $res.StatusCode = 500
-            $res.ContentType = 'application/json'
-            $res.ContentLength64 = $err.Length
-            $res.OutputStream.Write($err, 0, $err.Length)
-        }
-        $res.OutputStream.Close()
-        continue
-    }
-
-    # ── Bonds · preço via bondterminal.com (API interna, não-oficial) ────────
-    if ($path -eq '/api/bonds') {
-        try {
-            $bonds = @(
-                @{ region='Brasil'; label='Eletrobrás 30'; isin='USP22835AB13' },
-                @{ region='Brasil'; label='Rede Dor 30'; isin='USL7915TAA09' },
-                @{ region='Brasil'; label='Aegea 31'; isin='USL01343AB52' },
-                @{ region='Brasil'; label='Banco do Brasil 31'; isin='USP2000TAE57' },
-                @{ region='Brasil'; label='B3 31'; isin='USP19118AA91' },
-                @{ region='Brasil'; label='LD Celulose 32'; isin='USA4S42PAA32' },
-                @{ region='Brasil'; label='Suzano 31'; isin='US86964WAJ18' },
-                @{ region='Brasil'; label='Brasil 31'; isin='US105756CE88' },
-                @{ region='Brasil'; label='Bradesco 30'; isin='US05947LBB36' },
-                @{ region='Brasil'; label='Usiminas 32'; isin='USL95806AB88' },
-                @{ region='Brasil'; label='BTG 31'; isin='US05971BAM19' },
-                @{ region='África/Ásia/Latam'; label='Cemex 30'; isin='USP2253TJQ33' },
-                @{ region='África/Ásia/Latam'; label='Codelco 34'; isin='USP3143NBQ62' },
-                @{ region='África/Ásia/Latam'; label='GCC 32'; isin='USP47465AB82' },
-                @{ region='África/Ásia/Latam'; label='Cemex Perp'; isin='USP2253TJW01' },
-                @{ region='África/Ásia/Latam'; label='BBVA México'; isin='USP2000GAA15' }
-            )
-            $apiKey = $env:BONDS_API_KEY
-            if (-not $apiKey) {
-                # Sem a chave, ainda devolve o esqueleto completo (region/label/isin) pro
-                # front-end poder cair pro cache local em vez de ficar sem nenhum ISIN.
-                $skeleton = $bonds | ForEach-Object { [PSCustomObject]@{ region = $_.region; label = $_.label; isin = $_.isin; available = $false } }
-                $result = @{ bonds = $skeleton; totalRequested = $bonds.Count; totalAvailable = 0; error = 'BONDS_API_KEY não configurada (defina no ambiente local)' } | ConvertTo-Json -Depth 10
-                $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
-                $res.ContentType = 'application/json; charset=utf-8'
-                $res.Headers.Add('Access-Control-Allow-Origin', '*')
-                $res.ContentLength64 = $bytes.Length
-                $res.OutputStream.Write($bytes, 0, $bytes.Length)
-                $res.OutputStream.Close()
-                continue
-            }
-            $results = @()
-            foreach ($b in $bonds) {
-                $found = $false
-                for ($attempt = 0; $attempt -lt 3; $attempt++) {
-                    try {
-                        $wc = [System.Net.WebClient]::new()
-                        $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-                        $wc.Headers.Add('Authorization', "Bearer $apiKey")
-                        $wc.Encoding = [System.Text.Encoding]::UTF8
-                        $json = $wc.DownloadString("https://bondterminal.com/api/v1/bonds/$($b.isin)/analytics")
-                        $d = $json | ConvertFrom-Json
-                        if ($null -ne $d.price) {
-                            $results += [PSCustomObject]@{
-                                region = $b.region; label = $b.label; isin = $b.isin; available = $true
-                                price = $d.price; priceDate = $d.market.timestamp
-                                changePercent = $d.market.change.percent1D
-                                ytw = $d.yields.ytw; duration = $d.risk.modifiedDuration; gSpread = $d.spreads.gSpread
-                                analytics = $d
-                            }
-                            $found = $true
-                            break
-                        }
-                    } catch {}
-                    if ($attempt -lt 2) { Start-Sleep -Milliseconds 500 }
-                }
-                if (-not $found) {
-                    $results += [PSCustomObject]@{ region = $b.region; label = $b.label; isin = $b.isin; available = $false }
-                }
-            }
-            $totalAvailable = ($results | Where-Object { $_.available }).Count
-            $result = @{ bonds = $results; totalRequested = $bonds.Count; totalAvailable = $totalAvailable } | ConvertTo-Json -Depth 10
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
-            $res.ContentType = 'application/json; charset=utf-8'
-            $res.Headers.Add('Access-Control-Allow-Origin', '*')
-            $res.ContentLength64 = $bytes.Length
-            $res.OutputStream.Write($bytes, 0, $bytes.Length)
-        } catch {
-            $errMsg = $_.Exception.Message -replace '"', '\"'
-            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$errMsg`"}")
-            $res.StatusCode = 500
-            $res.ContentType = 'application/json'
-            $res.ContentLength64 = $err.Length
-            $res.OutputStream.Write($err, 0, $err.Length)
-        }
-        $res.OutputStream.Close()
-        continue
-    }
-
     # ── Busca de ativos/índices (resolve texto livre em tickers) ────────────
     if ($path -eq '/api/quote-search') {
         try {
@@ -491,7 +382,7 @@ while ($listener.IsListening) {
     }
 
     # ── Resumir uma notícia específica (Gemini · sob demanda) ────────────────
-    if ($path -eq '/api/summarize-news') {
+    if ($path -eq '/api/news' -and $req.QueryString['action'] -eq 'summarize') {
         try {
             $apiKey = $env:GEMINI_API_KEY
             if (-not $apiKey) { throw "GEMINI_API_KEY não configurada no ambiente local" }
@@ -607,26 +498,143 @@ while ($listener.IsListening) {
         continue
     }
 
-    # ── Proxy B3 DI Futuro ──────────────────────────────────────────────────
-    if ($path -eq '/api/b3') {
+    # ── Proxy B3 DI Futuro (com fallback pro TradingView se a B3 estiver fora do ar) ──
+    if ($path -eq '/api/b3' -and -not $req.QueryString['history']) {
         $symbol = if ($req.QueryString['s']) { $req.QueryString['s'] } else { 'DI1F30' }
         $b3Url = "https://cotacao.b3.com.br/mds/api/v1/InstrumentQuotation/$([Uri]::EscapeDataString($symbol))"
+        $result = $null
+        $b3ErrMsg = $null
         try {
             $wc = [System.Net.WebClient]::new()
             $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
             $wc.Headers.Add('Accept', 'application/json')
             $raw = $wc.DownloadString($b3Url)
             $data = $raw | ConvertFrom-Json
-            if ($data.BizSts.cd -ne 'OK' -or -not $data.Trad) { throw "B3: sem dados" }
+            if ($data.BizSts.cd -ne 'OK' -or -not $data.Trad) { throw "sem negócios" }
             $qtn = $data.Trad[0].scty.SctyQtn
-            $result = "{`"price`":$($qtn.curPrc),`"open`":$($qtn.opngPric),`"date`":`"$($data.Msg.dtTm)`"}"
+            $result = "{`"price`":$($qtn.curPrc),`"open`":$($qtn.opngPric),`"date`":`"$($data.Msg.dtTm)`",`"source`":`"b3`"}"
+        } catch {
+            $b3ErrMsg = $_.Exception.Message
+        }
+        if (-not $result) {
+            # Fallback: scanner do TradingView (não-oficial, mas estável — funciona até do
+            # PowerShell, diferente do ADVFN que a Cloudflare bloqueava por fingerprint de TLS).
+            # Endpoint certo é /global/scan — /brazil/scan só cobre ações, devolve vazio pra
+            # futuros. Símbolo usa ano com 4 dígitos (DI1F2030 em vez de DI1F30).
+            try {
+                $tvSymbol = $symbol -replace '(\d{2})$', '20$1'
+                $tvBody = @{
+                    symbols = @{ tickers = @("BMFBOVESPA:$tvSymbol"); query = @{ types = @('futures') } }
+                    columns = @('close', 'open')
+                } | ConvertTo-Json -Depth 5 -Compress
+                $wc2 = [System.Net.WebClient]::new()
+                $wc2.Headers.Add('Content-Type', 'application/json')
+                $wc2.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+                $wc2.Encoding = [System.Text.Encoding]::UTF8
+                $raw2 = $wc2.UploadString('https://scanner.tradingview.com/global/scan', 'POST', $tvBody)
+                $tvData = $raw2 | ConvertFrom-Json
+                $row = $tvData.data[0].d
+                if (-not $row -or $null -eq $row[0]) { throw "símbolo $tvSymbol não encontrado" }
+                $price = $row[0]
+                $open = if ($row.Count -gt 1 -and $null -ne $row[1]) { $row[1] } else { 'null' }
+                $result = "{`"price`":$price,`"open`":$open,`"date`":null,`"source`":`"tradingview`"}"
+            } catch {
+                $tvErrMsg = $_.Exception.Message
+                $safeB3 = ($b3ErrMsg -replace '"', '\"') -replace "`n", ' '
+                $safeTv = ($tvErrMsg -replace '"', '\"') -replace "`n", ' '
+                $result = "{`"error`":`"B3: $safeB3 · TradingView: $safeTv`"}"
+            }
+        }
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
+        $res.ContentType = 'application/json; charset=utf-8'
+        $res.Headers.Add('Access-Control-Allow-Origin', '*')
+        $res.ContentLength64 = $bytes.Length
+        $res.OutputStream.Write($bytes, 0, $bytes.Length)
+        $res.OutputStream.Close()
+        continue
+    }
+
+    # ── Histórico diário do DI Futuro via WebSocket do TradingView (fundido em /api/b3) ──
+    # Mesmo protocolo usado em api/b3.js (ver comentário lá pro detalhamento) — aqui usando
+    # System.Net.WebSockets.ClientWebSocket (.NET Framework 4.5+) em vez do pacote `ws` do
+    # Node. Fundido com a rota de cotação nessa sessão (Hobby limita a 12 Serverless
+    # Functions por deployment — ver METODOLOGIA.md seção 19.1.1); `?s=X&history=1` aciona
+    # esse ramo em vez da cotação atual. Importante: ReceiveAsync pode devolver uma mensagem
+    # em vários pedaços (fragmentos) — só trata como completa quando `EndOfMessage` vem
+    # `true`, acumulando num StringBuilder até lá. Sem isso, mensagens maiores (como o
+    # timescale_update com 500 barras) chegavam cortadas e o parser silenciosamente
+    # descartava o resto, nunca completando (bug real encontrado e corrigido testando).
+    if ($path -eq '/api/b3' -and $req.QueryString['history']) {
+        try {
+            $symbol = $req.QueryString['s']
+            if (-not $symbol -or $symbol -notmatch '^DI1F\d{2}$') { throw "symbol inválido (esperado ex: DI1F30)" }
+            $tvSymbol = 'BMFBOVESPA:' + ($symbol -replace '(\d{2})$', '20$1')
+
+            $client = [System.Net.WebSockets.ClientWebSocket]::new()
+            $client.Options.SetRequestHeader('Origin', 'https://www.tradingview.com')
+            $cts = [System.Threading.CancellationTokenSource]::new(8000)
+            $client.ConnectAsync([Uri]::new('wss://data.tradingview.com/socket.io/websocket'), $cts.Token).GetAwaiter().GetResult() | Out-Null
+
+            function Send-TvMsg($ws, $method, $paramsJson, $token) {
+                $payload = "{`"m`":`"$method`",`"p`":$paramsJson}"
+                $msg = "~m~$($payload.Length)~m~$payload"
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($msg)
+                $ws.SendAsync([System.ArraySegment[byte]]::new($bytes), [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $token).GetAwaiter().GetResult() | Out-Null
+            }
+
+            $chartSession = 'cs_' + [Guid]::NewGuid().ToString('N').Substring(0, 12)
+            Send-TvMsg $client 'set_auth_token' '["unauthorized_user_token"]' $cts.Token
+            Send-TvMsg $client 'chart_create_session' "[`"$chartSession`",`"`"]" $cts.Token
+            $symbolInit = "={`"symbol`":`"$tvSymbol`",`"adjustment`":`"splits`"}"
+            $symbolInitEscaped = $symbolInit -replace '"', '\"'
+            Send-TvMsg $client 'resolve_symbol' "[`"$chartSession`",`"symbol_1`",`"$symbolInitEscaped`"]" $cts.Token
+            Send-TvMsg $client 'create_series' "[`"$chartSession`",`"series_1`",`"s1`",`"symbol_1`",`"1D`",500]" $cts.Token
+
+            $history = $null
+            $buffer = New-Object byte[] 131072
+            $msgBuilder = [System.Text.StringBuilder]::new()
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            while ($sw.ElapsedMilliseconds -lt 8000 -and -not $history) {
+                $recvResult = $client.ReceiveAsync([System.ArraySegment[byte]]::new($buffer), $cts.Token).GetAwaiter().GetResult()
+                [void]$msgBuilder.Append([System.Text.Encoding]::UTF8.GetString($buffer, 0, $recvResult.Count))
+                if (-not $recvResult.EndOfMessage) { continue }
+                $raw = $msgBuilder.ToString()
+                [void]$msgBuilder.Clear()
+                $i = 0
+                while ($i -lt $raw.Length -and $raw.Substring($i).StartsWith('~m~')) {
+                    $sepIdx = $raw.IndexOf('~m~', $i + 3)
+                    if ($sepIdx -lt 0) { break }
+                    $len = [int]$raw.Substring($i + 3, $sepIdx - ($i + 3))
+                    $start = $sepIdx + 3
+                    if ($start + $len -gt $raw.Length) { break }
+                    $frame = $raw.Substring($start, $len)
+                    $i = $start + $len
+                    if ($frame.StartsWith('~h~')) {
+                        $echo = [System.Text.Encoding]::UTF8.GetBytes("~m~$($frame.Length)~m~$frame")
+                        $client.SendAsync([System.ArraySegment[byte]]::new($echo), [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $cts.Token).GetAwaiter().GetResult() | Out-Null
+                        continue
+                    }
+                    try { $obj = $frame | ConvertFrom-Json } catch { continue }
+                    if ($obj.m -eq 'timescale_update' -and $obj.p[1].series_1.s) {
+                        $history = $obj.p[1].series_1.s | ForEach-Object {
+                            [PSCustomObject]@{ date = [int64]$_.v[0]; value = $_.v[4] }
+                        }
+                    } elseif ($obj.m -in @('symbol_error', 'series_error', 'critical_error')) {
+                        throw "TradingView: $($obj.m)"
+                    }
+                }
+            }
+            $client.Dispose()
+            if (-not $history) { throw "timeout aguardando dados do TradingView" }
+            $result = @{ history = $history; source = 'tradingview' } | ConvertTo-Json -Depth 6
             $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
-            $res.ContentType = 'application/json'
+            $res.ContentType = 'application/json; charset=utf-8'
             $res.Headers.Add('Access-Control-Allow-Origin', '*')
             $res.ContentLength64 = $bytes.Length
             $res.OutputStream.Write($bytes, 0, $bytes.Length)
         } catch {
-            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$($_.Exception.Message)`"}")
+            $errMsg = ($_.Exception.Message -replace '"', '\"') -replace "`n", ' '
+            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$errMsg`"}")
             $res.StatusCode = 500
             $res.ContentType = 'application/json'
             $res.ContentLength64 = $err.Length
@@ -636,8 +644,9 @@ while ($listener.IsListening) {
         continue
     }
 
-    # ── Proxy ANBIMA NTN-B ──────────────────────────────────────────────────
-    if ($path -eq '/api/ntnb') {
+    # ── Proxy ANBIMA NTN-B (fundido com /api/ntnb-history nessa sessão — Hobby limita a 12
+    # Serverless Functions por deployment, ver METODOLOGIA.md seção 19.1.1) ───────────────
+    if ($path -eq '/api/ntnb' -and -not $req.QueryString['days']) {
         try {
             $targets = @('20280815', '20290515', '20300815', '20320815', '20350515', '20450515')
             $today = Get-Date
@@ -701,8 +710,8 @@ while ($listener.IsListening) {
         continue
     }
 
-    # ── Proxy ANBIMA NTN-B · histórico ───────────────────────────────────────
-    if ($path -eq '/api/ntnb-history') {
+    # ── Proxy ANBIMA NTN-B · histórico (fundido em /api/ntnb — ?days=N aciona esse ramo) ──
+    if ($path -eq '/api/ntnb' -and $req.QueryString['days']) {
         try {
             $targets = @('20280815', '20290515', '20300815', '20320815', '20350515', '20450515')
             $reqDays = [int]($req.QueryString['days'])
