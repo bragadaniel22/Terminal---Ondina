@@ -1780,6 +1780,7 @@ async function loadBonds(force) {
           <div style="flex:1;min-width:0">
             <div class="rname dim2">${escapeHtml(b.label)}</div>
             <div class="rsub">${b.isin} · sem dado disponível nessa fonte ainda</div>
+            ${b.reason ? `<div class="rsub dim2">motivo: ${escapeHtml(b.reason)}</div>` : ''}
           </div>
         </div>`;
       }
