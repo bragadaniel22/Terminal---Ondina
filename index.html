@@ -216,6 +216,51 @@
     }
     .news-summary-box.active { display: block; }
 
+    /* NOTÍCIAS · painel de filtros recolhível */
+    .ainews-filters-toggle {
+      padding: 8px 14px; font-size: 10px; letter-spacing: 1px; color: var(--dim);
+      cursor: pointer; border-bottom: 1px solid var(--border); user-select: none;
+    }
+    .ainews-filters-toggle:hover { color: var(--orange); }
+    .ainews-filters-panel {
+      display: flex; flex-wrap: wrap; gap: 20px; padding: 12px 14px;
+      border-bottom: 1px solid var(--border); background: rgba(255,255,255,.015);
+    }
+    .ainews-filters-panel.collapsed { display: none; }
+    .ainews-filter-label { font-size: 9px; letter-spacing: 1px; color: var(--dim); margin-bottom: 6px; }
+    .ainews-filter-group select {
+      background: var(--bg-card); color: var(--text); border: 1px solid var(--border-hi);
+      font-family: inherit; font-size: 11px; padding: 5px 8px;
+    }
+    .ainews-source-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+    .ainews-checkbox { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text); cursor: pointer; white-space: nowrap; }
+    .ainews-checkbox input { accent-color: var(--orange); }
+
+    /* NOTÍCIAS · layout tipo capa de jornal — espaço proporcional à data de publicação
+       (mais recente = maior), pra preencher a tela de forma mais visual que uma lista simples */
+    .ainews-empty { padding: 30px 14px; text-align: center; color: var(--dim); font-size: 12px; }
+    .ainews-card { display: block; }
+    .ainews-card-title { color: var(--bright); text-decoration: none; display: block; }
+    .ainews-card-title:hover { color: var(--orange); }
+    .ainews-card-meta { color: var(--dim); font-size: 9px; margin-top: 5px; letter-spacing: .5px; }
+
+    .ainews-hero-wrap { padding: 16px 14px 6px; border-bottom: 1px solid var(--border); }
+    .ainews-hero .ainews-card-title { font-size: 21px; font-weight: bold; line-height: 1.3; }
+    .ainews-hero .ainews-card-meta { font-size: 11px; margin-top: 8px; }
+
+    .ainews-secondary-wrap {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 24px;
+      padding: 14px; border-bottom: 1px solid var(--border);
+    }
+    .ainews-secondary .ainews-card-title { font-size: 14px; font-weight: 600; line-height: 1.35; }
+
+    .ainews-compact-wrap {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 24px; padding: 10px 14px;
+    }
+    .ainews-compact .ainews-card { padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .ainews-compact .ainews-card-title { font-size: 11px; font-weight: normal; line-height: 1.4; }
+    .ainews-compact .ainews-card-meta { font-size: 8.5px; margin-top: 3px; }
+
     /* CNBC · pacote de destaque (hero + secundários), igual à home da CNBC */
     .cnbc-hero-wrap { padding: 14px; border-bottom: 1px solid var(--border); display: flex; gap: 14px; flex-wrap: wrap; }
     .cnbc-hero-card { flex: 1 1 320px; max-width: 640px; min-width: 280px; cursor: pointer; }
@@ -320,6 +365,11 @@
       .tab-btn { padding: 7px 12px; font-size: 8px; white-space: nowrap; flex-shrink: 0; }
 
       .grid { grid-template-columns: 1fr; }
+
+      .ainews-secondary-wrap { grid-template-columns: 1fr; }
+      .ainews-compact-wrap { grid-template-columns: 1fr; }
+      .ainews-hero .ainews-card-title { font-size: 17px; }
+      .ainews-filters-panel { flex-direction: column; gap: 14px; }
 
       .ntnb-grid { grid-template-columns: repeat(2, 1fr); }
       .ntnb-cell { border-right: none; border-bottom: 1px solid var(--border); }
@@ -841,25 +891,35 @@
   </div>
   <div class="card card-wide">
     <div class="card-head">
-      <h2>📰 Notícias · Manchetes · últimos 3 dias</h2>
+      <h2>📰 Painel de Notícias</h2>
       <span class="sources-link" onclick="loadAiNews(true)">↻ atualizar</span>
     </div>
-    <div class="etf-disclaimer">⚠️ Recorte por palavra-chave (IA/chips, mercado financeiro, política, geopolítica, economia) sobre os feeds de G1, CNBC, Reuters, Brazil Journal, InfoMoney e Investing.com — não é a cobertura completa de cada veículo. NACIONAL = fontes brasileiras (G1, Brazil Journal, InfoMoney); INTERNACIONAL = CNBC, Reuters, Investing.com.</div>
+    <div class="etf-disclaimer">⚠️ Recorte por palavra-chave (IA/chips, mercado financeiro, política, geopolítica, economia) sobre os feeds de G1, CNBC, Reuters, Brazil Journal, InfoMoney e Investing.com — não é a cobertura completa de cada veículo. NACIONAL = fontes brasileiras (G1, Brazil Journal, InfoMoney); INTERNACIONAL = CNBC, Reuters, Investing.com; TOP PICKS = matérias com 3+ palavras-chave batendo ao mesmo tempo (mais provável de ser relevante de verdade).</div>
     <div class="pf-range" id="ainews-filter-row">
+      <button class="range-btn" data-ainewsf="top" onclick="filterAiNews(this, 'top')">TOP PICKS</button>
       <button class="range-btn active" data-ainewsf="nacional" onclick="filterAiNews(this, 'nacional')">NACIONAL</button>
       <button class="range-btn" data-ainewsf="internacional" onclick="filterAiNews(this, 'internacional')">INTERNACIONAL</button>
     </div>
-    <div class="pf-range" id="ainews-period-row">
-      <button class="range-btn" data-ainewsp="1" onclick="setAiNewsPeriod(this, 1)">1H</button>
-      <button class="range-btn" data-ainewsp="6" onclick="setAiNewsPeriod(this, 6)">6H</button>
-      <button class="range-btn" data-ainewsp="12" onclick="setAiNewsPeriod(this, 12)">12H</button>
-      <button class="range-btn" data-ainewsp="24" onclick="setAiNewsPeriod(this, 24)">24H</button>
-      <button class="range-btn active" data-ainewsp="0" onclick="setAiNewsPeriod(this, 0)">24H+</button>
-    </div>
-    <div class="pf-range" id="ainews-source-row"></div>
-    <div class="pf-range" id="ainews-sort-row">
-      <button class="range-btn active" data-ainewss="desc" onclick="setAiNewsSort(this, 'desc')">MAIS RECENTES</button>
-      <button class="range-btn" data-ainewss="asc" onclick="setAiNewsSort(this, 'asc')">MAIS ANTIGAS</button>
+    <div class="ainews-filters-toggle" onclick="toggleAiNewsFilters()"><span id="ainews-filters-caret">▾</span> Filtros</div>
+    <div class="ainews-filters-panel" id="ainews-filters-panel">
+      <div class="ainews-filter-group">
+        <div class="ainews-filter-label">PERÍODO</div>
+        <select id="ainews-period-select" onchange="renderAiNewsList()">
+          <option value="1">Última 1 hora</option>
+          <option value="6">Últimas 6 horas</option>
+          <option value="12">Últimas 12 horas</option>
+          <option value="24">Últimas 24 horas</option>
+          <option value="0" selected>Mais de 24h (tudo)</option>
+        </select>
+      </div>
+      <div class="ainews-filter-group">
+        <div class="ainews-filter-label">VEÍCULO</div>
+        <div id="ainews-source-checks" class="ainews-source-checks"></div>
+      </div>
+      <div class="ainews-filter-group">
+        <div class="ainews-filter-label">ONDE PROCURAR</div>
+        <label class="ainews-checkbox"><input type="checkbox" id="ainews-title-only" onchange="renderAiNewsList()"> Palavra-chave só no título</label>
+      </div>
     </div>
     <div class="news-list" id="ainews-list">
       <div class="row"><div class="rname dim2">carregando manchetes…</div></div>
@@ -1654,10 +1714,10 @@ async function loadFeed() {
 // ── Notícias · recorte por palavra-chave via api/ai-news.js ──────────────────
 let aiNewsNacional = [];
 let aiNewsInternacional = [];
-let aiNewsFilter = 'nacional';
-let aiNewsPeriodHours = 0; // 0 = sem corte de período ("24H+" = tudo que veio do backend)
-let aiNewsSortDir = 'desc'; // 'desc' = mais recentes primeiro, 'asc' = mais antigas primeiro
+let aiNewsFilter = 'nacional'; // 'nacional' | 'internacional' | 'top' (Top Picks, combina os dois)
+let aiNewsPeriodHours = 0; // 0 = sem corte de período ("Mais de 24h (tudo)")
 let aiNewsSelectedSources = new Set(); // vazio = todas as fontes
+let aiNewsFiltersCollapsed = false;
 
 async function loadAiNews(force) {
   const listEl = document.getElementById('ainews-list');
@@ -1670,7 +1730,7 @@ async function loadAiNews(force) {
     aiNewsNacional = d.nacional || [];
     aiNewsInternacional = d.internacional || [];
     aiNewsSelectedSources.clear();
-    renderAiNewsSourceChips();
+    renderAiNewsSourceChecks();
     renderAiNewsList();
   } catch (e) {
     listEl.innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar manchetes de IA</div></div>';
@@ -1678,74 +1738,104 @@ async function loadAiNews(force) {
   }
 }
 
+function toggleAiNewsFilters() {
+  aiNewsFiltersCollapsed = !aiNewsFiltersCollapsed;
+  document.getElementById('ainews-filters-panel').classList.toggle('collapsed', aiNewsFiltersCollapsed);
+  document.getElementById('ainews-filters-caret').textContent = aiNewsFiltersCollapsed ? '▸' : '▾';
+}
+
+// 'top' (Top Picks) combina Nacional + Internacional, filtrado por matérias com 3+
+// palavras-chave (campo `topPick` já calculado no backend) — as outras duas abas mostram a
+// respectiva região inteira (2+ palavras-chave, o mínimo pra entrar na lista de qualquer jeito).
+function aiNewsBaseItems() {
+  if (aiNewsFilter === 'top') return [...aiNewsNacional, ...aiNewsInternacional].filter(it => it.topPick);
+  return aiNewsFilter === 'nacional' ? aiNewsNacional : aiNewsInternacional;
+}
+
 function filterAiNews(btn, region) {
   aiNewsFilter = region;
-  aiNewsSelectedSources.clear(); // fontes de Nacional/Internacional são diferentes, zera o filtro
+  aiNewsSelectedSources.clear(); // conjunto de fontes muda entre Nacional/Internacional/Top Picks
   document.querySelectorAll('#ainews-filter-row .range-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  renderAiNewsSourceChips();
+  renderAiNewsSourceChecks();
   renderAiNewsList();
 }
 
-function setAiNewsPeriod(btn, hours) {
-  aiNewsPeriodHours = hours;
-  document.querySelectorAll('#ainews-period-row .range-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderAiNewsList();
-}
-
-function setAiNewsSort(btn, dir) {
-  aiNewsSortDir = dir;
-  document.querySelectorAll('#ainews-sort-row .range-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderAiNewsList();
-}
-
-// Chips de fonte (G1/Brazil Journal/InfoMoney em Nacional; CNBC/Reuters/Investing.com em
-// Internacional) — gerados a partir do que realmente veio na resposta, não de uma lista fixa,
-// pra nunca mostrar um chip de fonte que não trouxe nenhuma notícia agora.
-function renderAiNewsSourceChips() {
-  const base = aiNewsFilter === 'nacional' ? aiNewsNacional : aiNewsInternacional;
-  const sources = [...new Set(base.map(it => it.source))].sort();
-  const row = document.getElementById('ainews-source-row');
-  row.innerHTML = sources.map(s =>
-    `<button class="range-btn" data-ainewssrc="${escapeHtml(s)}" onclick="toggleAiNewsSource(this, '${jsAttrSafe(s)}')">${escapeHtml(s)}</button>`
-  ).join('');
-}
-
-function toggleAiNewsSource(btn, source) {
-  if (aiNewsSelectedSources.has(source)) {
-    aiNewsSelectedSources.delete(source);
-    btn.classList.remove('active');
-  } else {
-    aiNewsSelectedSources.add(source);
-    btn.classList.add('active');
-  }
-  renderAiNewsList();
+// Checkboxes de veículo (G1/Brazil Journal/InfoMoney em Nacional; CNBC/Reuters/Investing.com em
+// Internacional; todas as 6 em Top Picks) — geradas a partir do que realmente está disponível
+// na aba atual, não de uma lista fixa. Todas começam marcadas (mostra tudo).
+function renderAiNewsSourceChecks() {
+  const sources = [...new Set(aiNewsBaseItems().map(it => it.source))].sort();
+  const box = document.getElementById('ainews-source-checks');
+  box.innerHTML = sources.map(s => `
+    <label class="ainews-checkbox">
+      <input type="checkbox" checked data-ainewssrc="${escapeHtml(s)}" onchange="renderAiNewsList()"> ${escapeHtml(s)}
+    </label>`).join('');
 }
 
 function renderAiNewsList() {
-  let items = aiNewsFilter === 'nacional' ? aiNewsNacional : aiNewsInternacional;
+  let items = aiNewsBaseItems();
 
   const query = document.getElementById('ainews-search-input')?.value.trim().toLowerCase();
+  const titleOnly = document.getElementById('ainews-title-only')?.checked;
   if (query) {
     items = items.filter(it =>
-      it.title?.toLowerCase().includes(query) || it.summary?.toLowerCase().includes(query)
+      it.title?.toLowerCase().includes(query) || (!titleOnly && it.summary?.toLowerCase().includes(query))
     );
   }
 
-  if (aiNewsSelectedSources.size) {
-    items = items.filter(it => aiNewsSelectedSources.has(it.source));
+  const uncheckedSources = [...document.querySelectorAll('#ainews-source-checks input:not(:checked)')].map(i => i.dataset.ainewssrc);
+  if (uncheckedSources.length) {
+    items = items.filter(it => !uncheckedSources.includes(it.source));
   }
 
-  if (aiNewsPeriodHours > 0) {
-    const cutoff = Date.now() / 1000 - aiNewsPeriodHours * 3600;
+  const periodHours = parseInt(document.getElementById('ainews-period-select')?.value || '0', 10);
+  if (periodHours > 0) {
+    const cutoff = Date.now() / 1000 - periodHours * 3600;
     items = items.filter(it => it.time == null || it.time >= cutoff);
   }
 
-  items = [...items].sort((a, b) => aiNewsSortDir === 'asc' ? (a.time ?? 0) - (b.time ?? 0) : (b.time ?? 0) - (a.time ?? 0));
+  // Sempre por ordem cronológica (mais recente primeiro) — o layout usa espaço maior pras
+  // matérias mais novas, então a ordem tem que ser sempre essa (sem opção de inverter).
+  items = [...items].sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
 
-  renderNewsList(items, 'ainews', 'ainews-list');
+  renderAiNewsMagazine(items);
+}
+
+// Layout tipo capa de jornal: a matéria mais recente ganha destaque grande (hero), as
+// próximas 4 em tamanho médio (2 colunas), o resto em lista compacta densa (3 colunas) — só
+// texto, sem imagem (a fonte é RSS puro, sem thumbnail). Reaproveita `newsStore`/
+// `summarizeNews()` já existentes (mesmo mecanismo do botão "resumir com IA" da CNBC/Busca).
+function renderAiNewsMagazine(items) {
+  newsStore['ainews'] = items;
+  const el = document.getElementById('ainews-list');
+  if (!items.length) {
+    el.innerHTML = '<div class="ainews-empty">nenhuma notícia disponível com esses filtros</div>';
+    return;
+  }
+
+  function card(n, i, tierClass, withSummarize) {
+    const d = n.time ? new Date(n.time * 1000) : null;
+    return `<div class="ainews-card ${tierClass}">
+      <a class="ainews-card-title" href="${n.link}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a>
+      <div class="ainews-card-meta">${escapeHtml(n.publisher || n.source || '')}${d ? ' · ' + fmtShortDateTime(d) : ''}</div>
+      ${withSummarize ? `
+        <div class="news-actions">
+          <button class="news-summarize-btn" onclick="summarizeNews('ainews', ${i})">🤖 resumir com IA</button>
+          <div class="news-summary-box" id="news-summary-ainews-${i}"></div>
+        </div>` : ''}
+    </div>`;
+  }
+
+  const hero = items[0];
+  const secondary = items.slice(1, 5);
+  const compact = items.slice(5);
+
+  el.innerHTML = `
+    <div class="ainews-hero-wrap">${card(hero, 0, 'ainews-hero', true)}</div>
+    ${secondary.length ? `<div class="ainews-secondary-wrap">${secondary.map((n, i) => card(n, i + 1, 'ainews-secondary', true)).join('')}</div>` : ''}
+    ${compact.length ? `<div class="ainews-compact-wrap">${compact.map((n, i) => card(n, i + 5, 'ainews-compact', false)).join('')}</div>` : ''}
+  `;
 }
 
 // ── Feed · busca por palavra-chave ─────────────────────────────────────────────
