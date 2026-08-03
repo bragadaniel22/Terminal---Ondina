@@ -372,6 +372,7 @@
   <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
   <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">BUSCAR</button>
   <button class="tab-btn" data-tab="cnbc" onclick="switchTab(this)">CNBC (BETA)</button>
+  <button class="tab-btn" data-tab="ainews" onclick="switchTab(this)">NOTÍCIAS</button>
 </nav>
 
 <div id="tab-indices" class="tab-panel active">
@@ -832,6 +833,27 @@
     </div>
   </div>
 </div><!-- /tab-cnbc -->
+
+<div id="tab-ainews" class="tab-panel">
+  <div class="feed-search-wrap">
+    <span class="feed-search-icon">🔍</span>
+    <input type="text" id="ainews-search-input" placeholder="buscar nas manchetes… (ex: Nvidia, Selic, Copom, eleições)" oninput="renderAiNewsList()">
+  </div>
+  <div class="card card-wide">
+    <div class="card-head">
+      <h2>📰 Notícias · Manchetes · últimos 3 dias</h2>
+      <span class="sources-link" onclick="loadAiNews(true)">↻ atualizar</span>
+    </div>
+    <div class="etf-disclaimer">⚠️ Recorte por palavra-chave (IA/chips, mercado financeiro, política, geopolítica, economia) sobre os feeds de G1, CNBC, Reuters, Brazil Journal, InfoMoney e Investing.com — não é a cobertura completa de cada veículo. NACIONAL = fontes brasileiras (G1, Brazil Journal, InfoMoney); INTERNACIONAL = CNBC, Reuters, Investing.com.</div>
+    <div class="pf-range" id="ainews-filter-row">
+      <button class="range-btn active" data-ainewsf="nacional" onclick="filterAiNews(this, 'nacional')">NACIONAL</button>
+      <button class="range-btn" data-ainewsf="internacional" onclick="filterAiNews(this, 'internacional')">INTERNACIONAL</button>
+    </div>
+    <div class="news-list" id="ainews-list">
+      <div class="row"><div class="rname dim2">carregando manchetes…</div></div>
+    </div>
+  </div>
+</div><!-- /tab-ainews -->
 
 <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this) closeChart()">
   <div class="modal-box">
@@ -1617,6 +1639,48 @@ async function loadFeed() {
   }
 }
 
+// ── Notícias · recorte por palavra-chave via api/ai-news.js ──────────────────
+let aiNewsNacional = [];
+let aiNewsInternacional = [];
+let aiNewsFilter = 'nacional';
+
+async function loadAiNews(force) {
+  const listEl = document.getElementById('ainews-list');
+  if (force) listEl.innerHTML = '<div class="row"><div class="rname dim2">atualizando…</div></div>';
+  try {
+    const r = await fetch('/api/ai-news');
+    const d = await r.json();
+    const total = (d.nacional?.length || 0) + (d.internacional?.length || 0);
+    if (d.error && !total) throw new Error(d.error);
+    aiNewsNacional = d.nacional || [];
+    aiNewsInternacional = d.internacional || [];
+    renderAiNewsList();
+  } catch (e) {
+    listEl.innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar manchetes de IA</div></div>';
+    console.error('ai news', e);
+  }
+}
+
+function filterAiNews(btn, region) {
+  aiNewsFilter = region;
+  document.querySelectorAll('#ainews-filter-row .range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAiNewsList();
+}
+
+function renderAiNewsList() {
+  let items = aiNewsFilter === 'nacional' ? aiNewsNacional : aiNewsInternacional;
+
+  const query = document.getElementById('ainews-search-input')?.value.trim().toLowerCase();
+  if (query) {
+    items = items.filter(it =>
+      it.title?.toLowerCase().includes(query) || it.summary?.toLowerCase().includes(query)
+    );
+  }
+
+  renderNewsList(items, 'ainews', 'ainews-list');
+}
+
 // ── Feed · busca por palavra-chave ─────────────────────────────────────────────
 let feedSearchSeq = 0;
 
@@ -1767,6 +1831,7 @@ let feedLoaded = false;
 let heatmapLoaded = false;
 let etfLoaded = false;
 let cnbcLoaded = false;
+let aiNewsLoaded = false;
 function switchTab(btn) {
   const name = btn.dataset.tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -1779,6 +1844,7 @@ function switchTab(btn) {
   if (name === 'heatmap'      && !heatmapLoaded) { heatmapLoaded = true; loadHeatmap(); }
   if (name === 'feed'         && !feedLoaded)    { feedLoaded = true; loadFeed(); }
   if (name === 'cnbc'         && !cnbcLoaded)    { cnbcLoaded = true; loadCnbc(); }
+  if (name === 'ainews'       && !aiNewsLoaded)  { aiNewsLoaded = true; loadAiNews(); }
 }
 
 // ── Heatmap · Portfólio ─────────────────────────────────────────────────────
