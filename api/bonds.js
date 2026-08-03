@@ -48,8 +48,8 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-store');
 
-  const apiKey = process.env.BONDTERMINAL_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'BONDTERMINAL_API_KEY não configurada' });
+  const apiKey = process.env.BONDS_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'BONDS_API_KEY não configurada' });
 
   const results = await Promise.allSettled(BONDS.map(async (b) => {
     const d = await fetchAnalytics(b.isin, apiKey);
