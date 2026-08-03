@@ -843,7 +843,7 @@
       <h2>💵 Bonds · Carteira</h2>
       <span class="sources-link" onclick="loadBonds(true)">↻ atualizar</span>
     </div>
-    <div class="etf-disclaimer bond-disclaimer">⚠️ Preço via <a href="https://bondterminal.com/" target="_blank" rel="noopener">bondterminal.com</a> (fonte pública, não-oficial — pode mudar sem aviso). Só aparecem aqui os bonds da carteira que essa fonte realmente tem preço; o resto foi descartado. "🔴 live" = preço em tempo real; "📅 histórico" = último fechamento disponível (data ao lado).</div>
+    <div class="etf-disclaimer bond-disclaimer">⚠️ Preço via <a href="https://bondterminal.com/" target="_blank" rel="noopener">bondterminal.com</a> (fonte pública, não-oficial — pode mudar sem aviso). Todos os bonds da carteira aparecem sempre — quando a fonte não tem dado novo no momento, mostramos o último preço conhecido, marcado como "⚠️ defasado" com a data/hora da última atualização. "📅" ao lado do preço = data do último fechamento disponível.</div>
     <div id="bonds-list">
       <div class="row"><div class="rname dim2">carregando…</div></div>
     </div>
@@ -1731,41 +1731,75 @@ function switchTab(btn) {
   if (name === 'bonds'        && !bondsLoaded)   { bondsLoaded = true; loadBonds(); }
 }
 
+// A carteira de bonds deve SEMPRE aparecer inteira, mesmo que a fonte (bondterminal.com)
+// esteja fora do ar ou não tenha preço pra algum ISIN naquele momento. Guardamos o último
+// dado bem-sucedido de cada ISIN em localStorage (`tf_bonds_cache`) e, quando a fonte não
+// devolve dado fresco, caímos pro cache marcado como "defasado" com a data/hora do último
+// sucesso — nunca sumimos um bond da lista por causa de uma falha passageira da fonte.
 async function loadBonds(force) {
   const el = document.getElementById('bonds-list');
   if (force) el.innerHTML = '<div class="row"><div class="rname dim2">atualizando…</div></div>';
+
+  const cache = cacheGet('bonds_cache') || {};
+  let bonds = [];
+  let totalAvailable = 0, totalRequested = 0, fetchError = null;
   try {
     const r = await fetch('/api/bonds');
     const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    const bonds = d.bonds || [];
-    if (!bonds.length) { el.innerHTML = '<div class="row"><div class="rname err">nenhum bond disponível nessa fonte agora</div></div>'; return; }
-
-    bondsStore = bonds;
-    const regions = [...new Set(bonds.map(b => b.region))];
-    el.innerHTML = regions.map(region => `
-      <div class="section-div">${escapeHtml(region)}</div>
-      ${bonds.filter(b => b.region === region).map(b => {
-        const dateBadge = b.priceDate ? `📅 ${b.priceDate}` : '';
-        const chg = b.changePercent != null ? pct(b.changePercent) : '';
-        const chgCls = b.changePercent >= 0 ? 'pos' : (b.changePercent < 0 ? 'neg' : 'dim2');
-        const metric = (val, suf) => val != null ? `${num(val, 2)}${suf}` : '—';
-        return `<div class="row">
-          <div class="row-click" style="flex:1;min-width:0" onclick="openBondMetrics('${b.isin}')">
-            <div class="rname">${escapeHtml(b.label)}</div>
-            <div class="rsub">${b.isin} · ${dateBadge}</div>
-            <div class="rsub dim2">Dur: ${metric(b.duration, '')} · YTW: ${metric(b.ytw, '%')} · G-Sp: ${metric(b.gSpread, 'bps')}</div>
-          </div>
-          <div class="rright row-click" onclick="openBondHistory('${b.isin}')">
-            <div class="rval">${num(b.price, 2)}</div><div class="rchg ${chgCls}">${chg}</div>
-          </div>
-        </div>`;
-      }).join('')}
-    `).join('') + `<div class="row"><div class="rsub dim2">${d.totalAvailable} de ${d.totalRequested} bonds da carteira disponíveis nessa fonte</div></div>`;
+    bonds = d.bonds || [];
+    totalAvailable = d.totalAvailable ?? 0;
+    totalRequested = d.totalRequested ?? bonds.length;
+    if (d.error) fetchError = d.error;
   } catch (e) {
-    el.innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar bonds</div></div>';
+    fetchError = e.message;
     console.error('bonds', e);
   }
+
+  // Fonte indisponível E sem nenhum cache local ainda — não temos nem os ISINs pra listar.
+  if (!bonds.length && !Object.keys(cache).length) {
+    el.innerHTML = `<div class="row"><div class="rname err">ERRO ao carregar bonds${fetchError ? ': ' + escapeHtml(fetchError) : ''}</div></div>`;
+    return;
+  }
+
+  const merged = bonds.map(b => {
+    if (b.available) {
+      cache[b.isin] = { ...b, fetchedAt: Date.now() };
+      return { ...cache[b.isin], stale: false };
+    }
+    return cache[b.isin] ? { ...cache[b.isin], stale: true } : { ...b, stale: null };
+  });
+  cachePut('bonds_cache', cache);
+
+  bondsStore = merged;
+  const regions = [...new Set(merged.map(b => b.region))];
+  el.innerHTML = regions.map(region => `
+    <div class="section-div">${escapeHtml(region)}</div>
+    ${merged.filter(b => b.region === region).map(b => {
+      if (b.stale === null) {
+        return `<div class="row">
+          <div style="flex:1;min-width:0">
+            <div class="rname dim2">${escapeHtml(b.label)}</div>
+            <div class="rsub">${b.isin} · sem dado disponível nessa fonte ainda</div>
+          </div>
+        </div>`;
+      }
+      const dateBadge = b.priceDate ? `📅 ${b.priceDate}` : '';
+      const staleBadge = b.stale ? `⚠️ defasado · última atualização ${fmtShortDateTime(new Date(b.fetchedAt))}` : '';
+      const chg = b.changePercent != null ? pct(b.changePercent) : '';
+      const chgCls = b.changePercent >= 0 ? 'pos' : (b.changePercent < 0 ? 'neg' : 'dim2');
+      const metric = (val, suf) => val != null ? `${num(val, 2)}${suf}` : '—';
+      return `<div class="row">
+        <div class="row-click" style="flex:1;min-width:0" onclick="openBondMetrics('${b.isin}')">
+          <div class="rname">${escapeHtml(b.label)}</div>
+          <div class="rsub${b.stale ? ' dim2' : ''}">${b.isin}${dateBadge ? ' · ' + dateBadge : ''}${staleBadge ? ' · ' + staleBadge : ''}</div>
+          <div class="rsub dim2">Dur: ${metric(b.duration, '')} · YTW: ${metric(b.ytw, '%')} · G-Sp: ${metric(b.gSpread, 'bps')}</div>
+        </div>
+        <div class="rright row-click" onclick="openBondHistory('${b.isin}')">
+          <div class="rval">${num(b.price, 2)}</div><div class="rchg ${chgCls}">${chg}</div>
+        </div>
+      </div>`;
+    }).join('')}
+  `).join('') + `<div class="row"><div class="rsub dim2">${totalAvailable} de ${totalRequested} bonds com dado atualizado agora nessa fonte${fetchError ? ' · ⚠️ ' + escapeHtml(fetchError) : ''}</div></div>`;
 }
 
 // ── Bonds · gráfico de histórico de preço ───────────────────────────────────
@@ -2559,7 +2593,7 @@ const ETFS = {
   equip: {
     name: 'Equipamento IA ETF',
     holdings: [
-      { ticker: 'ASML.AS', label: 'ASML Holding',  weight: 0.3308, priceCcy: 'EUR', note: '📈 cotada em EUR (Euronext Amsterdam) · só o retorno % entra no índice (base 100)' },
+      { ticker: 'ASML',    label: 'ASML Holding',  weight: 0.3308 },
       { ticker: 'AMAT',    label: 'Applied Materials', weight: 0.2163 },
       { ticker: 'LRCX',    label: 'Lam Research',      weight: 0.2036 },
       { ticker: 'KLAC',    label: 'KLA Corporation',   weight: 0.1476 },
