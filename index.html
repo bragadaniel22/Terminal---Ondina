@@ -849,6 +849,18 @@
       <button class="range-btn active" data-ainewsf="nacional" onclick="filterAiNews(this, 'nacional')">NACIONAL</button>
       <button class="range-btn" data-ainewsf="internacional" onclick="filterAiNews(this, 'internacional')">INTERNACIONAL</button>
     </div>
+    <div class="pf-range" id="ainews-period-row">
+      <button class="range-btn" data-ainewsp="1" onclick="setAiNewsPeriod(this, 1)">1H</button>
+      <button class="range-btn" data-ainewsp="6" onclick="setAiNewsPeriod(this, 6)">6H</button>
+      <button class="range-btn" data-ainewsp="12" onclick="setAiNewsPeriod(this, 12)">12H</button>
+      <button class="range-btn" data-ainewsp="24" onclick="setAiNewsPeriod(this, 24)">24H</button>
+      <button class="range-btn active" data-ainewsp="0" onclick="setAiNewsPeriod(this, 0)">24H+</button>
+    </div>
+    <div class="pf-range" id="ainews-source-row"></div>
+    <div class="pf-range" id="ainews-sort-row">
+      <button class="range-btn active" data-ainewss="desc" onclick="setAiNewsSort(this, 'desc')">MAIS RECENTES</button>
+      <button class="range-btn" data-ainewss="asc" onclick="setAiNewsSort(this, 'asc')">MAIS ANTIGAS</button>
+    </div>
     <div class="news-list" id="ainews-list">
       <div class="row"><div class="rname dim2">carregando manchetes…</div></div>
     </div>
@@ -1643,6 +1655,9 @@ async function loadFeed() {
 let aiNewsNacional = [];
 let aiNewsInternacional = [];
 let aiNewsFilter = 'nacional';
+let aiNewsPeriodHours = 0; // 0 = sem corte de período ("24H+" = tudo que veio do backend)
+let aiNewsSortDir = 'desc'; // 'desc' = mais recentes primeiro, 'asc' = mais antigas primeiro
+let aiNewsSelectedSources = new Set(); // vazio = todas as fontes
 
 async function loadAiNews(force) {
   const listEl = document.getElementById('ainews-list');
@@ -1654,6 +1669,8 @@ async function loadAiNews(force) {
     if (d.error && !total) throw new Error(d.error);
     aiNewsNacional = d.nacional || [];
     aiNewsInternacional = d.internacional || [];
+    aiNewsSelectedSources.clear();
+    renderAiNewsSourceChips();
     renderAiNewsList();
   } catch (e) {
     listEl.innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar manchetes de IA</div></div>';
@@ -1663,8 +1680,47 @@ async function loadAiNews(force) {
 
 function filterAiNews(btn, region) {
   aiNewsFilter = region;
+  aiNewsSelectedSources.clear(); // fontes de Nacional/Internacional são diferentes, zera o filtro
   document.querySelectorAll('#ainews-filter-row .range-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  renderAiNewsSourceChips();
+  renderAiNewsList();
+}
+
+function setAiNewsPeriod(btn, hours) {
+  aiNewsPeriodHours = hours;
+  document.querySelectorAll('#ainews-period-row .range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAiNewsList();
+}
+
+function setAiNewsSort(btn, dir) {
+  aiNewsSortDir = dir;
+  document.querySelectorAll('#ainews-sort-row .range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAiNewsList();
+}
+
+// Chips de fonte (G1/Brazil Journal/InfoMoney em Nacional; CNBC/Reuters/Investing.com em
+// Internacional) — gerados a partir do que realmente veio na resposta, não de uma lista fixa,
+// pra nunca mostrar um chip de fonte que não trouxe nenhuma notícia agora.
+function renderAiNewsSourceChips() {
+  const base = aiNewsFilter === 'nacional' ? aiNewsNacional : aiNewsInternacional;
+  const sources = [...new Set(base.map(it => it.source))].sort();
+  const row = document.getElementById('ainews-source-row');
+  row.innerHTML = sources.map(s =>
+    `<button class="range-btn" data-ainewssrc="${escapeHtml(s)}" onclick="toggleAiNewsSource(this, '${jsAttrSafe(s)}')">${escapeHtml(s)}</button>`
+  ).join('');
+}
+
+function toggleAiNewsSource(btn, source) {
+  if (aiNewsSelectedSources.has(source)) {
+    aiNewsSelectedSources.delete(source);
+    btn.classList.remove('active');
+  } else {
+    aiNewsSelectedSources.add(source);
+    btn.classList.add('active');
+  }
   renderAiNewsList();
 }
 
@@ -1677,6 +1733,17 @@ function renderAiNewsList() {
       it.title?.toLowerCase().includes(query) || it.summary?.toLowerCase().includes(query)
     );
   }
+
+  if (aiNewsSelectedSources.size) {
+    items = items.filter(it => aiNewsSelectedSources.has(it.source));
+  }
+
+  if (aiNewsPeriodHours > 0) {
+    const cutoff = Date.now() / 1000 - aiNewsPeriodHours * 3600;
+    items = items.filter(it => it.time == null || it.time >= cutoff);
+  }
+
+  items = [...items].sort((a, b) => aiNewsSortDir === 'asc' ? (a.time ?? 0) - (b.time ?? 0) : (b.time ?? 0) - (a.time ?? 0));
 
   renderNewsList(items, 'ainews', 'ainews-list');
 }
