@@ -138,6 +138,9 @@
     .pf-card:hover { background: rgba(255,255,255,.02); }
     .pf-card.pf-hidden { opacity: 0.22; }
     .etf-disclaimer { font-size: 10px; color: var(--dim); padding: 10px 14px; border-top: 1px solid var(--border); }
+    .bond-disclaimer { font-size: 12px; }
+    .bond-disclaimer a { color: var(--orange); text-decoration: none; }
+    .bond-disclaimer a:hover { text-decoration: underline; }
     .etf-grid { grid-template-columns: repeat(2, 1fr); }
     .etf-val { font-size: 18px; font-weight: bold; }
     .etf-val .pos { color: var(--green); }
@@ -840,7 +843,7 @@
       <h2>💵 Bonds · Carteira</h2>
       <span class="sources-link" onclick="loadBonds(true)">↻ atualizar</span>
     </div>
-    <div class="etf-disclaimer">⚠️ Preço via bondterminal.com (fonte pública, não-oficial — pode mudar sem aviso). Só aparecem aqui os bonds da carteira que essa fonte realmente tem preço; o resto foi descartado. "🔴 live" = preço em tempo real; "📅 histórico" = último fechamento disponível (data ao lado).</div>
+    <div class="etf-disclaimer bond-disclaimer">⚠️ Preço via <a href="https://bondterminal.com/" target="_blank" rel="noopener">bondterminal.com</a> (fonte pública, não-oficial — pode mudar sem aviso). Só aparecem aqui os bonds da carteira que essa fonte realmente tem preço; o resto foi descartado. "🔴 live" = preço em tempo real; "📅 histórico" = último fechamento disponível (data ao lado).</div>
     <div id="bonds-list">
       <div class="row"><div class="rname dim2">carregando…</div></div>
     </div>
