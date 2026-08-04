@@ -66,6 +66,332 @@ function Get-XmlTag {
     return $val.Trim()
 }
 
+# ── IA & Chips · helpers (espelho de api/ai-news.js) ─────────────────────────
+$AI_JUNK_TITLE_PATTERNS = @(
+    'candlestick chart', 'compare against competitors', 'share price today',
+    'stock price |', 'stock price history', 'shares outstanding',
+    'technical analysis, rsi', 'option chain', 'return on assets',
+    'market cap', 'currency converter', 'dividend history', 'earnings per share'
+)
+
+$AI_KEYWORDS = @(
+    'inteligência artificial', 'artificial intelligence', 'IA generativa', 'generative AI',
+    'enterprise AI', 'IA empresarial', 'large language model', 'large language models',
+    'modelo de linguagem', 'modelos de linguagem', 'LLM', 'foundation model', 'foundation models',
+    'modelo fundacional', 'modelos fundacionais', 'machine learning', 'aprendizado de máquina',
+    'deep learning', 'aprendizado profundo', 'AI agents', 'agentes de IA', 'autonomous agents',
+    'agentes autônomos', 'agentic AI', 'IA agêntica', 'multimodal AI', 'IA multimodal',
+    'AI inference', 'inferência de IA', 'AI training', 'treinamento de IA', 'AI compute',
+    'computação de IA', 'AI infrastructure', 'infraestrutura de IA', 'AI data center',
+    'data center', 'data centers', 'centro de dados', 'centros de dados', 'AI chips',
+    'chips de IA', 'semiconductors', 'semicondutores', 'AI accelerators', 'aceleradores de IA',
+    'GPU', 'TPU', 'NPU', 'HBM', 'high bandwidth memory', 'memória de alta largura de banda',
+    'cloud computing', 'computação em nuvem', 'AI capex', 'capex de IA', 'AI investment',
+    'investimentos em IA', 'AI demand', 'demanda por IA', 'AI monetization', 'monetização de IA',
+    'AI adoption', 'adoção de IA', 'AI regulation', 'regulação de IA', 'AI safety',
+    'segurança de IA', 'AI governance', 'governança de IA', 'AI copyright',
+    'direitos autorais e IA', 'data center energy', 'energia para data centers',
+    'AI power demand', 'demanda de energia para IA',
+    'OpenAI', 'Anthropic', 'Google DeepMind', 'Microsoft AI', 'Meta AI', 'Amazon AWS AI',
+    'Oracle AI', 'Nvidia', 'AMD', 'Broadcom', 'TSMC', 'ASML', 'Applied Materials',
+    'Lam Research', 'Micron', 'SK Hynix', 'Samsung Electronics', 'CoreWeave', 'xAI',
+    'Palantir', 'Arm Holdings',
+    'mercado financeiro', 'financial markets', 'mercados globais', 'global markets',
+    'bolsa de valores', 'stock market', 'stocks', 'equities', 'renda fixa',
+    'fixed income', 'títulos públicos', 'government bonds', 'títulos corporativos',
+    'corporate bonds', 'debêntures', 'bonds', 'crédito privado', 'private credit',
+    'mercado de crédito', 'credit markets', 'spread de crédito', 'credit spread',
+    'curva de juros', 'yield curve', 'juros futuros', 'interest rate futures',
+    'taxa de juros', 'interest rates', 'Selic', 'Tesouro Direto', 'Treasuries',
+    'Treasury yields', 'câmbio', 'foreign exchange', 'FX', 'FX market', 'dólar', 'US dollar',
+    'real', 'Brazilian real', 'euro', 'commodities', 'petróleo', 'oil', 'oil prices', 'ouro',
+    'gold', 'gold prices', 'minério de ferro', 'iron ore', 'criptomoedas', 'cryptocurrency',
+    'Bitcoin', 'Ethereum', 'volatilidade', 'market volatility', 'liquidez', 'market liquidity',
+    'fluxo estrangeiro', 'foreign flows', 'capital flows', 'fluxo de capital',
+    'foreign inflows', 'foreign outflows', 'aversão a risco', 'risk aversion',
+    'apetite a risco', 'risk appetite', 'risk-on', 'risk-off', 'correção de mercado',
+    'market correction', 'rali', 'market rally', 'sell-off', 'drawdown', 'mercado em alta',
+    'bull market', 'mercado em baixa', 'bear market', 'resultados corporativos',
+    'corporate earnings', 'temporada de balanços', 'earnings season', 'guidance',
+    'revisão de guidance', 'guidance cut', 'guidance raise', 'profit warning',
+    'alerta de lucro', 'recompra de ações', 'share buyback', 'dividendos', 'dividend',
+    'fusão', 'merger', 'aquisição', 'acquisition', 'fusão e aquisição',
+    'mergers and acquisitions', 'M&A', 'takeover', 'oferta pública',
+    'initial public offering', 'IPO', 'follow-on', 'secondary offering', 'default',
+    'moratória', 'moratorium', 'reestruturação de dívida', 'debt restructuring',
+    'rebaixamento de rating', 'credit downgrade', 'elevação de rating', 'credit upgrade',
+    'Ibovespa', 'IBOV', 'S&P 500', 'Nasdaq', 'Dow Jones', 'Russell 2000', 'VIX', 'DXY',
+    'US 10-year yield', '2-year Treasury', '10-year Treasury', '30-year Treasury', 'CDS',
+    'high yield', 'investment grade', 'emerging markets', 'mercados emergentes',
+    'MSCI World', 'MSCI Emerging Markets', 'Stoxx 600', 'Euro Stoxx 50', 'Nikkei',
+    'Hang Seng', 'CSI 300', 'KOSPI',
+    'política', 'politics', 'governo', 'government', 'Congresso', 'Congress',
+    'Câmara dos Deputados', 'House of Representatives', 'Senado', 'Senate',
+    'Supremo Tribunal Federal', 'Supreme Court', 'STF', 'Executivo', 'executive branch',
+    'Legislativo', 'legislature', 'Judiciário', 'judiciary', 'presidente', 'president',
+    'ministro da Fazenda', 'finance minister', 'Treasury secretary', 'Banco Central',
+    'central bank', 'eleições', 'election', 'Lula', 'Bolsonaro', 'Renan Santos',
+    'Rodrigo Caiado', 'Zema', 'campanha eleitoral', 'electoral campaign',
+    'pesquisa eleitoral', 'opinion poll', 'aprovação do governo', 'approval rating',
+    'coalizão', 'coalition', 'oposição', 'opposition', 'base governista', 'ruling party',
+    'reforma econômica', 'economic reform', 'reforma tributária', 'tax reform',
+    'reforma administrativa', 'administrative reform', 'política fiscal', 'fiscal policy',
+    'arcabouço fiscal', 'fiscal framework', 'meta fiscal', 'fiscal target',
+    'orçamento público', 'government budget', 'déficit público', 'budget deficit',
+    'superávit', 'budget surplus', 'dívida pública', 'public debt', 'gastos públicos',
+    'government spending', 'spending cuts', 'corte de gastos', 'subsídio', 'subsidy',
+    'privatização', 'privatization', 'estatização', 'nationalization', 'regulação',
+    'regulation', 'sanção presidencial', 'presidential approval', 'veto presidencial',
+    'presidential veto', 'medida provisória', 'executive order', 'projeto de lei', 'bill',
+    'legislation', 'PEC', 'decreto', 'presidential decree', 'government shutdown',
+    'impeachment', 'crise política', 'political crisis', 'protestos', 'protests',
+    'corrupção', 'corruption', 'sanções', 'sanctions',
+    'market reaction', 'reação do mercado', 'investor reaction', 'reação dos investidores',
+    'policy uncertainty', 'incerteza política', 'political risk', 'risco político',
+    'fiscal risk', 'risco fiscal', 'regulatory risk', 'risco regulatório', 'election risk',
+    'risco eleitoral', 'government intervention', 'intervenção do governo',
+    'capital controls', 'controle de capitais', 'windfall tax',
+    'imposto sobre lucros extraordinários', 'tariffs', 'tarifas', 'trade restrictions',
+    'restrições comerciais', 'corporate tax', 'imposto corporativo', 'wealth tax',
+    'imposto sobre patrimônio', 'financial transaction tax',
+    'imposto sobre transações financeiras',
+    'geopolítica', 'geopolitics', 'tensão geopolítica', 'geopolitical tensions',
+    'conflito internacional', 'international conflict', 'guerra', 'war', 'cessar-fogo',
+    'ceasefire', 'negociações de paz', 'peace talks', 'ataque militar', 'military strike',
+    'ataque aéreo', 'air strike', 'mobilização militar',
+    'military mobilization', 'escalada militar', 'military escalation', 'desescalada',
+    'de-escalation', 'sanções econômicas', 'economic sanctions', 'embargo',
+    'bloqueio comercial', 'trade blockade', 'guerra comercial', 'trade war', 'retaliação',
+    'retaliation', 'restrições à exportação', 'export restrictions', 'controle de exportações',
+    'export controls', 'segurança nacional', 'national security', 'OTAN', 'NATO',
+    'União Europeia', 'European Union', 'ONU', 'United Nations', 'Conselho de Segurança',
+    'UN Security Council', 'G7', 'G20', 'BRICS', 'Oriente Médio', 'Middle East',
+    'Mar do Sul da China', 'South China Sea', 'Taiwan', 'Estreito de Taiwan',
+    'Taiwan Strait', 'Ucrânia', 'Ukraine', 'Rússia', 'Russia', 'China', 'Estados Unidos',
+    'United States', 'Irã', 'Iran', 'Israel', 'Coreia do Norte', 'North Korea', 'Venezuela',
+    'OPEP', 'OPEC', 'OPEP+', 'OPEC+', 'rotas marítimas', 'shipping routes', 'Mar Vermelho',
+    'Red Sea', 'Canal de Suez', 'Suez Canal', 'Estreito de Ormuz', 'Strait of Hormuz',
+    'cadeias de suprimento', 'supply chains', 'segurança energética', 'energy security',
+    'segurança alimentar', 'food security', 'missile attack', 'ataque de míssil',
+    'drone attack', 'ataque de drone', 'border conflict', 'conflito de fronteira',
+    'nuclear talks', 'negociações nucleares', 'nuclear program', 'programa nuclear',
+    'military exercise', 'exercício militar', 'shipping disruption', 'interrupção marítima',
+    'port closure', 'fechamento de porto', 'pipeline disruption',
+    'interrupção de gasoduto', 'oil supply disruption',
+    'interrupção no fornecimento de petróleo', 'gas supply disruption',
+    'interrupção no fornecimento de gás', 'commodity export ban',
+    'proibição de exportação de commodities', 'rare earth export controls',
+    'controle de exportação de terras raras', 'semiconductor export controls',
+    'controle de exportação de semicondutores', 'foreign investment restrictions',
+    'restrições a investimentos estrangeiros',
+    'economia', 'economy', 'atividade econômica', 'economic activity',
+    'crescimento econômico', 'economic growth', 'PIB', 'GDP', 'recessão', 'recession',
+    'desaceleração econômica', 'economic slowdown', 'expansão econômica',
+    'economic expansion', 'produção industrial', 'industrial production',
+    'vendas no varejo', 'retail sales', 'setor de serviços', 'services sector',
+    'confiança do consumidor', 'consumer confidence', 'confiança empresarial',
+    'business confidence', 'mercado de trabalho', 'labor market', 'emprego', 'employment',
+    'desemprego', 'unemployment', 'salários', 'wages', 'renda', 'income', 'produtividade',
+    'productivity', 'inflação', 'inflation', 'deflação', 'deflation', 'desinflação',
+    'disinflation', 'IPCA', 'IGP-M', 'IPC', 'CPI', 'PCE', 'PPI', 'núcleo da inflação',
+    'core inflation', 'expectativas de inflação', 'inflation expectations',
+    'política monetária', 'monetary policy', 'Copom', 'Federal Reserve', 'Fed',
+    'European Central Bank', 'BCE', 'ECB', 'Bank of England', 'BoE', 'Bank of Japan', 'BoJ',
+    'corte de juros', 'interest rate cut', 'rate cut', 'alta de juros', 'rate hike',
+    'manutenção de juros', 'rates on hold', 'aperto monetário', 'monetary tightening',
+    'flexibilização monetária', 'monetary easing', 'quantitative easing',
+    'quantitative tightening', 'balanço de pagamentos', 'balance of payments',
+    'conta corrente', 'current account', 'balança comercial', 'trade balance',
+    'exportações', 'exports', 'importações', 'imports', 'reservas internacionais',
+    'foreign exchange reserves', 'déficit fiscal', 'fiscal deficit', 'resultado primário',
+    'primary balance', 'arrecadação', 'tax revenue', 'crédito bancário', 'bank lending',
+    'credit growth', 'inadimplência', 'loan delinquency', 'consumer spending',
+    'investimento empresarial', 'business investment', 'formação bruta de capital',
+    'capital formation', 'capital expenditure', 'capex', 'PMI', 'ISM', 'IBC-Br', 'Focus',
+    'Payroll', 'nonfarm payrolls', 'jobless claims', 'pedidos de seguro-desemprego',
+    'surpresa', 'unexpected', 'surprise',
+    'acima do esperado', 'above expectations', 'abaixo do esperado', 'below expectations',
+    'recorde', 'record high', 'record low', 'colapso', 'collapse', 'disparada', 'surge',
+    'queda acentuada', 'plunge', 'demissão', 'resignation', 'fired', 'renúncia', 'fraude',
+    'fraud', 'valuation', 'avaliação', 'earnings', 'receita', 'revenue',
+    'EBITDA', 'EPS', 'lucro por ação', 'cash flow', 'fluxo de caixa', 'free cash flow',
+    'fluxo de caixa livre', 'debt', 'dívida', 'leverage', 'alavancagem', 'spread', 'yield'
+)
+
+$AI_EXCLUDE_KEYWORDS = @(
+    'curso', 'course', 'apostila', 'tutorial', 'o que é', 'definition', 'definição',
+    'meaning', 'significado', 'vaga', 'job opening', 'career advice', 'concurso público',
+    'horóscopo', 'sports', 'esporte', 'football', 'futebol', 'celebrity', 'celebridade',
+    'entertainment', 'entretenimento', 'movie', 'filme', 'TV series', 'série', 'gaming',
+    'jogo eletrônico', 'product review', 'review', 'promoção', 'discount', 'cupom',
+    'coupon', 'sponsored content', 'conteúdo patrocinado', 'advertisement', 'publicidade'
+)
+
+function Get-AiNormalizedText {
+    param([string]$Text)
+    if (-not $Text) { return '' }
+    $formD = $Text.Normalize([System.Text.NormalizationForm]::FormD)
+    $sb = New-Object System.Text.StringBuilder
+    foreach ($ch in $formD.ToCharArray()) {
+        if ([System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($ch) -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
+            [void]$sb.Append($ch)
+        }
+    }
+    return $sb.ToString().ToLowerInvariant()
+}
+
+function Build-AiKeywordPattern {
+    param([string[]]$List)
+    return ($List | ForEach-Object { Get-AiNormalizedText $_ } | Select-Object -Unique | ForEach-Object { '\b' + [regex]::Escape($_) + '\b' }) -join '|'
+}
+
+# Padrões individuais precompilados — usados pra CONTAR quantas palavras-chave batem, não só
+# se pelo menos uma bate. Removidos os piores termos ambíguos da lista (ver histórico) e subida
+# a exigência pra 3+ termos distintos — reduz mais o ruído do que 2+.
+$AI_KEYWORD_REGEXES = [System.Collections.Generic.List[regex]]::new()
+foreach ($kw in ($AI_KEYWORDS | ForEach-Object { Get-AiNormalizedText $_ } | Select-Object -Unique)) {
+    $AI_KEYWORD_REGEXES.Add([regex]::new('\b' + [regex]::Escape($kw) + '\b'))
+}
+$AI_EXCLUDE_PATTERN = Build-AiKeywordPattern $AI_EXCLUDE_KEYWORDS
+$AI_MIN_KEYWORD_MATCHES = 3
+
+function Get-AiKeywordMatchCount {
+    param([string]$Text)
+    $count = 0
+    foreach ($re in $AI_KEYWORD_REGEXES) {
+        if ($re.IsMatch($Text)) { $count++ }
+    }
+    return $count
+}
+
+function Test-AiKeywordMatch {
+    param([string]$Title, [string]$Summary)
+    $text = Get-AiNormalizedText "$Title $Summary"
+    if ([regex]::IsMatch($text, $AI_EXCLUDE_PATTERN)) { return $false }
+    return (Get-AiKeywordMatchCount $text) -ge $AI_MIN_KEYWORD_MATCHES
+}
+
+# ── Nota de relevância (1-10) — espelho de assignRelevance em api/ai-news.js ─────────────────
+$AI_TOP_PICK_MIN_SCORE = 6
+$AI_CLUSTER_SIMILARITY = 0.35
+$AI_STOPWORDS = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
+    'para', 'como', 'mais', 'sobre', 'entre', 'depois', 'antes', 'contra', 'diz', 'disse',
+    'apos', 'nesta', 'neste', 'pode', 'deve', 'ainda', 'tambem', 'quando', 'onde',
+    'with', 'from', 'that', 'this', 'have', 'says', 'after', 'before', 'about', 'their',
+    'will', 'what', 'which', 'into', 'over', 'amid'
+))
+
+function Get-AiTitleWordSet {
+    param([string]$Title)
+    $norm = (Get-AiNormalizedText $Title) -replace '[^a-z0-9\s]', ' '
+    $set = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($w in ($norm -split '\s+')) {
+        if ($w.Length -ge 4 -and -not $AI_STOPWORDS.Contains($w)) { [void]$set.Add($w) }
+    }
+    return $set
+}
+
+function Get-AiJaccard {
+    param($A, $B)
+    $inter = 0
+    foreach ($w in $A) { if ($B.Contains($w)) { $inter++ } }
+    $union = $A.Count + $B.Count - $inter
+    if ($union -eq 0) { return 0 }
+    return $inter / $union
+}
+
+# Cluster por similaridade de título entre fontes diferentes (mesma história, manchetes
+# distintas). $Items é uma lista de PSCustomObject com Source/Title/Headline; anota
+# RelevanceScore e TopPick em cada item.
+function Set-AiRelevance {
+    param([object[]]$Items)
+    if (-not $Items -or $Items.Count -eq 0) { return }
+    $wordSets = @($Items | ForEach-Object { Get-AiTitleWordSet $_.title })
+    for ($i = 0; $i -lt $Items.Count; $i++) {
+        $outlets = [System.Collections.Generic.HashSet[string]]::new()
+        [void]$outlets.Add($Items[$i].source)
+        for ($j = 0; $j -lt $Items.Count; $j++) {
+            if ($j -eq $i -or $Items[$j].source -eq $Items[$i].source) { continue }
+            if ((Get-AiJaccard $wordSets[$i] $wordSets[$j]) -ge $AI_CLUSTER_SIMILARITY) { [void]$outlets.Add($Items[$j].source) }
+        }
+        $multiOutletScore = [Math]::Min(5, $outlets.Count * 2)
+        $headlineScore = if ($Items[$i].headline) { 5 } else { 1 }
+        $score = $multiOutletScore + $headlineScore
+        Add-Member -InputObject $Items[$i] -NotePropertyName relevanceScore -NotePropertyValue $score -Force
+        Add-Member -InputObject $Items[$i] -NotePropertyName topPick -NotePropertyValue ($score -ge $AI_TOP_PICK_MIN_SCORE) -Force
+    }
+}
+
+function Test-AiJunkTitle {
+    param([string]$Title)
+    $lower = $Title.ToLowerInvariant()
+    foreach ($p in $AI_JUNK_TITLE_PATTERNS) { if ($lower.Contains($p)) { return $true } }
+    return $false
+}
+
+function Test-AiMeaningfulTitle {
+    param([string]$Title, [string]$Source)
+    if (-not $Title) { return $false }
+    $remaining = $Title.ToLowerInvariant().Replace($Source.ToLowerInvariant(), '').Trim(" -|,".ToCharArray())
+    return $remaining.Length -ge 10
+}
+
+function Get-AiCleanText {
+    param([string]$Raw)
+    if (-not $Raw) { return '' }
+    $text = ConvertFrom-HtmlEntities ($Raw -replace '<[^>]+>', '')
+    $text = ($text -replace '\s+', ' ').Trim()
+    $text = $text -replace '\s*The post .*? appeared first on .*?\.\s*$', ''
+    return $text
+}
+
+function Get-AiCleanTitle {
+    param([string]$Title, [string]$Source)
+    $t = $Title
+    if ($t.Contains(' - ')) {
+        $idx = $t.LastIndexOf(' - ')
+        $head = $t.Substring(0, $idx)
+        $tail = $t.Substring($idx + 3)
+        if ($tail.ToLowerInvariant().Contains($Source.ToLowerInvariant())) { $t = $head }
+    }
+    $bySuffix = " by $Source".ToLowerInvariant()
+    if ($t.ToLowerInvariant().EndsWith($bySuffix)) { $t = $t.Substring(0, $t.Length - $bySuffix.Length) }
+    $t = $t.Trim()
+    if ($t.StartsWith('- ')) { $t = $t.Substring(2).Trim() }
+    return $t
+}
+
+function Get-AiPagedUrl {
+    param([string]$Url, [int]$Page)
+    if ($Page -le 1) { return $Url }
+    $sep = if ($Url.Contains('?')) { '&' } else { '?' }
+    return "$Url${sep}paged=$Page"
+}
+
+function Get-AiNewsSourcesConfig {
+    return @(
+        @{ name = 'G1'; region = 'nacional'; pages = 1; urls = @('https://g1.globo.com/rss/g1/') },
+        @{ name = 'CNBC'; region = 'internacional'; pages = 1; urls = @(
+            'https://www.cnbc.com/id/100727362/device/rss/rss.html',
+            'https://www.cnbc.com/id/100003114/device/rss/rss.html',
+            'https://www.cnbc.com/id/10001147/device/rss/rss.html',
+            'https://www.cnbc.com/id/20910258/device/rss/rss.html',
+            'https://www.cnbc.com/id/15839069/device/rss/rss.html'
+        ) },
+        @{ name = 'Reuters'; region = 'internacional'; pages = 1; urls = @('https://news.google.com/rss/search?q=site:reuters.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
+        @{ name = 'Brazil Journal'; region = 'nacional'; pages = 4; urls = @('https://braziljournal.com/feed/') },
+        @{ name = 'InfoMoney'; region = 'nacional'; pages = 5; urls = @('https://www.infomoney.com.br/feed/') },
+        @{ name = 'Investing.com'; region = 'internacional'; pages = 1; urls = @(
+            'https://www.investing.com/rss/news.rss',
+            'https://www.investing.com/rss/news_25.rss',
+            'https://www.investing.com/rss/news_301.rss',
+            'https://www.investing.com/rss/market_overview.rss',
+            'https://www.investing.com/rss/news_1.rss',
+            'https://www.investing.com/rss/commodities.rss'
+        ) }
+    )
+}
+
 function Get-NewsForTickers {
     param([string[]]$Tickers)
     $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -281,6 +607,93 @@ while ($listener.IsListening) {
             }
 
             $result = @{ items = $last24h; topStory = $topStory; coverage = $coverage } | ConvertTo-Json -Depth 8
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
+            $res.ContentType = 'application/json; charset=utf-8'
+            $res.Headers.Add('Access-Control-Allow-Origin', '*')
+            $res.ContentLength64 = $bytes.Length
+            $res.OutputStream.Write($bytes, 0, $bytes.Length)
+        } catch {
+            $errMsg = $_.Exception.Message -replace '"', '\"'
+            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$errMsg`"}")
+            $res.StatusCode = 500
+            $res.ContentType = 'application/json'
+            $res.ContentLength64 = $err.Length
+            $res.OutputStream.Write($err, 0, $err.Length)
+        }
+        $res.OutputStream.Close()
+        continue
+    }
+
+    # ── IA & Chips · agregador temático (espelho de api/ai-news.js) ──────────
+    if ($path -eq '/api/ai-news') {
+        try {
+            $sources = Get-AiNewsSourcesConfig
+            $windowCutoff = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - (72 * 3600)
+            $allItems = @()
+            $errors = @()
+
+            foreach ($source in $sources) {
+                $seenLinks = New-Object System.Collections.Generic.HashSet[string]
+                $seenTitles = New-Object System.Collections.Generic.HashSet[string]
+                $sourceHadError = $false
+                foreach ($baseUrl in $source.urls) {
+                    for ($page = 1; $page -le $source.pages; $page++) {
+                        $url = Get-AiPagedUrl $baseUrl $page
+                        try {
+                            $wc = [System.Net.WebClient]::new()
+                            $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36')
+                            $wc.Encoding = [System.Text.Encoding]::UTF8
+                            $xml = $wc.DownloadString($url)
+                        } catch {
+                            if ($page -eq 1) { $errors += "$($source.name): $($_.Exception.Message)"; $sourceHadError = $true }
+                            continue
+                        }
+                        $blocks = [regex]::Matches($xml, '<item>[\s\S]*?</item>')
+                        $rank = -1
+                        foreach ($b in $blocks) {
+                            $rank++
+                            $block = $b.Value
+                            $rawTitle = Get-XmlTag $block 'title'
+                            $link = Get-XmlTag $block 'link'
+                            $rawDesc = Get-XmlTag $block 'description'
+                            $pubDate = Get-XmlTag $block 'pubDate'
+                            if (-not $rawTitle -or -not $link) { continue }
+                            if ($seenLinks.Contains($link)) { continue }
+
+                            $title = Get-AiCleanTitle (Get-AiCleanText $rawTitle) $source.name
+                            if (-not (Test-AiMeaningfulTitle $title $source.name)) { continue }
+                            if (Test-AiJunkTitle $title) { continue }
+                            $titleKey = $title.ToLowerInvariant()
+                            if ($seenTitles.Contains($titleKey)) { continue }
+                            [void]$seenTitles.Add($titleKey)
+                            [void]$seenLinks.Add($link)
+
+                            $summary = Get-AiCleanText $rawDesc
+                            if ($summary.StartsWith($title)) { $summary = $summary.Substring($title.Length).Trim() }
+                            if ($summary.Length -le ($source.name.Length + 2)) { $summary = '' }
+
+                            if (-not (Test-AiKeywordMatch $title $summary)) { continue }
+
+                            $time = $null
+                            try { $time = [int64][double]([DateTimeOffset]::Parse($pubDate)).ToUnixTimeSeconds() } catch {}
+                            if ($time -and $time -lt $windowCutoff) { continue }
+
+                            $allItems += [PSCustomObject]@{
+                                source = $source.name; region = $source.region; title = $title
+                                link = $link; publisher = $source.name; summary = $summary; time = $time
+                                headline = ($page -eq 1 -and $rank -lt 3)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Set-AiRelevance $allItems
+            $allItems = $allItems | Sort-Object -Property @{Expression = { $_.time }; Descending = $true}
+            $nacional = @($allItems | Where-Object { $_.region -eq 'nacional' })
+            $internacional = @($allItems | Where-Object { $_.region -eq 'internacional' })
+
+            $result = @{ nacional = $nacional; internacional = $internacional; errors = $errors } | ConvertTo-Json -Depth 8
             $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
             $res.ContentType = 'application/json; charset=utf-8'
             $res.Headers.Add('Access-Control-Allow-Origin', '*')

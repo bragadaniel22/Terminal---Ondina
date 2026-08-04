@@ -438,7 +438,7 @@
   <button class="tab-btn" data-tab="etfs" onclick="switchTab(this)">ETFS INTERNOS</button>
   <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
   <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">BUSCAR</button>
-  <button class="tab-btn" data-tab="cnbc" onclick="switchTab(this)">CNBC (BETA)</button>
+  <button class="tab-btn" data-tab="cnbc" onclick="switchTab(this)">CNBC</button>
   <button class="tab-btn" data-tab="ainews" onclick="switchTab(this)">NOTÍCIAS</button>
 </nav>
 
@@ -923,7 +923,7 @@
       <h2>📰 Painel de Notícias</h2>
       <span class="sources-link" onclick="loadAiNews(true)">↻ atualizar</span>
     </div>
-    <div class="etf-disclaimer">⚠️ Recorte por palavra-chave (IA/chips, mercado financeiro, política, geopolítica, economia) sobre os feeds de G1, CNBC, Reuters, Brazil Journal, InfoMoney e Investing.com — não é a cobertura completa de cada veículo. NACIONAL = fontes brasileiras (G1, Brazil Journal, InfoMoney); INTERNACIONAL = CNBC, Reuters, Investing.com; TOP PICKS = matérias com 3+ palavras-chave batendo ao mesmo tempo (mais provável de ser relevante de verdade).</div>
+    <div class="etf-disclaimer">⚠️ Recorte por palavra-chave (IA/chips, mercado financeiro, política, geopolítica, economia) sobre os feeds de G1, CNBC, Reuters, Brazil Journal, InfoMoney e Investing.com — não é a cobertura completa de cada veículo. NACIONAL = fontes brasileiras (G1, Brazil Journal, InfoMoney); INTERNACIONAL = CNBC, Reuters, Investing.com; TOP PICKS = nota de relevância 6+ (de 10) — 2 pontos por veículo distinto noticiando a mesma história (até 5) + 5 pontos se estiver em destaque na própria fonte, 1 se não.</div>
     <div class="pf-range" id="ainews-filter-row">
       <button class="range-btn" data-ainewsf="top" onclick="filterAiNews(this, 'top')">TOP PICKS</button>
       <button class="range-btn active" data-ainewsf="nacional" onclick="filterAiNews(this, 'nacional')">NACIONAL</button>
@@ -1847,9 +1847,10 @@ function renderAiNewsMagazine(items) {
 
   function card(n, i, tierClass, withSummarize) {
     const d = n.time ? new Date(n.time * 1000) : null;
+    const scoreTag = n.relevanceScore != null ? ` · ⭐ ${n.relevanceScore}/10` : '';
     return `<div class="ainews-card ${tierClass}">
       <a class="ainews-card-title" href="${n.link}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a>
-      <div class="ainews-card-meta">${escapeHtml(n.publisher || n.source || '')}${d ? ' · ' + fmtShortDateTime(d) : ''}</div>
+      <div class="ainews-card-meta">${escapeHtml(n.publisher || n.source || '')}${d ? ' · ' + fmtShortDateTime(d) : ''}${scoreTag}</div>
       ${withSummarize ? `
         <div class="news-actions">
           <button class="news-summarize-btn" onclick="summarizeNews('ainews', ${i})">🤖 resumir com IA</button>
