@@ -236,30 +236,47 @@
     .ainews-checkbox { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text); cursor: pointer; white-space: nowrap; }
     .ainews-checkbox input { accent-color: var(--orange); }
 
-    /* NOTÍCIAS · layout tipo capa de jornal — espaço proporcional à data de publicação
-       (mais recente = maior), pra preencher a tela de forma mais visual que uma lista simples */
+    /* NOTÍCIAS · layout tipo capa de jornal — cards com hierarquia visual clara (a matéria
+       mais recente em destaque), pra preencher a tela sem virar uma parede de texto densa */
     .ainews-empty { padding: 30px 14px; text-align: center; color: var(--dim); font-size: 12px; }
     .ainews-card { display: block; }
     .ainews-card-title { color: var(--bright); text-decoration: none; display: block; }
     .ainews-card-title:hover { color: var(--orange); }
     .ainews-card-meta { color: var(--dim); font-size: 9px; margin-top: 5px; letter-spacing: .5px; }
 
-    .ainews-hero-wrap { padding: 16px 14px 6px; border-bottom: 1px solid var(--border); }
+    .ainews-section-label {
+      font-size: 10px; color: var(--orange); letter-spacing: 2px; text-transform: uppercase;
+      padding: 16px 14px 8px;
+    }
+
+    .ainews-hero-wrap { padding: 14px; }
+    .ainews-card.ainews-hero {
+      background: var(--bg-card); border: 1px solid var(--border-hi); border-left: 3px solid var(--orange);
+      padding: 16px 18px;
+    }
     .ainews-hero .ainews-card-title { font-size: 21px; font-weight: bold; line-height: 1.3; }
     .ainews-hero .ainews-card-meta { font-size: 11px; margin-top: 8px; }
 
     .ainews-secondary-wrap {
-      display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 24px;
-      padding: 14px; border-bottom: 1px solid var(--border);
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 16px; padding: 0 14px 14px;
     }
+    .ainews-card.ainews-secondary {
+      background: var(--bg-card); border: 1px solid var(--border); padding: 12px 14px;
+      transition: border-color .15s;
+    }
+    .ainews-card.ainews-secondary:hover { border-color: var(--border-hi); }
     .ainews-secondary .ainews-card-title { font-size: 14px; font-weight: 600; line-height: 1.35; }
 
     .ainews-compact-wrap {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 24px; padding: 10px 14px;
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; padding: 0 14px 16px;
     }
-    .ainews-compact .ainews-card { padding: 6px 0; border-bottom: 1px solid var(--border); }
-    .ainews-compact .ainews-card-title { font-size: 11px; font-weight: normal; line-height: 1.4; }
-    .ainews-compact .ainews-card-meta { font-size: 8.5px; margin-top: 3px; }
+    .ainews-card.ainews-compact {
+      background: var(--bg-card); border: 1px solid var(--border); padding: 10px 12px;
+      transition: border-color .15s;
+    }
+    .ainews-card.ainews-compact:hover { border-color: var(--border-hi); }
+    .ainews-compact .ainews-card-title { font-size: 11.5px; font-weight: normal; line-height: 1.4; }
+    .ainews-compact .ainews-card-meta { font-size: 8.5px; margin-top: 4px; }
 
     /* CNBC · pacote de destaque (hero + secundários), igual à home da CNBC */
     .cnbc-hero-wrap { padding: 14px; border-bottom: 1px solid var(--border); display: flex; gap: 14px; flex-wrap: wrap; }
@@ -516,9 +533,9 @@
 
   </div>
 
-  <!-- ── EUROPA + EMERGING MARKETS ── -->
+  <!-- ── EUROPA + EMERGING MARKETS + CÂMBIO ── -->
   <div class="card">
-    <div class="card-head"><h2>🌍 Europa + Emerging Markets</h2><span>Yahoo Finance</span></div>
+    <div class="card-head"><h2>🌍 Europa + Emerging Markets + Câmbio</h2><span>Yahoo Finance</span></div>
 
     <div class="row row-click" onclick="openChart('^STOXX50E','Euro Stoxx 50')">
       <div><div class="rname">EURO STOXX 50<span class="lock" id="stoxx-lock"></span></div><div class="rsub" id="stoxx-sub">^STOXX50E · EUR</div></div>
@@ -535,6 +552,18 @@
     <div class="row row-click" onclick="openChart('EEM','MSCI EM (EEM)')">
       <div><div class="rname">MSCI EM<span class="lock" id="msciem-lock"></span></div><div class="rsub" id="msciem-sub">EEM · USD</div></div>
       <div class="rright"><div class="rval" id="msciem-val">…</div><div class="rchg" id="msciem-chg">—</div></div>
+    </div>
+
+    <div class="section-div">💱 CÂMBIO</div>
+
+    <div class="row row-click" onclick="openChart('BRL=X','USD/BRL')">
+      <div><div class="rname">USD/BRL<span class="lock" id="usdbrl-lock"></span></div><div class="rsub" id="usdbrl-sub">BRL=X</div></div>
+      <div class="rright"><div class="rval" id="usdbrl-val">…</div><div class="rchg" id="usdbrl-chg">—</div></div>
+    </div>
+
+    <div class="row row-click" onclick="openChart('EUR=X','USD/EUR')">
+      <div><div class="rname">USD/EUR<span class="lock" id="usdeur-lock"></span></div><div class="rsub" id="usdeur-sub">EUR=X</div></div>
+      <div class="rright"><div class="rval" id="usdeur-val">…</div><div class="rchg" id="usdeur-chg">—</div></div>
     </div>
   </div>
 
@@ -1021,8 +1050,8 @@
         <p>Yahoo Finance: S&amp;P 500 (^GSPC), S&amp;P Equal Weight (^SPXEW), Dow Jones (^DJI), Nasdaq (^IXIC) e futuros (Dow, S&amp;P, Nasdaq).</p>
       </div>
       <div class="sources-section">
-        <h3>🌍 Europa + Emerging Markets</h3>
-        <p>Yahoo Finance: Euro Stoxx 50 (^STOXX50E), DAX (^GDAXI) e MSCI Emerging Markets via ETF iShares (EEM).</p>
+        <h3>🌍 Europa + Emerging Markets + Câmbio</h3>
+        <p>Yahoo Finance: Euro Stoxx 50 (^STOXX50E), DAX (^GDAXI), MSCI Emerging Markets via ETF iShares (EEM), USD/BRL (BRL=X) e USD/EUR (EUR=X).</p>
       </div>
       <div class="sources-section">
         <h3>🌏 Ásia &amp; Pacífico</h3>
@@ -1300,6 +1329,8 @@ async function loadEurope() {
     { t: '^STOXX50E',        val: 'stoxx-val',  chg: 'stoxx-chg',  sub: 'stoxx-sub',  base: '^STOXX50E · EUR', d: 2 },
     { t: '^GDAXI',           val: 'dax-val',    chg: 'dax-chg',    sub: 'dax-sub',    base: '^GDAXI · EUR',    d: 2 },
     { t: 'EEM',              val: 'msciem-val', chg: 'msciem-chg', sub: 'msciem-sub', base: 'EEM · USD',       d: 2 },
+    { t: 'BRL=X',            val: 'usdbrl-val', chg: 'usdbrl-chg', sub: 'usdbrl-sub', base: 'BRL=X',           d: 4 },
+    { t: 'EUR=X',            val: 'usdeur-val', chg: 'usdeur-chg', sub: 'usdeur-sub', base: 'EUR=X',           d: 4 },
   ];
   await Promise.all(list.map(async ({ t, val, chg, sub, base, d }) => {
     try { const data = await yahoo(t); renderMkt(val, chg, sub, data, d, base); }
@@ -1833,8 +1864,12 @@ function renderAiNewsMagazine(items) {
 
   el.innerHTML = `
     <div class="ainews-hero-wrap">${card(hero, 0, 'ainews-hero', true)}</div>
-    ${secondary.length ? `<div class="ainews-secondary-wrap">${secondary.map((n, i) => card(n, i + 1, 'ainews-secondary', true)).join('')}</div>` : ''}
-    ${compact.length ? `<div class="ainews-compact-wrap">${compact.map((n, i) => card(n, i + 5, 'ainews-compact', false)).join('')}</div>` : ''}
+    ${secondary.length ? `
+      <div class="ainews-section-label">Mais recentes</div>
+      <div class="ainews-secondary-wrap">${secondary.map((n, i) => card(n, i + 1, 'ainews-secondary', true)).join('')}</div>` : ''}
+    ${compact.length ? `
+      <div class="ainews-section-label">Outras notícias</div>
+      <div class="ainews-compact-wrap">${compact.map((n, i) => card(n, i + 5, 'ainews-compact', false)).join('')}</div>` : ''}
   `;
 }
 
