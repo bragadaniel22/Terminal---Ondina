@@ -561,8 +561,8 @@
       <div class="rright"><div class="rval" id="usdbrl-val">…</div><div class="rchg" id="usdbrl-chg">—</div></div>
     </div>
 
-    <div class="row row-click" onclick="openChart('EUR=X','USD/EUR')">
-      <div><div class="rname">USD/EUR<span class="lock" id="usdeur-lock"></span></div><div class="rsub" id="usdeur-sub">EUR=X</div></div>
+    <div class="row row-click" onclick="openChart('EURUSD=X','EUR/USD')">
+      <div><div class="rname">EUR/USD<span class="lock" id="usdeur-lock"></span></div><div class="rsub" id="usdeur-sub">EURUSD=X</div></div>
       <div class="rright"><div class="rval" id="usdeur-val">…</div><div class="rchg" id="usdeur-chg">—</div></div>
     </div>
   </div>
@@ -923,7 +923,7 @@
       <h2>📰 Painel de Notícias</h2>
       <span class="sources-link" onclick="loadAiNews(true)">↻ atualizar</span>
     </div>
-    <div class="etf-disclaimer">⚠️ Recorte por palavra-chave (IA/chips, mercado financeiro, política, geopolítica, economia) sobre os feeds de G1 (Economia/Política), CNBC, Reuters, Brazil Journal, InfoMoney, Investing.com, NeoFeed, Poder360, BBC, Valor, WSJ e Bloomberg — não é a cobertura completa de cada veículo, e os veículos pagos (Valor, WSJ, Bloomberg) mostram só a manchete/resumo público, o artigo completo continua pago. NACIONAL = fontes brasileiras (G1, Brazil Journal, InfoMoney, NeoFeed, Poder360, Valor); INTERNACIONAL = CNBC, Reuters, Investing.com, BBC, WSJ, Bloomberg; TOP PICKS = nota de relevância 6+ (de 10) — 2 pontos por veículo distinto noticiando a mesma história (até 5) + 5 pontos se o link estiver na homepage da fonte agora, 1 se não.</div>
+    <div class="etf-disclaimer">⚠️ Recorte por palavra-chave (IA/chips, mercado financeiro, política, geopolítica, economia) sobre os feeds de G1 (Economia/Política), CNBC, Reuters, Brazil Journal, InfoMoney, Investing.com, NeoFeed, Poder360, BBC, Valor, WSJ e Bloomberg — não é a cobertura completa de cada veículo, e os veículos pagos (Valor, WSJ, Bloomberg) mostram só a manchete/resumo público, o artigo completo continua pago. NACIONAL = fontes brasileiras (G1, Brazil Journal, InfoMoney, NeoFeed, Poder360, Valor); INTERNACIONAL = CNBC, Reuters, Investing.com, BBC, WSJ, Bloomberg; TOP PICKS = nota de relevância 6+ (de 10) — 1,5 ponto por veículo nacional e 2 por veículo internacional noticiando a mesma história (até 5) + 5 pontos se o link estiver na homepage da fonte agora, 1 se não.</div>
     <div class="pf-range" id="ainews-filter-row">
       <button class="range-btn" data-ainewsf="top" onclick="filterAiNews(this, 'top')">TOP PICKS</button>
       <button class="range-btn active" data-ainewsf="nacional" onclick="filterAiNews(this, 'nacional')">NACIONAL</button>
@@ -1051,7 +1051,7 @@
       </div>
       <div class="sources-section">
         <h3>🌍 Europa + Emerging Markets + Câmbio</h3>
-        <p>Yahoo Finance: Euro Stoxx 50 (^STOXX50E), DAX (^GDAXI), MSCI Emerging Markets via ETF iShares (EEM), USD/BRL (BRL=X) e USD/EUR (EUR=X).</p>
+        <p>Yahoo Finance: Euro Stoxx 50 (^STOXX50E), DAX (^GDAXI), MSCI Emerging Markets via ETF iShares (EEM), USD/BRL (BRL=X) e EUR/USD (EURUSD=X).</p>
       </div>
       <div class="sources-section">
         <h3>🌏 Ásia &amp; Pacífico</h3>
@@ -1330,7 +1330,7 @@ async function loadEurope() {
     { t: '^GDAXI',           val: 'dax-val',    chg: 'dax-chg',    sub: 'dax-sub',    base: '^GDAXI · EUR',    d: 2 },
     { t: 'EEM',              val: 'msciem-val', chg: 'msciem-chg', sub: 'msciem-sub', base: 'EEM · USD',       d: 2 },
     { t: 'BRL=X',            val: 'usdbrl-val', chg: 'usdbrl-chg', sub: 'usdbrl-sub', base: 'BRL=X',           d: 4 },
-    { t: 'EUR=X',            val: 'usdeur-val', chg: 'usdeur-chg', sub: 'usdeur-sub', base: 'EUR=X',           d: 4 },
+    { t: 'EURUSD=X',         val: 'usdeur-val', chg: 'usdeur-chg', sub: 'usdeur-sub', base: 'EURUSD=X',        d: 4 },
   ];
   await Promise.all(list.map(async ({ t, val, chg, sub, base, d }) => {
     try { const data = await yahoo(t); renderMkt(val, chg, sub, data, d, base); }

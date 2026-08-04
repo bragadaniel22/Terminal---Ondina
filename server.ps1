@@ -273,31 +273,55 @@ function Test-AiKeywordMatch {
 
 # ── Nota de relevância (1-10) — espelho de assignRelevance em api/ai-news.js ─────────────────
 $AI_TOP_PICK_MIN_SCORE = 6
-$AI_CLUSTER_SIMILARITY = 0.35
+$AI_OUTLET_WEIGHT = @{ nacional = 1.5; internacional = 2 }
+# $AI_SOURCE_REGION é populado mais abaixo, depois que Get-AiNewsSourcesConfig existe (ordem de
+# definição das funções no script).
+$AI_SOURCE_REGION = @{}
+
+# Duas manchetes sobre a MESMA notícia raramente têm escrita parecida — um Jaccard simples de
+# palavras subestima isso (a palavra que identifica a história, ex: "BP", é curta e as que
+# sobram em comum tendem a ser genéricas, tipo "oil"/"war", comuns em várias matérias do
+# mesmo ciclo). Peso tipo TF-IDF: cada palavra pesa pelo inverso de quantas matérias a contêm.
 $AI_STOPWORDS = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
     'para', 'como', 'mais', 'sobre', 'entre', 'depois', 'antes', 'contra', 'diz', 'disse',
-    'apos', 'nesta', 'neste', 'pode', 'deve', 'ainda', 'tambem', 'quando', 'onde',
+    'apos', 'nesta', 'neste', 'pode', 'deve', 'ainda', 'tambem', 'quando', 'onde', 'uma', 'um',
+    'dos', 'das', 'dia', 'ser', 'ter', 'foi', 'sao', 'com', 'por', 'que', 'nao',
     'with', 'from', 'that', 'this', 'have', 'says', 'after', 'before', 'about', 'their',
-    'will', 'what', 'which', 'into', 'over', 'amid'
+    'will', 'what', 'which', 'into', 'over', 'amid', 'the', 'and', 'for', 'are', 'was', 'were',
+    'has', 'had', 'not', 'its', 'his', 'her', 'you', 'but', 'all', 'can', 'new'
 ))
+$AI_MIN_WORD_LEN = 2
+$AI_CLUSTER_SIMILARITY = 0.22
+$AI_CLUSTER_MAX_TIME_GAP = 48 * 3600
 
 function Get-AiTitleWordSet {
     param([string]$Title)
     $norm = (Get-AiNormalizedText $Title) -replace '[^a-z0-9\s]', ' '
     $set = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($w in ($norm -split '\s+')) {
-        if ($w.Length -ge 4 -and -not $AI_STOPWORDS.Contains($w)) { [void]$set.Add($w) }
+        if ($w.Length -ge $AI_MIN_WORD_LEN -and -not $AI_STOPWORDS.Contains($w)) { [void]$set.Add($w) }
     }
     return $set
 }
 
-function Get-AiJaccard {
-    param($A, $B)
-    $inter = 0
-    foreach ($w in $A) { if ($B.Contains($w)) { $inter++ } }
-    $union = $A.Count + $B.Count - $inter
-    if ($union -eq 0) { return 0 }
-    return $inter / $union
+function Get-AiIdf {
+    param([object[]]$WordSets)
+    $df = @{}
+    foreach ($set in $WordSets) { foreach ($w in $set) { $df[$w] = ($df[$w] + 1) } }
+    $n = $WordSets.Count
+    $idf = @{}
+    foreach ($w in $df.Keys) { $idf[$w] = [Math]::Log(($n + 1) / ($df[$w] + 1)) + 1 }
+    return $idf
+}
+
+function Get-AiWeightedSimilarity {
+    param($A, $B, $Idf)
+    $inter = 0.0; $normA = 0.0; $normB = 0.0
+    foreach ($w in $A) { $wt = if ($Idf.ContainsKey($w)) { $Idf[$w] } else { 1 }; $normA += $wt * $wt; if ($B.Contains($w)) { $inter += $wt } }
+    foreach ($w in $B) { $wt = if ($Idf.ContainsKey($w)) { $Idf[$w] } else { 1 }; $normB += $wt * $wt }
+    $denom = [Math]::Sqrt($normA) * [Math]::Sqrt($normB)
+    if ($denom -eq 0) { return 0 }
+    return $inter / $denom
 }
 
 # Cluster por similaridade de título entre fontes diferentes (mesma história, manchetes
@@ -306,17 +330,34 @@ function Get-AiJaccard {
 function Set-AiRelevance {
     param([object[]]$Items)
     if (-not $Items -or $Items.Count -eq 0) { return }
-    $wordSets = @($Items | ForEach-Object { Get-AiTitleWordSet $_.title })
+    # NÃO usar "@($Items | ForEach-Object { Get-AiTitleWordSet ... })" aqui — o pipeline do
+    # PowerShell desenrola automaticamente o HashSet retornado por cada chamada, misturando as
+    # palavras de TODAS as manchetes numa lista só em vez de manter um HashSet por item (bug
+    # real, silencioso, já encontrado e corrigido nessa sessão). Loop explícito com .Add()
+    # evita esse desenrolamento.
+    $wordSets = [System.Collections.Generic.List[object]]::new()
+    foreach ($it in $Items) { $wordSets.Add((Get-AiTitleWordSet $it.title)) }
+    $idf = Get-AiIdf $wordSets
     for ($i = 0; $i -lt $Items.Count; $i++) {
         $outlets = [System.Collections.Generic.HashSet[string]]::new()
         [void]$outlets.Add($Items[$i].source)
         for ($j = 0; $j -lt $Items.Count; $j++) {
             if ($j -eq $i -or $Items[$j].source -eq $Items[$i].source) { continue }
-            if ((Get-AiJaccard $wordSets[$i] $wordSets[$j]) -ge $AI_CLUSTER_SIMILARITY) { [void]$outlets.Add($Items[$j].source) }
+            $gap = if ($Items[$i].time -and $Items[$j].time) { [Math]::Abs($Items[$i].time - $Items[$j].time) } else { 0 }
+            if ($gap -gt $AI_CLUSTER_MAX_TIME_GAP) { continue }
+            if ((Get-AiWeightedSimilarity $wordSets[$i] $wordSets[$j] $idf) -ge $AI_CLUSTER_SIMILARITY) { [void]$outlets.Add($Items[$j].source) }
         }
-        $multiOutletScore = [Math]::Min(5, $outlets.Count * 2)
+        $multiOutletScore = 0.0
+        foreach ($outlet in $outlets) {
+            $region = $AI_SOURCE_REGION[$outlet]
+            $multiOutletScore += if ($AI_OUTLET_WEIGHT.ContainsKey($region)) { $AI_OUTLET_WEIGHT[$region] } else { 2 }
+        }
+        # [Math]::Min(5, $x) com "5" sem ponto decimal escolhe a sobrecarga Math.Min(Int32,Int32)
+        # e ARREDONDA $x pra int antes de comparar (bug real encontrado e corrigido nessa
+        # sessão — 1.5 virava 2 silenciosamente). "5.0" força a sobrecarga Math.Min(Double,Double).
+        $multiOutletScore = [Math]::Min(5.0, $multiOutletScore)
         $headlineScore = if ($Items[$i].headline) { 5 } else { 1 }
-        $score = $multiOutletScore + $headlineScore
+        $score = [Math]::Round($multiOutletScore + $headlineScore, 1)
         Add-Member -InputObject $Items[$i] -NotePropertyName relevanceScore -NotePropertyValue $score -Force
         Add-Member -InputObject $Items[$i] -NotePropertyName topPick -NotePropertyValue ($score -ge $AI_TOP_PICK_MIN_SCORE) -Force
         $Items[$i].PSObject.Properties.Remove('headline')
@@ -448,6 +489,8 @@ function Get-AiNewsSourcesConfig {
         @{ name = 'Bloomberg'; region = 'internacional'; pages = 1; urls = @('https://news.google.com/rss/search?q=site:bloomberg.com+when:2d&hl=en-US&gl=US&ceid=US:en') }
     )
 }
+
+foreach ($s in (Get-AiNewsSourcesConfig)) { $AI_SOURCE_REGION[$s.name] = $s.region }
 
 function Get-NewsForTickers {
     param([string[]]$Tickers)
