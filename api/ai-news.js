@@ -331,39 +331,73 @@ function evaluateKeywords(title, summary) {
 // só o proxy Google News) e qualquer fonte cuja homepage falhe ao buscar caem pro proxy antigo:
 // top 3 posições da página 1 do próprio feed RSS. "Top Picks" = nota final >= 6.
 const TOP_PICK_MIN_SCORE = 6;
-const CLUSTER_SIMILARITY = 0.35;
+
+// Pontos por veículo distinto que noticia a mesma história — nacional pesa menos que
+// internacional (a pedido do usuário), até o teto de 5.
+const OUTLET_WEIGHT = { nacional: 1.5, internacional: 2 };
+const SOURCE_REGION = Object.fromEntries(SOURCES.map((s) => [s.name, s.region]));
+
+// Duas manchetes sobre a MESMA notícia raramente têm a escrita parecida ("BP's $5.7bn profit
+// highest since 2022..." vs "BP profit more than doubles as Trump blasts Big Oil...") — um
+// Jaccard simples de palavras subestima isso, porque as palavras que sobram em comum tendem a
+// ser genéricas (que aparecem em dezenas de outras matérias no mesmo ciclo, ex: "oil", "war")
+// e a palavra que de fato identifica a história ("BP") é curta e ficava fora do corte de
+// tamanho mínimo. Corrigido com peso tipo TF-IDF: cada palavra pesa pelo inverso de quantas
+// matérias do ciclo a contêm — "BP" (rara no ciclo) pesa muito mais que "oil"/"war" (comuns).
 const STOPWORDS = new Set([
   'para', 'como', 'mais', 'sobre', 'entre', 'depois', 'antes', 'contra', 'diz', 'disse',
-  'após', 'nesta', 'neste', 'pode', 'deve', 'ainda', 'também', 'após', 'quando', 'onde',
+  'após', 'nesta', 'neste', 'pode', 'deve', 'ainda', 'também', 'quando', 'onde', 'uma', 'um',
+  'dos', 'das', 'dia', 'ser', 'ter', 'foi', 'são', 'com', 'por', 'que', 'não', 'dos', 'dia',
   'with', 'from', 'that', 'this', 'have', 'says', 'after', 'before', 'about', 'their',
-  'will', 'what', 'which', 'into', 'over', 'amid', 'says',
+  'will', 'what', 'which', 'into', 'over', 'amid', 'the', 'and', 'for', 'are', 'was', 'were',
+  'has', 'had', 'not', 'its', 'his', 'her', 'you', 'but', 'all', 'can', 'new',
 ]);
+const MIN_WORD_LEN = 2;
+const CLUSTER_SIMILARITY = 0.22; // limiar do cosseno ponderado por idf, calibrado com casos reais
+const CLUSTER_MAX_TIME_GAP = 48 * 3600; // fora dessa janela, mesma palavra rara é coincidência
 
 function titleWordSet(title) {
   const norm = normalize(title).replace(/[^a-z0-9\s]/g, ' ');
-  return new Set(norm.split(/\s+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w)));
+  return new Set(norm.split(/\s+/).filter((w) => w.length >= MIN_WORD_LEN && !STOPWORDS.has(w)));
 }
 
-function jaccard(a, b) {
-  let inter = 0;
-  for (const w of a) if (b.has(w)) inter++;
-  const union = a.size + b.size - inter;
-  return union === 0 ? 0 : inter / union;
+// idf(palavra) = log((N+1)/(df+1)) + 1 — sempre positivo, mais alto pra palavras raras no ciclo.
+function computeIdf(wordSets) {
+  const df = new Map();
+  for (const set of wordSets) for (const w of set) df.set(w, (df.get(w) || 0) + 1);
+  const n = wordSets.length;
+  const idf = new Map();
+  for (const [w, count] of df) idf.set(w, Math.log((n + 1) / (count + 1)) + 1);
+  return idf;
+}
+
+// Similaridade tipo cosseno: presença binária de cada palavra, ponderada por idf.
+function weightedSimilarity(a, b, idf) {
+  let inter = 0, normA = 0, normB = 0;
+  for (const w of a) { const wt = idf.get(w) || 1; normA += wt * wt; if (b.has(w)) inter += wt; }
+  for (const w of b) { const wt = idf.get(w) || 1; normB += wt * wt; }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : inter / denom;
 }
 
 // Cluster por similaridade de título entre fontes diferentes (mesma história, manchetes
 // distintas) — o(n²) mas o volume por ciclo (algumas centenas de itens) não pesa.
 function assignRelevance(items) {
   const wordSets = items.map((it) => titleWordSet(it.title));
+  const idf = computeIdf(wordSets);
   items.forEach((it, i) => {
     const outlets = new Set([it.source]);
     for (let j = 0; j < items.length; j++) {
       if (j === i || items[j].source === it.source) continue;
-      if (jaccard(wordSets[i], wordSets[j]) >= CLUSTER_SIMILARITY) outlets.add(items[j].source);
+      const gap = it.time != null && items[j].time != null ? Math.abs(it.time - items[j].time) : 0;
+      if (gap > CLUSTER_MAX_TIME_GAP) continue;
+      if (weightedSimilarity(wordSets[i], wordSets[j], idf) >= CLUSTER_SIMILARITY) outlets.add(items[j].source);
     }
-    const multiOutletScore = Math.min(5, outlets.size * 2);
+    let multiOutletScore = 0;
+    for (const outlet of outlets) multiOutletScore += OUTLET_WEIGHT[SOURCE_REGION[outlet]] ?? 2;
+    multiOutletScore = Math.min(5, multiOutletScore);
     const headlineScore = it.headline ? 5 : 1;
-    it.relevanceScore = multiOutletScore + headlineScore;
+    it.relevanceScore = Math.round((multiOutletScore + headlineScore) * 10) / 10;
     it.topPick = it.relevanceScore >= TOP_PICK_MIN_SCORE;
     delete it.headline;
   });
