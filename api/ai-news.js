@@ -55,6 +55,28 @@ const SOURCES = [
     name: 'BBC', region: 'internacional',
     urls: ['https://feeds.bbci.co.uk/news/world/rss.xml', 'https://feeds.bbci.co.uk/news/business/rss.xml'],
   },
+  // Valor Econômico — pago, mas expõe RSS público de headline/resumo (sem paywall na
+  // listagem, só no artigo completo) igual ao G1. Sem login necessário.
+  { name: 'Valor', region: 'nacional', urls: ['https://valor.globo.com/rss/valor/'] },
+  // WSJ — pago, mas também expõe RSS público (feeds.a.dj.com) com headline/resumo livre. A
+  // homepage (wsj.com) devolve 401 pra fetch simples (gate na borda), então cai pro proxy
+  // antigo de "manchete" (top 3 do feed) em vez do homepage scraping. Sem login necessário.
+  {
+    name: 'WSJ', region: 'internacional',
+    urls: [
+      'https://feeds.a.dj.com/rss/RSSWorldNews.xml',
+      'https://feeds.a.dj.com/rss/RSSMarketsMain.xml',
+      'https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml',
+    ],
+  },
+  // Bloomberg — sem RSS oficial (descontinuado) e a home/latinamerica bloqueia scraping direto
+  // (403 mesmo sem login, é bloqueio de bot na borda, não parede de login). Usamos o Google
+  // News como proxy, igual ao Reuters — cobre Bloomberg em geral, não só a edição Latin America
+  // especificamente (Google News não indexa por edição regional do site).
+  {
+    name: 'Bloomberg', region: 'internacional',
+    urls: ['https://news.google.com/rss/search?q=site:bloomberg.com+when:2d&hl=en-US&gl=US&ceid=US:en'],
+  },
 ];
 
 // Homepage de cada fonte, usada pra checar se uma matéria está de fato em destaque na página
@@ -70,6 +92,9 @@ const SOURCE_HOMEPAGES = {
   NeoFeed: 'https://neofeed.com.br/',
   Poder360: 'https://www.poder360.com.br/',
   BBC: 'https://www.bbc.com/',
+  Valor: 'https://valor.globo.com/',
+  // WSJ e Bloomberg ficam de fora — wsj.com devolve 401 pra fetch simples (paywall na borda) e
+  // bloomberg.com devolve 403 (bloqueio de bot). Caem pro proxy antigo de "manchete".
 };
 
 // Caminho (sem domínio/query/hash) de uma URL — pra comparar link do RSS com link da home
