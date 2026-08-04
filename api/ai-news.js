@@ -13,10 +13,15 @@
 // que caiu em conteúdo de lifestyle/publicidade em vez de notícia de verdade.
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
-// region: 'nacional' pras fontes brasileiras (G1, Brazil Journal, InfoMoney — brasileiras por
-// natureza), 'internacional' pro resto (CNBC, Reuters, Investing.com).
+// region: 'nacional' pras fontes brasileiras (G1, Brazil Journal, InfoMoney, NeoFeed, Poder360
+// — brasileiras por natureza), 'internacional' pro resto (CNBC, Reuters, Investing.com, BBC).
 const SOURCES = [
-  { name: 'G1', region: 'nacional', urls: ['https://g1.globo.com/rss/g1/'] },
+  {
+    // G1 geral foi trocado por só as editorias Economia e Política (a pedido do usuário) —
+    // mesmo padrão de RSS por editoria do G1 (/rss/g1/{editoria}/), mesma fonte "G1".
+    name: 'G1', region: 'nacional',
+    urls: ['https://g1.globo.com/rss/g1/economia/', 'https://g1.globo.com/rss/g1/politica/'],
+  },
   {
     name: 'CNBC', region: 'internacional',
     urls: [
@@ -44,7 +49,53 @@ const SOURCES = [
       'https://www.investing.com/rss/commodities.rss',
     ],
   },
+  { name: 'NeoFeed', region: 'nacional', urls: ['https://neofeed.com.br/feed/'] },
+  { name: 'Poder360', region: 'nacional', urls: ['https://www.poder360.com.br/feed/'] },
+  {
+    name: 'BBC', region: 'internacional',
+    urls: ['https://feeds.bbci.co.uk/news/world/rss.xml', 'https://feeds.bbci.co.uk/news/business/rss.xml'],
+  },
 ];
+
+// Homepage de cada fonte, usada pra checar se uma matéria está de fato em destaque na página
+// inicial (sinal real de "manchete", em vez do proxy fraco de "top 3 do feed RSS"). Reuters
+// fica de fora — não tem homepage própria checável (usamos Google News como proxy pro feed,
+// que não reflete a home real do site) — mantém o proxy antigo (top 3 da página 1) só pra ela.
+const SOURCE_HOMEPAGES = {
+  G1: 'https://g1.globo.com/',
+  CNBC: 'https://www.cnbc.com/world/',
+  'Brazil Journal': 'https://braziljournal.com/',
+  InfoMoney: 'https://www.infomoney.com.br/',
+  'Investing.com': 'https://www.investing.com/',
+  NeoFeed: 'https://neofeed.com.br/',
+  Poder360: 'https://www.poder360.com.br/',
+  BBC: 'https://www.bbc.com/',
+};
+
+// Caminho (sem domínio/query/hash) de uma URL — pra comparar link do RSS com link da home
+// ignorando diferenças de protocolo, subdomínio, parâmetros de tracking etc.
+function urlPath(url, base) {
+  try {
+    return new URL(url, base).pathname.replace(/\/+$/, '').toLowerCase();
+  } catch {
+    return url;
+  }
+}
+
+// Baixa a homepage de uma fonte e extrai o conjunto de caminhos linkados nela — usado pra
+// saber quais matérias do feed RSS estão de fato em destaque na home agora.
+async function fetchHomepagePaths(baseUrl) {
+  const r = await fetchWithTimeout(baseUrl);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const html = await r.text();
+  const paths = new Set();
+  const hrefRe = /<a[^>]+href=["']([^"']+)["']/gi;
+  let m;
+  while ((m = hrefRe.exec(html))) {
+    paths.add(urlPath(m[1], baseUrl));
+  }
+  return paths;
+}
 
 // Janela de tempo padrão — mais larga que o CNBC do resto do terminal (24h) porque é um
 // recorte por palavra-chave sobre 6 fontes que também publicam muita coisa fora do escopo;
@@ -251,10 +302,11 @@ function evaluateKeywords(title, summary) {
 
 // ── Nota de relevância (1-10) ────────────────────────────────────────────────────────────────
 // Duas categorias de 1 a 5 cada: (a) quantos veículos distintos noticiaram a mesma história —
-// 2 pontos por veículo, até 5 (2 veículos já bate o teto); (b) se a matéria está entre as mais em destaque da própria fonte
-// — proxy de "manchete/página inicial" sem precisar raspar a home de cada site: os feeds RSS já
-// vêm ordenados por relevância/recência, então as 3 primeiras posições da página 1 de cada feed
-// valem nota 5, o resto vale 1. "Top Picks" = nota final >= 6.
+// 2 pontos por veículo, até 5 (2 veículos já bate o teto); (b) se o link da matéria está de fato
+// presente na homepage da fonte agora (raspagem real da home, ver SOURCE_HOMEPAGES/
+// fetchHomepagePaths acima) — 5 se estiver, 1 se não. Reuters (sem homepage própria checável,
+// só o proxy Google News) e qualquer fonte cuja homepage falhe ao buscar caem pro proxy antigo:
+// top 3 posições da página 1 do próprio feed RSS. "Top Picks" = nota final >= 6.
 const TOP_PICK_MIN_SCORE = 6;
 const CLUSTER_SIMILARITY = 0.35;
 const STOPWORDS = new Set([
@@ -385,7 +437,7 @@ async function fetchWithTimeout(url, ms = 8000) {
   }
 }
 
-async function fetchSource(source) {
+async function fetchSource(source, homepagePaths) {
   const tasks = [];
   for (const url of source.urls) {
     for (let page = 1; page <= (source.pages || 1); page++) {
@@ -427,9 +479,16 @@ async function fetchSource(source) {
 
       if (!evaluateKeywords(title, summary)) return;
 
+      // Sinal de "manchete" real: o link está na homepage da fonte agora? Fallback (fonte
+      // sem homepage checável, ou homepage falhou ao buscar) pro proxy antigo — top 3 do
+      // feed RSS na página 1.
+      const headline = homepagePaths
+        ? homepagePaths.has(urlPath(raw.link, source.urls[0]))
+        : isPage1 && idx < 3;
+
       items.push({
         source: source.name, region: source.region, title, link: raw.link,
-        publisher: source.name, summary, time: raw.time, headline: isPage1 && idx < 3,
+        publisher: source.name, summary, time: raw.time, headline,
       });
     });
   });
@@ -441,7 +500,18 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-store');
 
-  const results = await Promise.allSettled(SOURCES.map(fetchSource));
+  const homepagePathsBySource = {};
+  await Promise.all(Object.entries(SOURCE_HOMEPAGES).map(async ([name, url]) => {
+    try {
+      homepagePathsBySource[name] = await fetchHomepagePaths(url);
+    } catch {
+      homepagePathsBySource[name] = null; // fetchSource cai pro proxy antigo (top 3 do feed)
+    }
+  }));
+
+  const results = await Promise.allSettled(
+    SOURCES.map((source) => fetchSource(source, homepagePathsBySource[source.name] || null)),
+  );
   const errors = [];
   let all = [];
   results.forEach((r, i) => {
