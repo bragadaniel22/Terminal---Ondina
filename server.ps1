@@ -319,6 +319,7 @@ function Set-AiRelevance {
         $score = $multiOutletScore + $headlineScore
         Add-Member -InputObject $Items[$i] -NotePropertyName relevanceScore -NotePropertyValue $score -Force
         Add-Member -InputObject $Items[$i] -NotePropertyName topPick -NotePropertyValue ($score -ge $AI_TOP_PICK_MIN_SCORE) -Force
+        $Items[$i].PSObject.Properties.Remove('headline')
     }
 }
 
@@ -368,9 +369,56 @@ function Get-AiPagedUrl {
     return "$Url${sep}paged=$Page"
 }
 
+# Homepage de cada fonte, espelho de SOURCE_HOMEPAGES em api/ai-news.js — Reuters fica de
+# fora (sem homepage própria checável, só o proxy Google News).
+function Get-AiSourceHomepages {
+    return @{
+        'G1' = 'https://g1.globo.com/'
+        'CNBC' = 'https://www.cnbc.com/world/'
+        'Brazil Journal' = 'https://braziljournal.com/'
+        'InfoMoney' = 'https://www.infomoney.com.br/'
+        'Investing.com' = 'https://www.investing.com/'
+        'NeoFeed' = 'https://neofeed.com.br/'
+        'Poder360' = 'https://www.poder360.com.br/'
+        'BBC' = 'https://www.bbc.com/'
+        'Valor' = 'https://valor.globo.com/'
+        # WSJ e Bloomberg ficam de fora — wsj.com devolve 401 pra fetch simples (paywall na
+        # borda) e bloomberg.com devolve 403 (bloqueio de bot). Caem pro proxy antigo de
+        # "manchete" (top 3 do feed).
+    }
+}
+
+function Get-AiUrlPath {
+    param([string]$Url, [string]$BaseUrl)
+    try {
+        $u = [Uri]::new([Uri]$BaseUrl, $Url)
+        return $u.AbsolutePath.TrimEnd('/').ToLowerInvariant()
+    } catch {
+        return $Url
+    }
+}
+
+# Baixa a homepage de uma fonte e extrai o conjunto de caminhos linkados nela — espelho de
+# fetchHomepagePaths em api/ai-news.js.
+function Get-AiHomepagePaths {
+    param([string]$BaseUrl)
+    $wc = [System.Net.WebClient]::new()
+    $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36')
+    $wc.Encoding = [System.Text.Encoding]::UTF8
+    $html = $wc.DownloadString($BaseUrl)
+    $paths = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($m in [regex]::Matches($html, '<a[^>]+href=["'']([^"'']+)["'']', 'IgnoreCase')) {
+        [void]$paths.Add((Get-AiUrlPath $m.Groups[1].Value $BaseUrl))
+    }
+    return $paths
+}
+
 function Get-AiNewsSourcesConfig {
     return @(
-        @{ name = 'G1'; region = 'nacional'; pages = 1; urls = @('https://g1.globo.com/rss/g1/') },
+        @{ name = 'G1'; region = 'nacional'; pages = 1; urls = @(
+            'https://g1.globo.com/rss/g1/economia/',
+            'https://g1.globo.com/rss/g1/politica/'
+        ) },
         @{ name = 'CNBC'; region = 'internacional'; pages = 1; urls = @(
             'https://www.cnbc.com/id/100727362/device/rss/rss.html',
             'https://www.cnbc.com/id/100003114/device/rss/rss.html',
@@ -388,7 +436,20 @@ function Get-AiNewsSourcesConfig {
             'https://www.investing.com/rss/market_overview.rss',
             'https://www.investing.com/rss/news_1.rss',
             'https://www.investing.com/rss/commodities.rss'
-        ) }
+        ) },
+        @{ name = 'NeoFeed'; region = 'nacional'; pages = 1; urls = @('https://neofeed.com.br/feed/') },
+        @{ name = 'Poder360'; region = 'nacional'; pages = 1; urls = @('https://www.poder360.com.br/feed/') },
+        @{ name = 'BBC'; region = 'internacional'; pages = 1; urls = @(
+            'https://feeds.bbci.co.uk/news/world/rss.xml',
+            'https://feeds.bbci.co.uk/news/business/rss.xml'
+        ) },
+        @{ name = 'Valor'; region = 'nacional'; pages = 1; urls = @('https://valor.globo.com/rss/valor/') },
+        @{ name = 'WSJ'; region = 'internacional'; pages = 1; urls = @(
+            'https://feeds.a.dj.com/rss/RSSWorldNews.xml',
+            'https://feeds.a.dj.com/rss/RSSMarketsMain.xml',
+            'https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml'
+        ) },
+        @{ name = 'Bloomberg'; region = 'internacional'; pages = 1; urls = @('https://news.google.com/rss/search?q=site:bloomberg.com+when:2d&hl=en-US&gl=US&ceid=US:en') }
     )
 }
 
@@ -632,6 +693,12 @@ while ($listener.IsListening) {
             $allItems = @()
             $errors = @()
 
+            $homepagePaths = @{}
+            foreach ($hp in (Get-AiSourceHomepages).GetEnumerator()) {
+                try { $homepagePaths[$hp.Key] = Get-AiHomepagePaths $hp.Value }
+                catch { $homepagePaths[$hp.Key] = $null } # cai pro proxy antigo (top 3 do feed)
+            }
+
             foreach ($source in $sources) {
                 $seenLinks = New-Object System.Collections.Generic.HashSet[string]
                 $seenTitles = New-Object System.Collections.Generic.HashSet[string]
@@ -678,10 +745,13 @@ while ($listener.IsListening) {
                             try { $time = [int64][double]([DateTimeOffset]::Parse($pubDate)).ToUnixTimeSeconds() } catch {}
                             if ($time -and $time -lt $windowCutoff) { continue }
 
+                            $hpSet = $homepagePaths[$source.name]
+                            $headline = if ($hpSet) { $hpSet.Contains((Get-AiUrlPath $link $baseUrl)) } else { ($page -eq 1 -and $rank -lt 3) }
+
                             $allItems += [PSCustomObject]@{
                                 source = $source.name; region = $source.region; title = $title
                                 link = $link; publisher = $source.name; summary = $summary; time = $time
-                                headline = ($page -eq 1 -and $rank -lt 3)
+                                headline = $headline
                             }
                         }
                     }
