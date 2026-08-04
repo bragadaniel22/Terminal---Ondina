@@ -75,7 +75,7 @@ const KEYWORDS = [
   'Lam Research', 'Micron', 'SK Hynix', 'Samsung Electronics', 'CoreWeave', 'xAI',
   'Palantir', 'Arm Holdings',
   'mercado financeiro', 'financial markets', 'mercados globais', 'global markets',
-  'bolsa de valores', 'stock market', 'ações', 'stocks', 'equities', 'renda fixa',
+  'bolsa de valores', 'stock market', 'stocks', 'equities', 'renda fixa',
   'fixed income', 'títulos públicos', 'government bonds', 'títulos corporativos',
   'corporate bonds', 'debêntures', 'bonds', 'crédito privado', 'private credit',
   'mercado de crédito', 'credit markets', 'spread de crédito', 'credit spread',
@@ -123,7 +123,7 @@ const KEYWORDS = [
   'presidential veto', 'medida provisória', 'executive order', 'projeto de lei', 'bill',
   'legislation', 'PEC', 'decreto', 'presidential decree', 'government shutdown',
   'impeachment', 'crise política', 'political crisis', 'protestos', 'protests',
-  'corrupção', 'corruption', 'investigação', 'investigation', 'sanções', 'sanctions',
+  'corrupção', 'corruption', 'sanções', 'sanctions',
   'market reaction', 'reação do mercado', 'investor reaction', 'reação dos investidores',
   'policy uncertainty', 'incerteza política', 'political risk', 'risco político',
   'fiscal risk', 'risco fiscal', 'regulatory risk', 'risco regulatório', 'election risk',
@@ -136,7 +136,7 @@ const KEYWORDS = [
   'geopolítica', 'geopolitics', 'tensão geopolítica', 'geopolitical tensions',
   'conflito internacional', 'international conflict', 'guerra', 'war', 'cessar-fogo',
   'ceasefire', 'negociações de paz', 'peace talks', 'ataque militar', 'military strike',
-  'ataque aéreo', 'air strike', 'invasão', 'invasion', 'mobilização militar',
+  'ataque aéreo', 'air strike', 'mobilização militar',
   'military mobilization', 'escalada militar', 'military escalation', 'desescalada',
   'de-escalation', 'sanções econômicas', 'economic sanctions', 'embargo',
   'bloqueio comercial', 'trade blockade', 'guerra comercial', 'trade war', 'retaliação',
@@ -183,19 +183,17 @@ const KEYWORDS = [
   'exportações', 'exports', 'importações', 'imports', 'reservas internacionais',
   'foreign exchange reserves', 'déficit fiscal', 'fiscal deficit', 'resultado primário',
   'primary balance', 'arrecadação', 'tax revenue', 'crédito bancário', 'bank lending',
-  'credit growth', 'inadimplência', 'loan delinquency', 'consumo', 'consumer spending',
+  'credit growth', 'inadimplência', 'loan delinquency', 'consumer spending',
   'investimento empresarial', 'business investment', 'formação bruta de capital',
   'capital formation', 'capital expenditure', 'capex', 'PMI', 'ISM', 'IBC-Br', 'Focus',
   'Payroll', 'nonfarm payrolls', 'jobless claims', 'pedidos de seguro-desemprego',
-  'urgente', 'breaking', 'última hora', 'just in', 'surpresa', 'unexpected', 'surprise',
+  'surpresa', 'unexpected', 'surprise',
   'acima do esperado', 'above expectations', 'abaixo do esperado', 'below expectations',
   'recorde', 'record high', 'record low', 'colapso', 'collapse', 'disparada', 'surge',
   'queda acentuada', 'plunge', 'demissão', 'resignation', 'fired', 'renúncia', 'fraude',
-  'fraud', 'intervenção', 'intervention', 'ataque', 'attack', 'mercados', 'markets',
-  'investidores', 'investors', 'valuation', 'avaliação', 'earnings', 'receita', 'revenue',
+  'fraud', 'valuation', 'avaliação', 'earnings', 'receita', 'revenue',
   'EBITDA', 'EPS', 'lucro por ação', 'cash flow', 'fluxo de caixa', 'free cash flow',
   'fluxo de caixa livre', 'debt', 'dívida', 'leverage', 'alavancagem', 'spread', 'yield',
-  'retorno', 'taxa',
 ];
 
 // Lista de exclusão — descarta match positivo que caiu em conteúdo de lifestyle/
@@ -230,18 +228,13 @@ const KEYWORD_PATTERNS = [...new Set(KEYWORDS.map(normalize))].map((k) => new Re
 const EXCLUDE_RE = buildKeywordRegex(EXCLUDE_KEYWORDS);
 
 // Exigir só 1 palavra-chave batendo dava muito falso positivo — vários termos da lista são
-// genéricos em português com sentido duplo ("ações" = tanto "stocks" quanto "legal actions",
-// "consumo" = tanto "consumer spending" quanto "consumo de água", "retorno"/"taxa"/
-// "intervenção"/"invasão" idem) e bateram em notícias de água, clima, crime, sem nenhuma
-// relação com o escopo da aba. Exigir 2+ termos DISTINTOS reduz drasticamente esse ruído sem
-// precisar remover nada da lista — uma notícia de verdade sobre o tema costuma trazer mais de
-// um termo junto (ex: "Selic" + "Copom", ou "Nvidia" + "data center").
-const MIN_KEYWORD_MATCHES = 2;
-// "Top Picks" — sub-aba mais exigente (ver index.html), matéria com 3+ termos distintos.
-const TOP_PICK_MIN_MATCHES = 3;
+// genéricos em português com sentido duplo e bateram em notícias sem nenhuma relação com o
+// escopo da aba. Removemos os piores ofensores (termos isolados e ambíguos, ver histórico) e
+// subimos a exigência pra 3+ termos DISTINTOS — reduz bem mais o ruído do que 2+, ao custo de
+// eventualmente perder alguma matéria legítima com vocabulário mais enxuto.
+const MIN_KEYWORD_MATCHES = 3;
 
-// Conta quantas palavras-chave DISTINTAS batem (sem early-exit, pra saber tanto se qualifica
-// pra entrar na lista quanto se qualifica pro Top Picks, mais exigente).
+// Conta quantas palavras-chave DISTINTAS batem.
 function countKeywordMatches(text) {
   let count = 0;
   for (const re of KEYWORD_PATTERNS) {
@@ -252,9 +245,53 @@ function countKeywordMatches(text) {
 
 function evaluateKeywords(title, summary) {
   const text = normalize(`${title} ${summary}`);
-  if (EXCLUDE_RE.test(text)) return { include: false, topPick: false };
-  const count = countKeywordMatches(text);
-  return { include: count >= MIN_KEYWORD_MATCHES, topPick: count >= TOP_PICK_MIN_MATCHES };
+  if (EXCLUDE_RE.test(text)) return false;
+  return countKeywordMatches(text) >= MIN_KEYWORD_MATCHES;
+}
+
+// ── Nota de relevância (1-10) ────────────────────────────────────────────────────────────────
+// Duas categorias de 1 a 5 cada: (a) quantos veículos distintos noticiaram a mesma história —
+// 2 pontos por veículo, até 5 (2 veículos já bate o teto); (b) se a matéria está entre as mais em destaque da própria fonte
+// — proxy de "manchete/página inicial" sem precisar raspar a home de cada site: os feeds RSS já
+// vêm ordenados por relevância/recência, então as 3 primeiras posições da página 1 de cada feed
+// valem nota 5, o resto vale 1. "Top Picks" = nota final >= 6.
+const TOP_PICK_MIN_SCORE = 6;
+const CLUSTER_SIMILARITY = 0.35;
+const STOPWORDS = new Set([
+  'para', 'como', 'mais', 'sobre', 'entre', 'depois', 'antes', 'contra', 'diz', 'disse',
+  'após', 'nesta', 'neste', 'pode', 'deve', 'ainda', 'também', 'após', 'quando', 'onde',
+  'with', 'from', 'that', 'this', 'have', 'says', 'after', 'before', 'about', 'their',
+  'will', 'what', 'which', 'into', 'over', 'amid', 'says',
+]);
+
+function titleWordSet(title) {
+  const norm = normalize(title).replace(/[^a-z0-9\s]/g, ' ');
+  return new Set(norm.split(/\s+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w)));
+}
+
+function jaccard(a, b) {
+  let inter = 0;
+  for (const w of a) if (b.has(w)) inter++;
+  const union = a.size + b.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+// Cluster por similaridade de título entre fontes diferentes (mesma história, manchetes
+// distintas) — o(n²) mas o volume por ciclo (algumas centenas de itens) não pesa.
+function assignRelevance(items) {
+  const wordSets = items.map((it) => titleWordSet(it.title));
+  items.forEach((it, i) => {
+    const outlets = new Set([it.source]);
+    for (let j = 0; j < items.length; j++) {
+      if (j === i || items[j].source === it.source) continue;
+      if (jaccard(wordSets[i], wordSets[j]) >= CLUSTER_SIMILARITY) outlets.add(items[j].source);
+    }
+    const multiOutletScore = Math.min(5, outlets.size * 2);
+    const headlineScore = it.headline ? 5 : 1;
+    it.relevanceScore = multiOutletScore + headlineScore;
+    it.topPick = it.relevanceScore >= TOP_PICK_MIN_SCORE;
+    delete it.headline;
+  });
 }
 
 // ── Limpeza de título/resumo (mesma lógica do fetcher.py) ───────────────────────────────────
@@ -374,12 +411,13 @@ async function fetchSource(source) {
       if (tasks[i].page === 1) error = `${source.name}: ${r.reason?.message || 'erro'}`;
       return;
     }
-    for (const raw of r.value) {
-      if (seenLinks.has(raw.link)) continue;
+    const isPage1 = tasks[i].page === 1;
+    r.value.forEach((raw, idx) => {
+      if (seenLinks.has(raw.link)) return;
       const title = cleanTitle(cleanText(raw.title), source.name);
-      if (!isMeaningfulTitle(title, source.name) || looksLikeJunk(title)) continue;
+      if (!isMeaningfulTitle(title, source.name) || looksLikeJunk(title)) return;
       const titleKey = title.toLowerCase();
-      if (seenTitles.has(titleKey)) continue; // espelhos regionais da mesma fonte
+      if (seenTitles.has(titleKey)) return; // espelhos regionais da mesma fonte
       seenTitles.add(titleKey);
       seenLinks.add(raw.link);
 
@@ -387,14 +425,13 @@ async function fetchSource(source) {
       if (summary.startsWith(title)) summary = summary.slice(title.length).trim();
       if (summary.length <= source.name.length + 2) summary = '';
 
-      const { include, topPick } = evaluateKeywords(title, summary);
-      if (!include) continue;
+      if (!evaluateKeywords(title, summary)) return;
 
       items.push({
         source: source.name, region: source.region, title, link: raw.link,
-        publisher: source.name, summary, time: raw.time, topPick,
+        publisher: source.name, summary, time: raw.time, headline: isPage1 && idx < 3,
       });
-    }
+    });
   });
 
   return { items, error };
@@ -418,6 +455,7 @@ export default async function handler(req, res) {
 
   const cutoff = Math.floor(Date.now() / 1000) - HOURS_WINDOW * 3600;
   all = all.filter((it) => it.time == null || it.time >= cutoff);
+  assignRelevance(all);
   all.sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
 
   const nacional = all.filter((it) => it.region === 'nacional');
