@@ -58,16 +58,14 @@ const SOURCES = [
   // Valor Econômico — pago, mas expõe RSS público de headline/resumo (sem paywall na
   // listagem, só no artigo completo) igual ao G1. Sem login necessário.
   { name: 'Valor', region: 'nacional', urls: ['https://valor.globo.com/rss/valor/'] },
-  // WSJ — pago, mas também expõe RSS público (feeds.a.dj.com) com headline/resumo livre. A
-  // homepage (wsj.com) devolve 401 pra fetch simples (gate na borda), então cai pro proxy
-  // antigo de "manchete" (top 3 do feed) em vez do homepage scraping. Sem login necessário.
+  // WSJ — os feeds públicos oficiais (feeds.a.dj.com) existem mas estão MORTOS (confirmado:
+  // pubDate parado em jan/2025 ou antes, em todos eles) — provavelmente abandonados pela Dow
+  // Jones. Usamos Google News como proxy (igual Reuters/Bloomberg) em vez deles. A homepage
+  // (wsj.com) devolve 401 pra fetch simples, então cai pro proxy antigo de "manchete" (top 3
+  // do feed) em vez do homepage scraping. Sem login necessário.
   {
     name: 'WSJ', region: 'internacional',
-    urls: [
-      'https://feeds.a.dj.com/rss/RSSWorldNews.xml',
-      'https://feeds.a.dj.com/rss/RSSMarketsMain.xml',
-      'https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml',
-    ],
+    urls: ['https://news.google.com/rss/search?q=site:wsj.com+when:2d&hl=en-US&gl=US&ceid=US:en'],
   },
   // Bloomberg — sem RSS oficial (descontinuado) e a home/latinamerica bloqueia scraping direto
   // (403 mesmo sem login, é bloqueio de bot na borda, não parede de login). Usamos o Google
