@@ -444,11 +444,7 @@ function Get-AiNewsSourcesConfig {
             'https://feeds.bbci.co.uk/news/business/rss.xml'
         ) },
         @{ name = 'Valor'; region = 'nacional'; pages = 1; urls = @('https://valor.globo.com/rss/valor/') },
-        @{ name = 'WSJ'; region = 'internacional'; pages = 1; urls = @(
-            'https://feeds.a.dj.com/rss/RSSWorldNews.xml',
-            'https://feeds.a.dj.com/rss/RSSMarketsMain.xml',
-            'https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml'
-        ) },
+        @{ name = 'WSJ'; region = 'internacional'; pages = 1; urls = @('https://news.google.com/rss/search?q=site:wsj.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
         @{ name = 'Bloomberg'; region = 'internacional'; pages = 1; urls = @('https://news.google.com/rss/search?q=site:bloomberg.com+when:2d&hl=en-US&gl=US&ceid=US:en') }
     )
 }
