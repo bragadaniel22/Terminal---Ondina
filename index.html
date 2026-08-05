@@ -1743,6 +1743,7 @@ async function loadFeed() {
 }
 
 // ── Notícias · recorte por palavra-chave via api/ai-news.js ──────────────────
+const TOP_PICKS_SCORE_WINDOW_HOURS = 2; // dentro dessa janela, ordena por nota; fora, por tempo
 let aiNewsNacional = [];
 let aiNewsInternacional = [];
 let aiNewsFilter = 'nacional'; // 'nacional' | 'internacional' | 'top' (Top Picks, combina os dois)
@@ -1826,9 +1827,24 @@ function renderAiNewsList() {
     items = items.filter(it => it.time == null || it.time >= cutoff);
   }
 
-  // Sempre por ordem cronológica (mais recente primeiro) — o layout usa espaço maior pras
-  // matérias mais novas, então a ordem tem que ser sempre essa (sem opção de inverter).
-  items = [...items].sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
+  if (aiNewsFilter === 'top') {
+    // Top Picks: dentro de uma janela de 2h, a mais relevante (nota) ganha o destaque, não
+    // necessariamente a mais recente — o objetivo aqui é "o que é mais importante agora", não
+    // um feed cronológico. Fora da janela, cai pro critério antigo (mais recente primeiro),
+    // como fallback pra quando nada bateu nas últimas 2h.
+    const recentCutoff = Date.now() / 1000 - TOP_PICKS_SCORE_WINDOW_HOURS * 3600;
+    items = [...items].sort((a, b) => {
+      const aRecent = (a.time ?? 0) >= recentCutoff;
+      const bRecent = (b.time ?? 0) >= recentCutoff;
+      if (aRecent && bRecent) return (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0);
+      if (aRecent !== bRecent) return aRecent ? -1 : 1;
+      return (b.time ?? 0) - (a.time ?? 0);
+    });
+  } else {
+    // Nacional/Internacional: sempre por ordem cronológica (mais recente primeiro) — o layout
+    // usa espaço maior pras matérias mais novas, então a ordem tem que ser sempre essa.
+    items = [...items].sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
+  }
 
   renderAiNewsMagazine(items);
 }
