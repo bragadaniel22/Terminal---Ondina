@@ -337,6 +337,34 @@ const TOP_PICK_MIN_SCORE = 6;
 const OUTLET_WEIGHT = { nacional: 1.5, internacional: 2 };
 const SOURCE_REGION = Object.fromEntries(SOURCES.map((s) => [s.name, s.region]));
 
+// Temas de interesse direto do usuário (juros/política monetária de bancos centrais, mercado
+// de ações americano com foco em IA, geopolítica) — bônus de nota pra destacar mesmo sem
+// múltiplos veículos cobrindo ou estar na home. Curadoria pessoal, não confundir com a lista
+// de inclusão (KEYWORDS) — essa aqui não filtra nada, só dá pontos extra.
+const PRIORITY_KEYWORDS = [
+  // Juros / bancos centrais
+  'Fed', 'Federal Reserve', 'FOMC', 'Powell', 'Copom', 'Banco Central', 'Selic', 'Galípolo',
+  'BCE', 'ECB', 'Lagarde', 'Bank of Japan', 'BoJ', 'Bank of England', 'BoE', 'corte de juros',
+  'alta de juros', 'rate cut', 'rate hike', 'quantitative easing', 'quantitative tightening',
+  'meta de inflação', 'dot plot',
+  // Mercado de ações US / IA
+  'S&P 500', 'Nasdaq', 'Dow Jones', 'Wall Street', 'Magnificent Seven', 'Nvidia', 'Microsoft',
+  'Alphabet', 'Google', 'Meta', 'Amazon', 'Apple', 'Broadcom', 'AMD', 'TSMC', 'OpenAI',
+  'Anthropic', 'Oracle', 'Palantir', 'CoreWeave', 'earnings season', 'resultados trimestrais',
+  'guidance', 'capex de IA',
+  // Geopolítica
+  'China', 'Taiwan', 'Rússia', 'Russia', 'Ucrânia', 'Ukraine', 'Irã', 'Iran', 'Israel',
+  'Oriente Médio', 'Middle East', 'OPEP', 'OPEC', 'tarifas', 'tariffs', 'trade war', 'sanções',
+  'sanctions',
+];
+const PRIORITY_PATTERNS = [...new Set(PRIORITY_KEYWORDS.map(normalize))].map((k) => new RegExp(`\\b${escapeRegex(k)}\\b`));
+const PRIORITY_BONUS = 2;
+
+function matchesPriority(title, summary) {
+  const text = normalize(`${title} ${summary}`);
+  return PRIORITY_PATTERNS.some((re) => re.test(text));
+}
+
 // Duas manchetes sobre a MESMA notícia raramente têm a escrita parecida ("BP's $5.7bn profit
 // highest since 2022..." vs "BP profit more than doubles as Trump blasts Big Oil...") — um
 // Jaccard simples de palavras subestima isso, porque as palavras que sobram em comum tendem a
@@ -397,7 +425,8 @@ function assignRelevance(items) {
     for (const outlet of outlets) multiOutletScore += OUTLET_WEIGHT[SOURCE_REGION[outlet]] ?? 2;
     multiOutletScore = Math.min(5, multiOutletScore);
     const headlineScore = it.headline ? 5 : 1;
-    it.relevanceScore = Math.round((multiOutletScore + headlineScore) * 10) / 10;
+    const priorityBonus = matchesPriority(it.title, it.summary) ? PRIORITY_BONUS : 0;
+    it.relevanceScore = Math.min(10, Math.round((multiOutletScore + headlineScore + priorityBonus) * 10) / 10);
     it.topPick = it.relevanceScore >= TOP_PICK_MIN_SCORE;
     delete it.headline;
   });
