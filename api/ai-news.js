@@ -16,12 +16,13 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 // region: 'nacional' pras fontes brasileiras (G1, Brazil Journal, InfoMoney, NeoFeed, Poder360
 // — brasileiras por natureza), 'internacional' pro resto (CNBC, Reuters, Investing.com, BBC).
 const SOURCES = [
-  {
-    // G1 geral foi trocado por só as editorias Economia e Política (a pedido do usuário) —
-    // mesmo padrão de RSS por editoria do G1 (/rss/g1/{editoria}/), mesma fonte "G1".
-    name: 'G1', region: 'nacional',
-    urls: ['https://g1.globo.com/rss/g1/economia/', 'https://g1.globo.com/rss/g1/politica/'],
-  },
+  // G1 REMOVIDO do terminal a pedido do usuário (2026-08-05) — config mantida aqui, comentada,
+  // pra reativar rápido se ele quiser de volta: só descomentar o bloco abaixo. Usava as
+  // editorias Economia e Política (/rss/g1/{editoria}/), não o feed geral.
+  // {
+  //   name: 'G1', region: 'nacional',
+  //   urls: ['https://g1.globo.com/rss/g1/economia/', 'https://g1.globo.com/rss/g1/politica/'],
+  // },
   {
     name: 'CNBC', region: 'internacional',
     urls: [
@@ -75,6 +76,8 @@ const SOURCES = [
     name: 'Bloomberg', region: 'internacional',
     urls: ['https://news.google.com/rss/search?q=site:bloomberg.com+when:2d&hl=en-US&gl=US&ceid=US:en'],
   },
+  // Yahoo Finance — RSS público oficial, ativo e atualizado (confirmado, diferente do WSJ).
+  { name: 'Yahoo Finance', region: 'internacional', urls: ['https://finance.yahoo.com/news/rssindex'] },
 ];
 
 // Homepage de cada fonte, usada pra checar se uma matéria está de fato em destaque na página
@@ -82,7 +85,7 @@ const SOURCES = [
 // fica de fora — não tem homepage própria checável (usamos Google News como proxy pro feed,
 // que não reflete a home real do site) — mantém o proxy antigo (top 3 da página 1) só pra ela.
 const SOURCE_HOMEPAGES = {
-  G1: 'https://g1.globo.com/',
+  // G1: 'https://g1.globo.com/', // G1 removido do terminal (2026-08-05) — ver SOURCES acima.
   CNBC: 'https://www.cnbc.com/world/',
   'Brazil Journal': 'https://braziljournal.com/',
   InfoMoney: 'https://www.infomoney.com.br/',
@@ -91,6 +94,7 @@ const SOURCE_HOMEPAGES = {
   Poder360: 'https://www.poder360.com.br/',
   BBC: 'https://www.bbc.com/',
   Valor: 'https://valor.globo.com/',
+  'Yahoo Finance': 'https://finance.yahoo.com/',
   // WSJ e Bloomberg ficam de fora — wsj.com devolve 401 pra fetch simples (paywall na borda) e
   // bloomberg.com devolve 403 (bloqueio de bot). Caem pro proxy antigo de "manchete".
 };
