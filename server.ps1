@@ -227,6 +227,23 @@ $AI_EXCLUDE_KEYWORDS = @(
     'coupon', 'sponsored content', 'conteúdo patrocinado', 'advertisement', 'publicidade'
 )
 
+# Temas de interesse direto do usuário — espelho de PRIORITY_KEYWORDS em api/ai-news.js. Bônus
+# de nota, não filtra nada (diferente de $AI_KEYWORDS).
+$AI_PRIORITY_KEYWORDS = @(
+    'Fed', 'Federal Reserve', 'FOMC', 'Powell', 'Copom', 'Banco Central', 'Selic', 'Galípolo',
+    'BCE', 'ECB', 'Lagarde', 'Bank of Japan', 'BoJ', 'Bank of England', 'BoE', 'corte de juros',
+    'alta de juros', 'rate cut', 'rate hike', 'quantitative easing', 'quantitative tightening',
+    'meta de inflação', 'dot plot',
+    'S&P 500', 'Nasdaq', 'Dow Jones', 'Wall Street', 'Magnificent Seven', 'Nvidia', 'Microsoft',
+    'Alphabet', 'Google', 'Meta', 'Amazon', 'Apple', 'Broadcom', 'AMD', 'TSMC', 'OpenAI',
+    'Anthropic', 'Oracle', 'Palantir', 'CoreWeave', 'earnings season', 'resultados trimestrais',
+    'guidance', 'capex de IA',
+    'China', 'Taiwan', 'Rússia', 'Russia', 'Ucrânia', 'Ukraine', 'Irã', 'Iran', 'Israel',
+    'Oriente Médio', 'Middle East', 'OPEP', 'OPEC', 'tarifas', 'tariffs', 'trade war', 'sanções',
+    'sanctions'
+)
+$AI_PRIORITY_BONUS = 2
+
 function Get-AiNormalizedText {
     param([string]$Text)
     if (-not $Text) { return '' }
@@ -254,6 +271,13 @@ foreach ($kw in ($AI_KEYWORDS | ForEach-Object { Get-AiNormalizedText $_ } | Sel
 }
 $AI_EXCLUDE_PATTERN = Build-AiKeywordPattern $AI_EXCLUDE_KEYWORDS
 $AI_MIN_KEYWORD_MATCHES = 3
+$AI_PRIORITY_PATTERN = Build-AiKeywordPattern $AI_PRIORITY_KEYWORDS
+
+function Test-AiPriorityMatch {
+    param([string]$Title, [string]$Summary)
+    $text = Get-AiNormalizedText "$Title $Summary"
+    return [regex]::IsMatch($text, $AI_PRIORITY_PATTERN)
+}
 
 function Get-AiKeywordMatchCount {
     param([string]$Text)
@@ -357,7 +381,8 @@ function Set-AiRelevance {
         # sessão — 1.5 virava 2 silenciosamente). "5.0" força a sobrecarga Math.Min(Double,Double).
         $multiOutletScore = [Math]::Min(5.0, $multiOutletScore)
         $headlineScore = if ($Items[$i].headline) { 5 } else { 1 }
-        $score = [Math]::Round($multiOutletScore + $headlineScore, 1)
+        $priorityBonus = if (Test-AiPriorityMatch $Items[$i].title $Items[$i].summary) { $AI_PRIORITY_BONUS } else { 0 }
+        $score = [Math]::Min(10.0, [Math]::Round($multiOutletScore + $headlineScore + $priorityBonus, 1))
         Add-Member -InputObject $Items[$i] -NotePropertyName relevanceScore -NotePropertyValue $score -Force
         Add-Member -InputObject $Items[$i] -NotePropertyName topPick -NotePropertyValue ($score -ge $AI_TOP_PICK_MIN_SCORE) -Force
         $Items[$i].PSObject.Properties.Remove('headline')
