@@ -278,26 +278,6 @@
     .ainews-compact .ainews-card-title { font-size: 11.5px; font-weight: normal; line-height: 1.4; }
     .ainews-compact .ainews-card-meta { font-size: 8.5px; margin-top: 4px; }
 
-    /* CNBC · pacote de destaque (hero + secundários), igual à home da CNBC */
-    .cnbc-hero-wrap { padding: 14px; border-bottom: 1px solid var(--border); display: flex; gap: 14px; flex-wrap: wrap; }
-    .cnbc-hero-card { flex: 1 1 320px; max-width: 640px; min-width: 280px; cursor: pointer; }
-    .cnbc-hero-img { width: 100%; aspect-ratio: 16 / 10; height: auto; object-fit: cover; background: var(--border-hi); }
-    .cnbc-hero-title { font-size: 15px; font-weight: bold; color: var(--bright); line-height: 1.35; margin-top: 10px; }
-    .cnbc-hero-title:hover { color: var(--orange); }
-    .cnbc-hero-sub { list-style: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
-    .cnbc-hero-sub li { padding: 5px 0; font-size: 11px; }
-    .cnbc-hero-sub a { color: var(--text); text-decoration: none; }
-    .cnbc-hero-sub a:hover { color: var(--orange); }
-    .cnbc-secondary-col { flex: 1 1 240px; min-width: 220px; display: flex; flex-direction: column; gap: 12px; }
-    .cnbc-secondary-card { display: flex; gap: 10px; cursor: pointer; }
-    .cnbc-secondary-img { width: 96px; height: 64px; object-fit: cover; flex-shrink: 0; background: var(--border-hi); }
-    .cnbc-secondary-title { font-size: 11.5px; color: var(--bright); line-height: 1.35; }
-    .cnbc-secondary-card:hover .cnbc-secondary-title { color: var(--orange); }
-
-    .feed-subtabs { grid-column: 1 / -1; display: flex; gap: 6px; }
-    .feed-subpanel { display: none; }
-    .feed-subpanel.active { display: contents; }
-
     .feed-search-wrap {
       grid-column: 1 / -1;
       display: flex; align-items: center; gap: 10px; padding: 10px 16px;
@@ -356,6 +336,33 @@
     }
     .sources-section p { font-size: 11px; line-height: 1.6; color: var(--text); }
     .sources-section p strong { color: var(--bright); }
+
+    /* NOTIFICAÇÃO · pop-up de notícia de alta relevância (nota >= 8.5) */
+    #news-toast-container {
+      position: fixed; top: 70px; right: 16px; z-index: 1000;
+      display: flex; flex-direction: column; gap: 10px; width: 320px;
+      pointer-events: none;
+    }
+    .news-toast {
+      background: var(--bg-card); border: 1px solid var(--border-hi); border-left: 3px solid var(--orange);
+      padding: 12px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.5); cursor: pointer;
+      pointer-events: auto; animation: news-toast-in .25s ease; position: relative;
+    }
+    .news-toast.leaving { animation: news-toast-out .2s ease forwards; }
+    @keyframes news-toast-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes news-toast-out { from { opacity: 1; } to { opacity: 0; transform: translateX(24px); } }
+    .news-toast-tag {
+      font-size: 9px; letter-spacing: 1.5px; color: var(--orange); text-transform: uppercase;
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+    }
+    .news-toast-close {
+      background: transparent; border: none; color: var(--dim); cursor: pointer;
+      font-size: 13px; line-height: 1; padding: 0 0 0 8px; font-family: inherit;
+    }
+    .news-toast-close:hover { color: var(--bright); }
+    .news-toast-title { font-size: 12.5px; font-weight: 600; color: var(--bright); line-height: 1.35; }
+    .news-toast:hover .news-toast-title { color: var(--orange); }
+    .news-toast-meta { font-size: 9.5px; color: var(--dim); margin-top: 6px; letter-spacing: .5px; }
 
     /* FOOTER */
     footer {
@@ -437,8 +444,6 @@
   <button class="tab-btn" data-tab="portfolio" onclick="switchTab(this)">PORTFÓLIO</button>
   <button class="tab-btn" data-tab="etfs" onclick="switchTab(this)">ETFS INTERNOS</button>
   <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
-  <button class="tab-btn" data-tab="feed" onclick="switchTab(this)">BUSCAR</button>
-  <button class="tab-btn" data-tab="cnbc" onclick="switchTab(this)">CNBC</button>
   <button class="tab-btn" data-tab="ainews" onclick="switchTab(this)">NOTÍCIAS</button>
 </nav>
 
@@ -686,6 +691,16 @@
 <div class="grid">
   <div class="card card-wide">
     <div class="card-head"><h2>📈 Single Names · Equities</h2><span>Yahoo Finance · USD</span></div>
+    <div style="padding: 12px 14px 0;">
+      <div class="feed-search-wrap">
+        <span class="feed-search-icon">🔍</span>
+        <input type="text" id="asset-search-input" placeholder="buscar outro ativo ou índice… (ex: AAPL, Nvidia, Ibovespa)" onkeydown="if(event.key==='Enter') runAssetSearch()">
+      </div>
+    </div>
+    <div class="card card-wide" id="asset-search-results-card" style="display:none; border:none;">
+      <div class="card-head"><h2>🔎 Resultado da busca</h2><span id="asset-search-label"></span></div>
+      <div id="asset-search-list"></div>
+    </div>
     <div class="single-grid">
       <div class="ntnb-cell row-click" onclick="openChart('AMZN','Amazon')">
         <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('AMZN','Amazon')">🔍</button>
@@ -854,65 +869,6 @@
   </div>
 </div><!-- /tab-heatmap -->
 
-<div id="tab-feed" class="tab-panel">
-<div class="grid">
-  <div class="feed-subtabs">
-    <button class="range-btn active" data-feedsub="news" onclick="switchFeedSubtab(this)">NOTÍCIAS</button>
-    <button class="range-btn" data-feedsub="assets" onclick="switchFeedSubtab(this)">ATIVOS</button>
-  </div>
-
-  <div id="feedsub-news" class="feed-subpanel active">
-    <div class="feed-search-wrap">
-      <span class="feed-search-icon">🔍</span>
-      <input type="text" id="feed-search-input" placeholder="buscar notícias por palavra-chave… (ex: inflação, Nvidia, Fed, petróleo)" onkeydown="if(event.key==='Enter') runFeedSearch()" oninput="if(!this.value.trim()) clearFeedSearch()">
-    </div>
-    <div class="card card-wide" id="feed-search-card" style="display:none">
-      <div class="card-head"><h2>🔍 Resultados da busca</h2><span id="feed-search-label"></span></div>
-      <div class="news-list" id="feed-search-list"></div>
-    </div>
-    <div class="card card-wide" id="feed-market-card">
-      <div class="card-head"><h2>📰 Notícias · Mercado Americano</h2><span>Yahoo Finance</span></div>
-      <div class="news-list" id="feed-news-list">
-        <div class="row"><div class="rname dim2">carregando notícias…</div></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="feedsub-assets" class="feed-subpanel">
-    <div class="feed-search-wrap">
-      <span class="feed-search-icon">🔍</span>
-      <input type="text" id="asset-search-input" placeholder="buscar ativo ou índice… (ex: AAPL, Nvidia, Ibovespa)" onkeydown="if(event.key==='Enter') runAssetSearch()">
-    </div>
-    <div class="card card-wide">
-      <div class="card-head"><h2>🔎 Resultado da busca</h2><span id="asset-search-label"></span></div>
-      <div id="asset-search-list"></div>
-    </div>
-  </div>
-</div>
-</div><!-- /tab-feed -->
-
-<div id="tab-cnbc" class="tab-panel">
-  <div class="feed-search-wrap">
-    <span class="feed-search-icon">🔍</span>
-    <input type="text" id="cnbc-search-input" placeholder="buscar nas manchetes da CNBC… (ex: Fed, Amazon, tarifas)" oninput="renderCnbcList()">
-  </div>
-  <div class="card card-wide">
-    <div class="card-head">
-      <h2>📰 CNBC · Manchetes · últimas 24h</h2>
-      <span class="sources-link" onclick="loadCnbc(true)">↻ atualizar</span>
-    </div>
-    <div class="etf-disclaimer">⚠️ Mostra tudo que a CNBC publicou nas últimas 24h nesses feeds (Top News, World, Markets, Technology, Finance, Economy, Energy) — TODAS junta tudo em ordem cronológica, TOP NEWS mostra só as principais, com o pacote de destaque.</div>
-    <div class="pf-range" id="cnbc-filter-row">
-      <button class="range-btn active" data-cnbcf="all" onclick="filterCnbc(this, null)">TODAS</button>
-      <button class="range-btn" data-cnbcf="Top News" onclick="filterCnbc(this, 'Top News')">TOP NEWS</button>
-    </div>
-    <div id="cnbc-top-story" style="display:none"></div>
-    <div class="news-list" id="cnbc-news-list">
-      <div class="row"><div class="rname dim2">carregando manchetes…</div></div>
-    </div>
-  </div>
-</div><!-- /tab-cnbc -->
-
 <div id="tab-ainews" class="tab-panel">
   <div class="feed-search-wrap">
     <span class="feed-search-icon">🔍</span>
@@ -921,9 +877,11 @@
   <div class="card card-wide">
     <div class="card-head">
       <h2>📰 Painel de Notícias</h2>
-      <span class="sources-link" onclick="loadAiNews(true)">↻ atualizar</span>
+      <div style="display:flex; gap:10px;">
+        <span class="sources-link" onclick="openAiNewsMethodology()">ℹ️ metodologia</span>
+        <span class="sources-link" onclick="loadAiNews(true)">↻ atualizar</span>
+      </div>
     </div>
-    <div class="etf-disclaimer">⚠️ Recorte por palavra-chave (IA/chips, mercado financeiro, política, geopolítica, economia) sobre os feeds de G1 (Economia/Política), CNBC, Reuters, Brazil Journal, InfoMoney, Investing.com, NeoFeed, Poder360, BBC, Valor, WSJ e Bloomberg — não é a cobertura completa de cada veículo, e os veículos pagos (Valor, WSJ, Bloomberg) mostram só a manchete/resumo público, o artigo completo continua pago. NACIONAL = fontes brasileiras (G1, Brazil Journal, InfoMoney, NeoFeed, Poder360, Valor); INTERNACIONAL = CNBC, Reuters, Investing.com, BBC, WSJ, Bloomberg; TOP PICKS = nota de relevância 6+ (de 10) — 1,5 ponto por veículo nacional e 2 por veículo internacional noticiando a mesma história (até 5) + 5 pontos se o link estiver na homepage da fonte agora (1 se não) + 2 pontos extras se a matéria for sobre juros/bancos centrais, mercado de ações americano (IA) ou geopolítica.</div>
     <div class="pf-range" id="ainews-filter-row">
       <button class="range-btn" data-ainewsf="top" onclick="filterAiNews(this, 'top')">TOP PICKS</button>
       <button class="range-btn active" data-ainewsf="nacional" onclick="filterAiNews(this, 'nacional')">NACIONAL</button>
@@ -1082,16 +1040,29 @@
         <p>Reaproveita os mesmos dados já buscados nas outras abas (cache de até 90s) — não gera chamadas extras às APIs. Tamanho dos blocos proporcional à magnitude da variação do dia.</p>
       </div>
       <div class="sources-section">
-        <h3>📰 Feed</h3>
-        <p>Notícias via Yahoo Finance. Resumo por IA (sob demanda, por notícia) via Google Gemini, quando configurado.</p>
-      </div>
-      <div class="sources-section">
-        <h3>📰 CNBC</h3>
-        <p>Manchetes via feeds RSS oficiais da CNBC (Top News, World, Markets, Technology, Finance, Economy, Energy) — busca ao vivo a cada abertura da aba, sem cache/banco. Trazemos só título, link e resumo oficial do feed; o artigo completo abre no site da CNBC.</p>
+        <h3>📰 Notícias</h3>
+        <p>Recorte por palavra-chave sobre CNBC, Reuters, Brazil Journal, InfoMoney, Investing.com, NeoFeed, Poder360, BBC, Valor, WSJ, Bloomberg e Yahoo Finance. Resumo por IA (sob demanda, por notícia) via Google Gemini, quando configurado.</p>
       </div>
       <div class="sources-section">
         <h3>⏱ Atualização</h3>
         <p>Dados atualizados automaticamente a cada 60 segundos enquanto a página estiver aberta.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="ainews-methodology-overlay" onclick="if(event.target===this) closeAiNewsMethodology()">
+  <div class="modal-box sources-box">
+    <button class="modal-close" onclick="closeAiNewsMethodology()">✕</button>
+    <div class="modal-header">
+      <div class="modal-title">Metodologia · Painel de Notícias</div>
+    </div>
+    <div class="sources-body">
+      <div class="sources-section">
+        <p>⚠️ Recorte por palavra-chave (IA/chips, mercado financeiro, política, geopolítica, economia) sobre os feeds de CNBC, Reuters, Brazil Journal, InfoMoney, Investing.com, NeoFeed, Poder360, BBC, Valor, WSJ, Bloomberg e Yahoo Finance — não é a cobertura completa de cada veículo, e os veículos pagos (Valor, WSJ, Bloomberg) mostram só a manchete/resumo público, o artigo completo continua pago.</p>
+        <p><strong>NACIONAL</strong> = fontes brasileiras (Brazil Journal, InfoMoney, NeoFeed, Poder360, Valor).</p>
+        <p><strong>INTERNACIONAL</strong> = CNBC, Reuters, Investing.com, BBC, WSJ, Bloomberg, Yahoo Finance.</p>
+        <p><strong>TOP PICKS</strong> = nota de relevância 6+ (de 10) — 1,5 ponto por veículo nacional e 2 por veículo internacional noticiando a mesma história (até 5) + 5 pontos se o link estiver na homepage da fonte agora (1 se não) + 2 pontos extras se a matéria for sobre juros/bancos centrais, mercado de ações americano (IA) ou geopolítica.</p>
       </div>
     </div>
   </div>
@@ -1110,6 +1081,8 @@
     </div>
   </div>
 </div>
+
+<div id="news-toast-container"></div>
 
 <footer>
   <span>Fontes: BCB · Yahoo Finance · ECB · ANBIMA · B3</span>
@@ -1599,13 +1572,6 @@ function escapeHtml(s = '') {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-async function fetchMarketNews() {
-  const r = await fetch('/api/news');
-  const d = await r.json();
-  if (d.error) throw new Error(d.error);
-  return d.items || [];
-}
-
 const newsStore = {};
 
 function renderNewsList(items, storeKey, containerId) {
@@ -1648,97 +1614,6 @@ async function summarizeNews(storeKey, idx) {
   } catch (e) {
     box.textContent = 'Não foi possível resumir esta notícia agora.';
     console.error('summarize news', e);
-  }
-}
-
-// ── CNBC · agregador de manchetes via RSS ────────────────────────────────────
-let cnbcAllItems = [];
-let cnbcTopStory = null;
-let cnbcCoverage = {};
-let cnbcFilter = null; // null = todas; senão, nome do feed (ex: 'Markets') ou 'Top News'
-
-async function loadCnbc(force) {
-  const listEl = document.getElementById('cnbc-news-list');
-  if (force) listEl.innerHTML = '<div class="row"><div class="rname dim2">atualizando…</div></div>';
-  try {
-    const r = await fetch('/api/cnbc-news');
-    const d = await r.json();
-    if (d.error && !(d.items || []).length) throw new Error(d.error);
-    cnbcAllItems = d.items || [];
-    cnbcTopStory = d.topStory || null;
-    cnbcCoverage = d.coverage || {};
-
-    // Só duas opções: TODAS (cronológico, tudo junto) e TOP NEWS (com o pacote de
-    // destaque). As outras categorias (World, Markets, Tech, Finance, Economy, Energy)
-    // continuam sendo buscadas no back-end — só não aparecem como filtro na interface.
-    document.querySelectorAll('#cnbc-filter-row .range-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.cnbcf === (cnbcFilter || 'all'));
-    });
-
-    renderCnbcList();
-  } catch (e) {
-    listEl.innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar manchetes da CNBC</div></div>';
-    console.error('cnbc news', e);
-  }
-}
-
-function filterCnbc(btn, feed) {
-  cnbcFilter = feed;
-  document.querySelectorAll('#cnbc-filter-row .range-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderCnbcList();
-}
-
-function renderCnbcList() {
-  let items = cnbcFilter ? cnbcAllItems.filter(it => it.feed === cnbcFilter) : cnbcAllItems;
-
-  const query = document.getElementById('cnbc-search-input')?.value.trim().toLowerCase();
-  if (query) {
-    items = items.filter(it =>
-      it.title?.toLowerCase().includes(query) || it.summary?.toLowerCase().includes(query)
-    );
-  }
-
-  renderCnbcTopStory(!query);
-  renderNewsList(items, 'cnbc', 'cnbc-news-list');
-}
-
-// Pacote de destaque (hero + 2 secundários, igual à home da CNBC) — só aparece na
-// categoria "TOP NEWS" e some durante uma busca (a busca vale pra lista inteira).
-function renderCnbcTopStory(show) {
-  const box = document.getElementById('cnbc-top-story');
-  if (!show || cnbcFilter !== 'Top News' || !cnbcTopStory) {
-    box.style.display = 'none';
-    box.innerHTML = '';
-    return;
-  }
-  const { hero, secondary } = cnbcTopStory;
-  box.style.display = '';
-  box.innerHTML = `
-    <div class="cnbc-hero-wrap">
-      <div class="cnbc-hero-card" onclick="window.open('${jsAttrSafe(hero.link)}','_blank')">
-        ${hero.image ? `<img class="cnbc-hero-img" src="${hero.image}" loading="lazy" onerror="this.style.display='none'">` : ''}
-        <div class="cnbc-hero-title">${escapeHtml(hero.title)}</div>
-        ${hero.subItems?.length ? `<ul class="cnbc-hero-sub">${hero.subItems.map(s => `<li><a href="${s.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a></li>`).join('')}</ul>` : ''}
-      </div>
-      <div class="cnbc-secondary-col">
-        ${(secondary || []).map(s => `
-          <div class="cnbc-secondary-card" onclick="window.open('${jsAttrSafe(s.link)}','_blank')">
-            ${s.image ? `<img class="cnbc-secondary-img" src="${s.image}" loading="lazy" onerror="this.style.display='none'">` : ''}
-            <div class="cnbc-secondary-title">${escapeHtml(s.title)}</div>
-          </div>`).join('')}
-      </div>
-    </div>
-  `;
-}
-
-async function loadFeed() {
-  try {
-    const items = await fetchMarketNews();
-    renderNewsList(items, 'feed', 'feed-news-list');
-  } catch (e) {
-    document.getElementById('feed-news-list').innerHTML = '<div class="row"><div class="rname err">ERRO ao carregar notícias</div></div>';
-    console.error('feed news', e);
   }
 }
 
@@ -1890,54 +1765,76 @@ function renderAiNewsMagazine(items) {
   `;
 }
 
-// ── Feed · busca por palavra-chave ─────────────────────────────────────────────
-let feedSearchSeq = 0;
+// ── Notificação · pop-up pra notícia de alta relevância (nota >= 8.5) ────────────────────────
+// Funciona em duas situações, ambas pedidas pelo usuário: (1) com o terminal já aberto, uma
+// nova matéria que bata o limiar dispara o pop-up sem precisar estar na aba NOTÍCIAS — por
+// isso checkAiNewsNotifications() roda no próprio ciclo de fundo, independente da aba ativa;
+// (2) ao abrir o terminal, matérias que já bateram o limiar recentemente (e ainda não foram
+// "vistas" nesse navegador) também aparecem — por isso a primeira checagem roda no load da
+// página, não só depois que o usuário clica em algo.
+const NEWS_NOTIFY_THRESHOLD = 8.5;
+const NEWS_NOTIFY_POLL_SECONDS = 120; // não precisa da granularidade de 60s do resto do terminal
+const NEWS_NOTIFY_MAX_PER_CHECK = 5;   // evita avalanche de pop-ups de uma vez (resto fica pro próximo ciclo)
+const NEWS_NOTIFY_STORAGE_KEY = 'tf_notified_news_links';
+const NEWS_NOTIFY_MAX_STORED = 500;
 
-async function runFeedSearch() {
-  const input = document.getElementById('feed-search-input');
-  const query = input.value.trim();
-  if (!query) return;
+function getNotifiedLinks() {
+  try { return new Set(JSON.parse(localStorage.getItem(NEWS_NOTIFY_STORAGE_KEY)) || []); }
+  catch { return new Set(); }
+}
+function addNotifiedLinks(links) {
+  const set = getNotifiedLinks();
+  links.forEach(l => set.add(l));
+  const arr = [...set].slice(-NEWS_NOTIFY_MAX_STORED);
+  localStorage.setItem(NEWS_NOTIFY_STORAGE_KEY, JSON.stringify(arr));
+}
 
-  const seq = ++feedSearchSeq;
-  const searchCard = document.getElementById('feed-search-card');
-  const marketCard = document.getElementById('feed-market-card');
-  const listEl = document.getElementById('feed-search-list');
-  const labelEl = document.getElementById('feed-search-label');
+function showNewsToast(item) {
+  const box = document.getElementById('news-toast-container');
+  const el = document.createElement('div');
+  el.className = 'news-toast';
+  el.innerHTML = `
+    <div class="news-toast-tag">🔔 nota ${item.relevanceScore}/10<button class="news-toast-close">✕</button></div>
+    <div class="news-toast-title">${escapeHtml(item.title)}</div>
+    <div class="news-toast-meta">${escapeHtml(item.publisher || item.source || '')}</div>
+  `;
+  const dismiss = () => {
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 220);
+  };
+  el.querySelector('.news-toast-close').onclick = (e) => { e.stopPropagation(); dismiss(); };
+  el.onclick = () => { window.open(item.link, '_blank', 'noopener'); dismiss(); };
+  box.appendChild(el);
+  setTimeout(dismiss, 12000);
+}
 
-  searchCard.style.display = '';
-  marketCard.style.display = 'none';
-  labelEl.textContent = query;
-  listEl.innerHTML = '<div class="row"><div class="rname dim2">buscando…</div></div>';
-
+async function checkAiNewsNotifications() {
   try {
-    const r = await fetch(`/api/news?t=${encodeURIComponent(query)}`);
+    const r = await fetch('/api/ai-news');
     const d = await r.json();
-    if (seq !== feedSearchSeq) return; // busca obsoleta — usuário já digitou outra coisa
-    if (d.error) throw new Error(d.error);
-    renderNewsList(d.items || [], 'search', 'feed-search-list');
+    const all = [...(d.nacional || []), ...(d.internacional || [])];
+    const notified = getNotifiedLinks();
+    const fresh = all
+      .filter(it => (it.relevanceScore ?? 0) >= NEWS_NOTIFY_THRESHOLD && !notified.has(it.link))
+      .sort((a, b) => (b.relevanceScore - a.relevanceScore) || ((b.time ?? 0) - (a.time ?? 0)));
+
+    const toShow = fresh.slice(0, NEWS_NOTIFY_MAX_PER_CHECK);
+    toShow.forEach((it, i) => setTimeout(() => showNewsToast(it), i * 400));
+    if (toShow.length) addNotifiedLinks(toShow.map(it => it.link));
   } catch (e) {
-    if (seq !== feedSearchSeq) return;
-    listEl.innerHTML = '<div class="row"><div class="rname err">ERRO ao buscar notícias</div></div>';
-    console.error('feed search', query, e);
+    console.error('news notify', e);
   }
 }
 
-function clearFeedSearch() {
-  feedSearchSeq++;
-  document.getElementById('feed-search-card').style.display = 'none';
-  document.getElementById('feed-market-card').style.display = '';
-}
-
-// ── Sub-abas dentro de NOTÍCIAS (Notícias / Ativos) ─────────────────────────
-function switchFeedSubtab(btn) {
-  const name = btn.dataset.feedsub;
-  btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  document.querySelectorAll('.feed-subpanel').forEach(p => p.classList.remove('active'));
-  document.getElementById('feedsub-' + name).classList.add('active');
+let notifyTimer;
+function startNotifyTimer() {
+  clearInterval(notifyTimer);
+  notifyTimer = setInterval(checkAiNewsNotifications, NEWS_NOTIFY_POLL_SECONDS * 1000);
 }
 
 // ── Busca de ativos/índices (resolve texto livre em tickers, via /api/quote-search) ──
+// Vive dentro da aba SINGLE NAMES (movida de BUSCAR, aba removida) — busca qualquer outro
+// ativo/índice que não esteja na lista fixa de equities.
 let assetSearchSeq = 0;
 
 function assetRowSkeleton(label) {
@@ -1968,6 +1865,7 @@ async function runAssetSearch() {
   const seq = ++assetSearchSeq;
   const listEl = document.getElementById('asset-search-list');
   const labelEl = document.getElementById('asset-search-label');
+  document.getElementById('asset-search-results-card').style.display = '';
   labelEl.textContent = query;
   listEl.innerHTML = '<div class="row"><div class="rname dim2">buscando…</div></div>';
 
@@ -2023,23 +1921,25 @@ function startTimer() {
 }
 
 // Aba em segundo plano (minimizada ou outra aba em foco) → pausa o countdown e para
-// de disparar loadAll(); ao voltar, atualiza na hora e reinicia o ciclo de 60s.
+// de disparar loadAll(); ao voltar, atualiza na hora e reinicia o ciclo de 60s. Mesma lógica
+// pro ciclo de notificação de notícias (pausa/retoma junto).
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     clearInterval(timer);
+    clearInterval(notifyTimer);
   } else {
     loadAll();
     startTimer();
+    checkAiNewsNotifications();
+    startNotifyTimer();
   }
 });
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 let snLoaded = false;
 let pfLoaded = false;
-let feedLoaded = false;
 let heatmapLoaded = false;
 let etfLoaded = false;
-let cnbcLoaded = false;
 let aiNewsLoaded = false;
 function switchTab(btn) {
   const name = btn.dataset.tab;
@@ -2051,8 +1951,6 @@ function switchTab(btn) {
   if (name === 'portfolio'    && !pfLoaded)      { pfLoaded = true; loadPortfolio('3mo'); }
   if (name === 'etfs'         && !etfLoaded)     { etfLoaded = true; loadEtfs('3mo'); }
   if (name === 'heatmap'      && !heatmapLoaded) { heatmapLoaded = true; loadHeatmap(); }
-  if (name === 'feed'         && !feedLoaded)    { feedLoaded = true; loadFeed(); }
-  if (name === 'cnbc'         && !cnbcLoaded)    { cnbcLoaded = true; loadCnbc(); }
   if (name === 'ainews'       && !aiNewsLoaded)  { aiNewsLoaded = true; loadAiNews(); }
 }
 
@@ -2345,6 +2243,14 @@ function openSources() {
 
 function closeSources() {
   document.getElementById('sources-overlay').classList.remove('active');
+}
+
+function openAiNewsMethodology() {
+  document.getElementById('ainews-methodology-overlay').classList.add('active');
+}
+
+function closeAiNewsMethodology() {
+  document.getElementById('ainews-methodology-overlay').classList.remove('active');
 }
 
 async function openTickerNews(ticker, label) {
@@ -3231,6 +3137,8 @@ tick();
 setInterval(tick, 1000);
 loadAll();
 startTimer();
+checkAiNewsNotifications();
+startNotifyTimer();
 </script>
 </body>
 </html>

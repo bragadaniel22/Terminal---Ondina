@@ -15,47 +15,6 @@ function ConvertFrom-HtmlEntities {
     return $t
 }
 
-function Get-CnbcTopStory {
-    try {
-        $wc = [System.Net.WebClient]::new()
-        $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-        $wc.Encoding = [System.Text.Encoding]::UTF8
-        $html = $wc.DownloadString('https://www.cnbc.com/world/?region=world')
-
-        $heroSection = [regex]::Match($html, '<div class="FeaturedNewsHero-container"[\s\S]*?<div class="SecondaryCardContainer-container">')
-        $heroBlock = $heroSection.Value
-        $heroTitle = [regex]::Match($heroBlock, '<h2 class="FeaturedCard-packagedCardTitle"><a href="([^"]+)"[^>]*>([\s\S]*?)</a></h2>')
-        if (-not $heroTitle.Success) { return $null }
-        $heroImg = [regex]::Match($heroBlock, '<img src="([^"]+)"')
-        $subItems = @()
-        foreach ($s in [regex]::Matches($heroBlock, '<a href="([^"]+)" class="PackageItem-link"[^>]*>([\s\S]*?)<!--')) {
-            $subItems += [PSCustomObject]@{ link = ConvertFrom-HtmlEntities $s.Groups[1].Value; title = ConvertFrom-HtmlEntities $s.Groups[2].Value.Trim() }
-        }
-        $hero = [PSCustomObject]@{
-            link = ConvertFrom-HtmlEntities $heroTitle.Groups[1].Value
-            title = ConvertFrom-HtmlEntities $heroTitle.Groups[2].Value.Trim()
-            image = ConvertFrom-HtmlEntities $heroImg.Groups[1].Value
-            subItems = $subItems
-        }
-
-        $secondary = @()
-        foreach ($s in ([regex]::Matches($html, '<div class="SecondaryCard-container">[\s\S]*?</div></div></li>') | Select-Object -First 4)) {
-            $block = $s.Value
-            $img = [regex]::Match($block, '<img src="([^"]+)"')
-            $headline = [regex]::Match($block, '<div class="SecondaryCard-headline"><a href="([^"]+)"[^>]*>([\s\S]*?)</a>')
-            if (-not $headline.Success) { continue }
-            $secondary += [PSCustomObject]@{
-                link = ConvertFrom-HtmlEntities $headline.Groups[1].Value
-                title = ConvertFrom-HtmlEntities $headline.Groups[2].Value.Trim()
-                image = ConvertFrom-HtmlEntities $img.Groups[1].Value
-            }
-        }
-        return [PSCustomObject]@{ hero = $hero; secondary = $secondary }
-    } catch {
-        return $null
-    }
-}
-
 function Get-XmlTag {
     param([string]$Block, [string]$Tag)
     $m = [regex]::Match($Block, "<$Tag[^>]*>([\s\S]*?)</$Tag>", 'IgnoreCase')
@@ -439,7 +398,7 @@ function Get-AiPagedUrl {
 # fora (sem homepage própria checável, só o proxy Google News).
 function Get-AiSourceHomepages {
     return @{
-        'G1' = 'https://g1.globo.com/'
+        # 'G1' = 'https://g1.globo.com/' # G1 removido do terminal (2026-08-05).
         'CNBC' = 'https://www.cnbc.com/world/'
         'Brazil Journal' = 'https://braziljournal.com/'
         'InfoMoney' = 'https://www.infomoney.com.br/'
@@ -448,6 +407,7 @@ function Get-AiSourceHomepages {
         'Poder360' = 'https://www.poder360.com.br/'
         'BBC' = 'https://www.bbc.com/'
         'Valor' = 'https://valor.globo.com/'
+        'Yahoo Finance' = 'https://finance.yahoo.com/'
         # WSJ e Bloomberg ficam de fora — wsj.com devolve 401 pra fetch simples (paywall na
         # borda) e bloomberg.com devolve 403 (bloqueio de bot). Caem pro proxy antigo de
         # "manchete" (top 3 do feed).
@@ -481,10 +441,11 @@ function Get-AiHomepagePaths {
 
 function Get-AiNewsSourcesConfig {
     return @(
-        @{ name = 'G1'; region = 'nacional'; pages = 1; urls = @(
-            'https://g1.globo.com/rss/g1/economia/',
-            'https://g1.globo.com/rss/g1/politica/'
-        ) },
+        # G1 removido do terminal a pedido do usuário (2026-08-05) — descomentar pra reativar.
+        # @{ name = 'G1'; region = 'nacional'; pages = 1; urls = @(
+        #     'https://g1.globo.com/rss/g1/economia/',
+        #     'https://g1.globo.com/rss/g1/politica/'
+        # ) },
         @{ name = 'CNBC'; region = 'internacional'; pages = 1; urls = @(
             'https://www.cnbc.com/id/100727362/device/rss/rss.html',
             'https://www.cnbc.com/id/100003114/device/rss/rss.html',
@@ -511,7 +472,8 @@ function Get-AiNewsSourcesConfig {
         ) },
         @{ name = 'Valor'; region = 'nacional'; pages = 1; urls = @('https://valor.globo.com/rss/valor/') },
         @{ name = 'WSJ'; region = 'internacional'; pages = 1; urls = @('https://news.google.com/rss/search?q=site:wsj.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
-        @{ name = 'Bloomberg'; region = 'internacional'; pages = 1; urls = @('https://news.google.com/rss/search?q=site:bloomberg.com+when:2d&hl=en-US&gl=US&ceid=US:en') }
+        @{ name = 'Bloomberg'; region = 'internacional'; pages = 1; urls = @('https://news.google.com/rss/search?q=site:bloomberg.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
+        @{ name = 'Yahoo Finance'; region = 'internacional'; pages = 1; urls = @('https://finance.yahoo.com/news/rssindex') }
     )
 }
 
@@ -650,88 +612,6 @@ while ($listener.IsListening) {
                 $items = Get-MarketNews
             }
             $result = @{ items = $items } | ConvertTo-Json -Depth 6
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
-            $res.ContentType = 'application/json; charset=utf-8'
-            $res.Headers.Add('Access-Control-Allow-Origin', '*')
-            $res.ContentLength64 = $bytes.Length
-            $res.OutputStream.Write($bytes, 0, $bytes.Length)
-        } catch {
-            $errMsg = $_.Exception.Message -replace '"', '\"'
-            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$errMsg`"}")
-            $res.StatusCode = 500
-            $res.ContentType = 'application/json'
-            $res.ContentLength64 = $err.Length
-            $res.OutputStream.Write($err, 0, $err.Length)
-        }
-        $res.OutputStream.Close()
-        continue
-    }
-
-    # ── CNBC · agregador de manchetes via RSS ────────────────────────────────
-    if ($path -eq '/api/cnbc-news') {
-        try {
-            $feeds = @(
-                @{ id = '100003114'; label = 'Top News' },
-                @{ id = '100727362'; label = 'World' },
-                @{ id = '15839069';  label = 'Markets' },
-                @{ id = '19854910';  label = 'Technology' },
-                @{ id = '10000664';  label = 'Finance' },
-                @{ id = '20910258';  label = 'Economy' },
-                @{ id = '19836768';  label = 'Energy' }
-            )
-            $seen = New-Object System.Collections.Generic.HashSet[string]
-            $items = @()
-            foreach ($feed in $feeds) {
-                try {
-                    $wc = [System.Net.WebClient]::new()
-                    $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-                    $wc.Encoding = [System.Text.Encoding]::UTF8
-                    $xml = $wc.DownloadString("https://www.cnbc.com/id/$($feed.id)/device/rss/rss.html")
-                    $blocks = [regex]::Matches($xml, '<item>[\s\S]*?</item>')
-                    foreach ($b in $blocks) {
-                        $block = $b.Value
-                        $title = Get-XmlTag $block 'title'
-                        $link = Get-XmlTag $block 'link'
-                        $desc = Get-XmlTag $block 'description'
-                        $pubDate = Get-XmlTag $block 'pubDate'
-                        if (-not $title -or -not $link) { continue }
-                        if ($seen.Contains($link)) { continue }
-                        [void]$seen.Add($link)
-                        $time = $null
-                        try { $time = [int][double]([DateTimeOffset]::Parse($pubDate)).ToUnixTimeSeconds() } catch {}
-                        $items += [PSCustomObject]@{
-                            title = $title; link = $link; publisher = "CNBC - $($feed.label)"
-                            feed = $feed.label; time = $time; summary = $desc
-                        }
-                    }
-                } catch {}
-            }
-            $topStory = Get-CnbcTopStory
-            if ($topStory) {
-                $highlighted = New-Object System.Collections.Generic.HashSet[string]
-                [void]$highlighted.Add($topStory.hero.link)
-                foreach ($s in $topStory.secondary) { [void]$highlighted.Add($s.link) }
-                $items = $items | Where-Object { -not $highlighted.Contains($_.link) }
-            }
-            $items = $items | Sort-Object -Property time -Descending
-
-            # Ultimas 24h - sem cortar por quantidade. Cada feed RSS da CNBC só traz os
-            # ~30 itens mais recentes (sem paginação); em categorias de volume alto isso
-            # pode cobrir bem menos que 24h de fato - reportamos a cobertura real (`coverage`).
-            $dayAgo = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - (24 * 3600)
-            $last24h = $items | Where-Object { $null -eq $_.time -or $_.time -ge $dayAgo }
-
-            $coverage = @{}
-            foreach ($feed in $feeds) {
-                $feedItems = $items | Where-Object { $_.feed -eq $feed.label }
-                if (-not $feedItems -or $feedItems.Count -eq 0) { continue }
-                $oldest = ($feedItems | Select-Object -Last 1).time
-                $hoursAvailable = $null
-                if ($oldest) { $hoursAvailable = [Math]::Round((([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $oldest) / 3600.0), 1) }
-                $coverage[$feed.label] = @{ count = $feedItems.Count; hoursAvailable = $hoursAvailable }
-            }
-
-            $result = @{ items = $last24h; topStory = $topStory; coverage = $coverage } | ConvertTo-Json -Depth 8
             $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
             $res.ContentType = 'application/json; charset=utf-8'
             $res.Headers.Add('Access-Control-Allow-Origin', '*')
