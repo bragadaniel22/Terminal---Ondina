@@ -1621,6 +1621,8 @@ async function summarizeNews(storeKey, idx) {
 
 // ── Notícias · recorte por palavra-chave via api/ai-news.js ──────────────────
 const TOP_PICKS_SCORE_WINDOW_HOURS = 2; // dentro dessa janela, ordena por nota; fora, por tempo
+const TOP_PICKS_HIGH_SCORE_MIN = 9; // nota 9+ ganha uma janela maior (fica em destaque por mais tempo)
+const TOP_PICKS_HIGH_SCORE_WINDOW_HOURS = 6;
 let aiNewsNacional = [];
 let aiNewsInternacional = [];
 let aiNewsFilter = 'nacional'; // 'nacional' | 'internacional' | 'top' (Top Picks, combina os dois)
@@ -1705,14 +1707,21 @@ function renderAiNewsList() {
  }
 
  if (aiNewsFilter === 'top') {
- // Top Picks: dentro de uma janela de 2h, a mais relevante (nota) ganha o destaque, não
+ // Top Picks: dentro de uma janela, a mais relevante (nota) ganha o destaque, não
  // necessariamente a mais recente — o objetivo aqui é "o que é mais importante agora", não
- // um feed cronológico. Fora da janela, cai pro critério antigo (mais recente primeiro),
- // como fallback pra quando nada bateu nas últimas 2h.
- const recentCutoff = Date.now() / 1000 - TOP_PICKS_SCORE_WINDOW_HOURS * 3600;
+ // um feed cronológico. Nota 9+ fica em destaque por mais tempo (6h) que o resto (2h),
+ // já que é mais raro e vale a pena continuar aparecendo por mais tempo. Fora da janela
+ // de cada item, cai pro critério antigo (mais recente primeiro), como fallback pra
+ // quando nada bateu na janela.
+ const baseCutoff = Date.now() / 1000 - TOP_PICKS_SCORE_WINDOW_HOURS * 3600;
+ const highCutoff = Date.now() / 1000 - TOP_PICKS_HIGH_SCORE_WINDOW_HOURS * 3600;
+ const isRecent = (it) => {
+ const cutoff = (it.relevanceScore ?? 0) >= TOP_PICKS_HIGH_SCORE_MIN ? highCutoff : baseCutoff;
+ return (it.time ?? 0) >= cutoff;
+ };
  items = [...items].sort((a, b) => {
- const aRecent = (a.time ?? 0) >= recentCutoff;
- const bRecent = (b.time ?? 0) >= recentCutoff;
+ const aRecent = isRecent(a);
+ const bRecent = isRecent(b);
  if (aRecent && bRecent) return (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0);
  if (aRecent !== bRecent) return aRecent ? -1 : 1;
  return (b.time ?? 0) - (a.time ?? 0);
@@ -1767,14 +1776,14 @@ function renderAiNewsMagazine(items) {
  `;
 }
 
-// ── Notificação · pop-up pra notícia de alta relevância (nota >= 8.5) ────────────────────────
+// ── Notificação · pop-up pra notícia de alta relevância (nota 10) ────────────────────────────
 // Funciona em duas situações, ambas pedidas pelo usuário: (1) com o terminal já aberto, uma
 // nova matéria que bata o limiar dispara o pop-up sem precisar estar na aba NOTÍCIAS — por
 // isso checkAiNewsNotifications() roda no próprio ciclo de fundo, independente da aba ativa;
 // (2) ao abrir o terminal, matérias que já bateram o limiar recentemente (e ainda não foram
 // "vistas" nesse navegador) também aparecem — por isso a primeira checagem roda no load da
 // página, não só depois que o usuário clica em algo.
-const NEWS_NOTIFY_THRESHOLD = 8.5;
+const NEWS_NOTIFY_THRESHOLD = 10; // só nota máxima — a pedido do usuário, reduzido de 8.5
 const NEWS_NOTIFY_POLL_SECONDS = 120; // não precisa da granularidade de 60s do resto do terminal
 const NEWS_NOTIFY_MAX_PER_CHECK = 5; // evita avalanche de pop-ups de uma vez (resto fica pro próximo ciclo)
 const NEWS_NOTIFY_STORAGE_KEY = 'tf_notified_news_links';
