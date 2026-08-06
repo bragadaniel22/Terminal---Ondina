@@ -15,6 +15,32 @@ function ConvertFrom-HtmlEntities {
     return $t
 }
 
+# Busca o fechamento anterior oficial via quoteSummary (crumb auth, mesma técnica do
+# /api/target) — espelho de fetchOfficialPreviousClose em api/yahoo.js. Usado só quando o
+# chart endpoint não traz regularMarketPreviousClose/previousClose no meta (comum em
+# futuros de commodities tipo GC=F/CL=F/BZ=F, que operam quase 24h e cujo bucket diário do
+# chart não bate com o fechamento oficial da bolsa — causava % de variação errada, ex: ouro
+# mostrando +1,3% no terminal quando na realidade estava -0,06%).
+function Get-YahooOfficialPreviousClose {
+    param([string]$Ticker)
+    $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    $cookieJar = [System.Net.CookieContainer]::new()
+    $r1 = [System.Net.HttpWebRequest]::Create('https://fc.yahoo.com')
+    $r1.CookieContainer = $cookieJar; $r1.UserAgent = $ua; $r1.Timeout = 8000
+    try { $r1.GetResponse().Close() } catch {}
+    $r2 = [System.Net.HttpWebRequest]::Create('https://query2.finance.yahoo.com/v1/test/getcrumb')
+    $r2.CookieContainer = $cookieJar; $r2.UserAgent = $ua; $r2.Accept = 'text/plain'; $r2.Timeout = 8000
+    $crumb = [System.IO.StreamReader]::new($r2.GetResponse().GetResponseStream()).ReadToEnd()
+    if (-not $crumb -or $crumb.Contains('<') -or $crumb.Length -gt 20) { throw "crumb inválido" }
+    $qUrl = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/$([Uri]::EscapeDataString($Ticker))?modules=price&crumb=$([Uri]::EscapeDataString($crumb))"
+    $r3 = [System.Net.HttpWebRequest]::Create($qUrl)
+    $r3.CookieContainer = $cookieJar; $r3.UserAgent = $ua; $r3.Accept = 'application/json'; $r3.Timeout = 8000
+    $raw = [System.IO.StreamReader]::new($r3.GetResponse().GetResponseStream()).ReadToEnd()
+    $prev = ($raw | ConvertFrom-Json).quoteSummary.result[0].price.regularMarketPreviousClose.raw
+    if ($null -eq $prev) { throw "sem regularMarketPreviousClose" }
+    return $prev
+}
+
 function Get-XmlTag {
     param([string]$Block, [string]$Tag)
     $m = [regex]::Match($Block, "<$Tag[^>]*>([\s\S]*?)</$Tag>", 'IgnoreCase')
@@ -909,7 +935,16 @@ while ($listener.IsListening) {
             $wc = [System.Net.WebClient]::new()
             $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
             $wc.Headers.Add('Accept', 'application/json')
-            $body = $wc.DownloadData($yUrl)
+            $rawJson = $wc.DownloadString($yUrl)
+            $obj = $rawJson | ConvertFrom-Json
+            $meta = $obj.chart.result[0].meta
+            if ($meta -and ($null -eq $meta.regularMarketPreviousClose) -and ($null -eq $meta.previousClose)) {
+                try {
+                    $prev = Get-YahooOfficialPreviousClose $ticker
+                    Add-Member -InputObject $meta -NotePropertyName regularMarketPreviousClose -NotePropertyValue $prev -Force
+                } catch {} # sem sorte no fallback — o front-end ainda tem o heurística sobre o gráfico
+            }
+            $body = [System.Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 15))
             $res.ContentType = 'application/json'
             $res.Headers.Add('Access-Control-Allow-Origin', '*')
             $res.ContentLength64 = $body.Length
