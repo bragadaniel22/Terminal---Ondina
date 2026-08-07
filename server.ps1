@@ -218,7 +218,9 @@ $AI_PRIORITY_KEYWORDS = @(
     'Fed', 'Federal Reserve', 'FOMC', 'Powell', 'Copom', 'Banco Central', 'Selic', 'Galípolo',
     'BCE', 'ECB', 'Lagarde', 'Bank of Japan', 'BoJ', 'Bank of England', 'BoE', 'corte de juros',
     'alta de juros', 'rate cut', 'rate hike', 'quantitative easing', 'quantitative tightening',
-    'meta de inflação', 'dot plot',
+    'meta de inflação', 'dot plot', 'nonfarm payrolls', 'payroll', 'relatório de emprego',
+    'mercado de trabalho americano', 'jobs report', 'employment report', 'jobless claims',
+    'unemployment rate', 'taxa de desemprego dos EUA',
     'S&P 500', 'Nasdaq', 'Dow Jones', 'Wall Street', 'Magnificent Seven', 'Nvidia', 'Microsoft',
     'Alphabet', 'Google', 'Meta', 'Amazon', 'Apple', 'Broadcom', 'AMD', 'TSMC', 'OpenAI',
     'Anthropic', 'Oracle', 'Palantir', 'CoreWeave', 'earnings season', 'resultados trimestrais',
@@ -262,6 +264,51 @@ function Test-AiPriorityMatch {
     param([string]$Title, [string]$Summary)
     $text = Get-AiNormalizedText "$Title $Summary"
     return [regex]::IsMatch($text, $AI_PRIORITY_PATTERN)
+}
+
+# ── NACIONAL/INTERNACIONAL por assunto, não por veículo — espelho de classifyRegion em
+# api/ai-news.js. Um portal brasileiro noticiando o mercado americano cai em INTERNACIONAL,
+# não por ter sido publicado no Brasil. Empate/sem sinal cai no critério antigo (fonte).
+$AI_BR_REGION_KEYWORDS = @(
+    'Brasil', 'Selic', 'Copom', 'Ibovespa', 'IBOV', 'Banco Central do Brasil', 'Lula', 'Bolsonaro',
+    'Congresso Nacional', 'Câmara dos Deputados', 'Senado Federal', 'STF', 'Supremo Tribunal Federal',
+    'Brasília', 'IPCA', 'IGP-M', 'Petrobras', 'Itaú', 'Bradesco', 'Banco do Brasil', 'B3',
+    'Receita Federal', 'governo Lula', 'Haddad', 'Galípolo', 'real brasileiro', 'PIB brasileiro',
+    'TSE', 'eleições municipais', 'eleições presidenciais no Brasil'
+)
+$AI_INTL_REGION_KEYWORDS = @(
+    'Estados Unidos', 'EUA', 'United States', 'Fed', 'Federal Reserve', 'FOMC', 'Powell',
+    'Wall Street', 'S&P 500', 'Nasdaq', 'Dow Jones', 'China', 'União Europeia', 'European Union',
+    'BCE', 'ECB', 'Rússia', 'Russia', 'Ucrânia', 'Ukraine', 'Taiwan', 'Israel', 'Irã', 'Iran',
+    'Oriente Médio', 'Middle East', 'OPEP', 'OPEC', 'Reino Unido', 'United Kingdom',
+    'Bank of England', 'Japão', 'Bank of Japan', 'Coreia do Norte', 'North Korea', 'Nvidia',
+    'Apple', 'Microsoft', 'Amazon', 'Google', 'Alphabet', 'Meta', 'OpenAI', 'Anthropic', 'Trump',
+    'Casa Branca', 'White House', 'Bruxelas', 'Londres', 'Pequim', 'Moscou', 'Tóquio'
+)
+$AI_BR_REGION_REGEXES = [System.Collections.Generic.List[regex]]::new()
+foreach ($kw in ($AI_BR_REGION_KEYWORDS | ForEach-Object { Get-AiNormalizedText $_ } | Select-Object -Unique)) {
+    $AI_BR_REGION_REGEXES.Add([regex]::new('\b' + [regex]::Escape($kw) + '\b'))
+}
+$AI_INTL_REGION_REGEXES = [System.Collections.Generic.List[regex]]::new()
+foreach ($kw in ($AI_INTL_REGION_KEYWORDS | ForEach-Object { Get-AiNormalizedText $_ } | Select-Object -Unique)) {
+    $AI_INTL_REGION_REGEXES.Add([regex]::new('\b' + [regex]::Escape($kw) + '\b'))
+}
+
+function Get-AiRegionMatchCount {
+    param([System.Collections.Generic.List[regex]]$Patterns, [string]$Text)
+    $count = 0
+    foreach ($re in $Patterns) { if ($re.IsMatch($Text)) { $count++ } }
+    return $count
+}
+
+function Get-AiClassifiedRegion {
+    param([string]$Title, [string]$Summary, [string]$SourceRegion)
+    $text = Get-AiNormalizedText "$Title $Summary"
+    $brHits = Get-AiRegionMatchCount $AI_BR_REGION_REGEXES $text
+    $intlHits = Get-AiRegionMatchCount $AI_INTL_REGION_REGEXES $text
+    if ($brHits -gt $intlHits) { return 'nacional' }
+    if ($intlHits -gt $brHits) { return 'internacional' }
+    return $SourceRegion
 }
 
 function Get-AiKeywordMatchCount {
@@ -717,9 +764,10 @@ while ($listener.IsListening) {
 
                             $hpSet = $homepagePaths[$source.name]
                             $headline = if ($hpSet) { $hpSet.Contains((Get-AiUrlPath $link $baseUrl)) } else { ($page -eq 1 -and $rank -lt 3) }
+                            $region = Get-AiClassifiedRegion $title $summary $source.region
 
                             $allItems += [PSCustomObject]@{
-                                source = $source.name; region = $source.region; title = $title
+                                source = $source.name; region = $region; title = $title
                                 link = $link; publisher = $source.name; summary = $summary; time = $time
                                 headline = $headline
                             }
