@@ -227,7 +227,8 @@ $AI_PRIORITY_KEYWORDS = @(
     'guidance', 'capex de IA',
     'China', 'Taiwan', 'Rússia', 'Russia', 'Ucrânia', 'Ukraine', 'Irã', 'Iran', 'Israel',
     'Oriente Médio', 'Middle East', 'OPEP', 'OPEC', 'tarifas', 'tariffs', 'trade war', 'sanções',
-    'sanctions'
+    'sanctions',
+    'AMZN', 'MSFT', 'NVDA', 'ASML', 'SMH', 'Danaher', 'DHR', 'Visa', 'Vistra', 'VST', 'GLD', 'GOOGL'
 )
 $AI_PRIORITY_BONUS = 2
 
