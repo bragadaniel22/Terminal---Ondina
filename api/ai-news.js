@@ -362,6 +362,11 @@ const PRIORITY_KEYWORDS = [
   'China', 'Taiwan', 'Rússia', 'Russia', 'Ucrânia', 'Ukraine', 'Irã', 'Iran', 'Israel',
   'Oriente Médio', 'Middle East', 'OPEP', 'OPEC', 'tarifas', 'tariffs', 'trade war', 'sanções',
   'sanctions',
+  // Single Names — carteira pessoal do usuário (Amazon/Microsoft/Nvidia/Google já cobertos
+  // acima por nome; aqui só os tickers e os nomes que faltavam). "V" (ticker da Visa) ficou de
+  // fora de propósito — uma letra isolada como palavra-chave gera falso positivo demais (ex:
+  // "recuperação em V", abreviações, numeração) pra valer a pena; "Visa" (nome) já cobre.
+  'AMZN', 'MSFT', 'NVDA', 'ASML', 'SMH', 'Danaher', 'DHR', 'Visa', 'Vistra', 'VST', 'GLD', 'GOOGL',
 ];
 const PRIORITY_PATTERNS = [...new Set(PRIORITY_KEYWORDS.map(normalize))].map((k) => new RegExp(`\\b${escapeRegex(k)}\\b`));
 const PRIORITY_BONUS = 2;
