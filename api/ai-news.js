@@ -350,7 +350,9 @@ const PRIORITY_KEYWORDS = [
   'Fed', 'Federal Reserve', 'FOMC', 'Powell', 'Copom', 'Banco Central', 'Selic', 'Galípolo',
   'BCE', 'ECB', 'Lagarde', 'Bank of Japan', 'BoJ', 'Bank of England', 'BoE', 'corte de juros',
   'alta de juros', 'rate cut', 'rate hike', 'quantitative easing', 'quantitative tightening',
-  'meta de inflação', 'dot plot',
+  'meta de inflação', 'dot plot', 'nonfarm payrolls', 'payroll', 'relatório de emprego',
+  'mercado de trabalho americano', 'jobs report', 'employment report', 'jobless claims',
+  'unemployment rate', 'taxa de desemprego dos EUA',
   // Mercado de ações US / IA
   'S&P 500', 'Nasdaq', 'Dow Jones', 'Wall Street', 'Magnificent Seven', 'Nvidia', 'Microsoft',
   'Alphabet', 'Google', 'Meta', 'Amazon', 'Apple', 'Broadcom', 'AMD', 'TSMC', 'OpenAI',
@@ -367,6 +369,46 @@ const PRIORITY_BONUS = 2;
 function matchesPriority(title, summary) {
   const text = normalize(`${title} ${summary}`);
   return PRIORITY_PATTERNS.some((re) => re.test(text));
+}
+
+// ── NACIONAL/INTERNACIONAL por assunto, não por veículo ─────────────────────────────────────
+// Um portal brasileiro (Valor, InfoMoney...) que noticia o mercado americano deve cair em
+// INTERNACIONAL, não NACIONAL, só por ter sido publicado no Brasil — e vice-versa. Conta sinais
+// de "assunto Brasil" vs "assunto internacional" no título/resumo; quem tiver mais vence. Empate
+// ou nenhum sinal claro (ex: nota de mercado genérica sem geografia) cai no critério antigo —
+// a região do veículo que publicou — como fallback razoável.
+const BR_REGION_KEYWORDS = [
+  'Brasil', 'Selic', 'Copom', 'Ibovespa', 'IBOV', 'Banco Central do Brasil', 'Lula', 'Bolsonaro',
+  'Congresso Nacional', 'Câmara dos Deputados', 'Senado Federal', 'STF', 'Supremo Tribunal Federal',
+  'Brasília', 'IPCA', 'IGP-M', 'Petrobras', 'Itaú', 'Bradesco', 'Banco do Brasil', 'B3',
+  'Receita Federal', 'governo Lula', 'Haddad', 'Galípolo', 'real brasileiro', 'PIB brasileiro',
+  'TSE', 'eleições municipais', 'eleições presidenciais no Brasil',
+];
+const INTL_REGION_KEYWORDS = [
+  'Estados Unidos', 'EUA', 'United States', 'Fed', 'Federal Reserve', 'FOMC', 'Powell',
+  'Wall Street', 'S&P 500', 'Nasdaq', 'Dow Jones', 'China', 'União Europeia', 'European Union',
+  'BCE', 'ECB', 'Rússia', 'Russia', 'Ucrânia', 'Ukraine', 'Taiwan', 'Israel', 'Irã', 'Iran',
+  'Oriente Médio', 'Middle East', 'OPEP', 'OPEC', 'Reino Unido', 'United Kingdom',
+  'Bank of England', 'Japão', 'Bank of Japan', 'Coreia do Norte', 'North Korea', 'Nvidia',
+  'Apple', 'Microsoft', 'Amazon', 'Google', 'Alphabet', 'Meta', 'OpenAI', 'Anthropic', 'Trump',
+  'Casa Branca', 'White House', 'Bruxelas', 'Londres', 'Pequim', 'Moscou', 'Tóquio',
+];
+const BR_REGION_PATTERNS = [...new Set(BR_REGION_KEYWORDS.map(normalize))].map((k) => new RegExp(`\\b${escapeRegex(k)}\\b`));
+const INTL_REGION_PATTERNS = [...new Set(INTL_REGION_KEYWORDS.map(normalize))].map((k) => new RegExp(`\\b${escapeRegex(k)}\\b`));
+
+function countRegionMatches(patterns, text) {
+  let count = 0;
+  for (const re of patterns) if (re.test(text)) count++;
+  return count;
+}
+
+function classifyRegion(title, summary, sourceRegion) {
+  const text = normalize(`${title} ${summary}`);
+  const brHits = countRegionMatches(BR_REGION_PATTERNS, text);
+  const intlHits = countRegionMatches(INTL_REGION_PATTERNS, text);
+  if (brHits > intlHits) return 'nacional';
+  if (intlHits > brHits) return 'internacional';
+  return sourceRegion;
 }
 
 // Duas manchetes sobre a MESMA notícia raramente têm a escrita parecida ("BP's $5.7bn profit
@@ -577,7 +619,7 @@ async function fetchSource(source, homepagePaths) {
         : isPage1 && idx < 3;
 
       items.push({
-        source: source.name, region: source.region, title, link: raw.link,
+        source: source.name, region: classifyRegion(title, summary, source.region), title, link: raw.link,
         publisher: source.name, summary, time: raw.time, headline,
       });
     });
