@@ -471,7 +471,7 @@
  }
 
  </style>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -760,14 +760,15 @@
  </div>
  </div>
  <div id="close-body"><div class="close-status">clique em FECHAMENTO pra carregar…</div></div>
- <div class="close-note">Fontes: Yahoo Finance, B3/TradingView (DI Futuro), ANBIMA (ETTJ Pré e NTN-B), Tesouro Direto
- (base de Δ ano de NTN-B, ver *). Δ mês e Δ ano contra o último pregão do mês/ano anterior (MTD/YTD). Uma data
- entre parênteses ao lado do nome indica que aquele mercado fechou num dia diferente da referência do relatório
- (feriado local ou fuso horário). MSCI EM (EEM) é retorno de preço do ETF, não do índice total return. ETTJ Pré:
- a ANBIMA retém só ~5-6 meses de arquivo diário — Δ ano aparece como "n/d" quando a base sai dessa janela
- (normalmente entre meados do ano e a virada do ano). <strong>*</strong> Δ ano de NTN-B 2030/2032/2035/2045
- usa o Tesouro Direto como base quando a ANBIMA não retém mais a data (ponto médio compra/venda, aproxima a taxa
- institucional). NTN-B 2028/2029 não têm título equivalente no Tesouro Direto e continuam "n/d" nesse caso.</div>
+ <div class="close-note">Fontes: Yahoo Finance, B3/TradingView (DI Futuro), ANBIMA (Fechamento/Δ dia de ETTJ Pré e
+ NTN-B). Δ mês e Δ ano de NTN-B usam a planilha "Taxas Antigas NTNB.xlsx" (mantida manualmente, atualizada 1x/mês
+ e 1x/ano) — a ANBIMA só retém ~5-6 meses de arquivo diário, então essas bases somem da fonte ao vivo com o
+ tempo. Se a planilha ficar desatualizada num mês, o Δ correspondente aparece como "n/d" em vez de um número
+ calculado contra o período errado. Δ mês e Δ ano dos demais instrumentos contra o último pregão do mês/ano
+ anterior (MTD/YTD). Uma data entre parênteses ao lado do nome indica que aquele mercado fechou num dia diferente
+ da referência do relatório (feriado local ou fuso horário). MSCI EM (EEM) é retorno de preço do ETF, não do
+ índice total return. ETTJ Pré: Δ ano aparece como "n/d" quando a base sai da janela de retenção da ANBIMA
+ (normalmente entre meados do ano e a virada do ano).</div>
 </div>
 </div>
 
@@ -1336,7 +1337,13 @@ function renderMkt(valId, chgId, subId, data, decimals, baseSub, suffix = '') {
 }
 
 // ── Loaders ───────────────────────────────────────────────────────────────────
+// As 3 chamadas abaixo (CDI, Selic, IBOV) são independentes — rodar em Promise.allSettled em
+// vez de sequencial (await um por um) evita que a mais lenta das três (normalmente o CDI, que
+// baixa 1 ano de série diária do BCB) segure as outras duas atrás dela sem necessidade. Mesmo
+// ajuste em loadJuros() (Fed/BCE/T-Note), que tinha o mesmo problema.
 async function loadBrasil() {
+ await Promise.allSettled([
+ (async () => {
  // CDI 12M — compõe todas as taxas diárias do último ano
  try {
  const today = new Date();
@@ -1351,7 +1358,8 @@ async function loadBrasil() {
  } catch (e) {
  setV('cdi-val', 'ERRO', 'err'); console.error('CDI12M', e);
  }
-
+ })(),
+ (async () => {
  // Selic — série 432
  try {
  const { v, date } = await bcbLast(432);
@@ -1360,7 +1368,8 @@ async function loadBrasil() {
  } catch (e) {
  setV('selic-val', 'ERRO', 'err'); setSub('selic-sub', 'BCB · falha ao buscar'); console.error('Selic', e);
  }
-
+ })(),
+ (async () => {
  // IBOV
  try {
  const data = await yahoo('^BVSP');
@@ -1368,6 +1377,8 @@ async function loadBrasil() {
  } catch (e) {
  setV('ibov-val', 'ERRO', 'err'); console.error('IBOV', e);
  }
+ })(),
+ ]);
 }
 
 async function loadAmericas() {
@@ -1425,6 +1436,8 @@ async function loadCommodities() {
 }
 
 async function loadJuros() {
+ await Promise.allSettled([
+ (async () => {
  // Fed Funds — T-Bill 3M como proxy
  try {
  const data = await yahoo('^IRX');
@@ -1435,7 +1448,8 @@ async function loadJuros() {
  } catch (e) {
  setV('fed-val', 'ERRO', 'err'); console.error('Fed', e);
  }
-
+ })(),
+ (async () => {
  // BCE
  try {
  const { v, date } = await ecbRate();
@@ -1451,7 +1465,8 @@ async function loadJuros() {
  setV('bce-val', 'ERRO', 'err'); console.error('BCE', e);
  }
  }
-
+ })(),
+ (async () => {
  // T-Note 10Y
  try {
  const data = await yahoo('^TNX');
@@ -1459,6 +1474,8 @@ async function loadJuros() {
  } catch (e) {
  setV('tnx-val', 'ERRO', 'err'); console.error('TNX', e);
  }
+ })(),
+ ]);
 }
 
 // ── DI Futuro (B3) ───────────────────────────────────────────────────────────
@@ -2316,7 +2333,11 @@ const dragRangePlugin = {
  ctx.restore();
  },
 };
-Chart.register(dragRangePlugin);
+// Chart.js agora carrega com `defer` (não bloqueia a renderização inicial da página — antes
+// ficava no <head> sem defer/async, travando o parse do resto do HTML até baixar da CDN,
+// mesmo só sendo usado quando alguém abre um gráfico). Isso significa que `Chart` só existe a
+// partir do DOMContentLoaded — não pode mais registrar o plugin em código de topo de página.
+document.addEventListener('DOMContentLoaded', () => Chart.register(dragRangePlugin));
 
 // ── Portfolio Simulator ───────────────────────────────────────────────────────
 const PF_TICKERS = ['AMZN','MSFT','NVDA','ASML','SMH','DHR','V','VST','GLD','GOOGL'];
@@ -2906,10 +2927,11 @@ async function closingEttjDeltas(refKey) {
  };
 }
 
-// NTN-B: um arquivo diário da ANBIMA traz as 6 taxas de uma vez (/api/ntnb, mesma mecânica de
-// dois-round-trips da ETTJ acima), então resolve os 6 vencimentos com só 2 requisições no total
-// em vez de 12 (2 por vencimento). Mesma limitação de retenção da ANBIMA (~5-6 meses) — Δ ano
-// vira "n/d" pra todos os vencimentos ao mesmo tempo, não vencimento a vencimento.
+// NTN-B: um arquivo diário da ANBIMA traz as 6 taxas de uma vez (/api/ntnb), então resolve os
+// 6 vencimentos com só 2 requisições pra Δ dia (hoje + ontem). Δ mês e Δ ano vêm da planilha
+// estática "Taxas Antigas NTNB.xlsx" (Daniel mantém manualmente, 1x/mês e 1x/ano) — a ANBIMA só
+// retém ~5-6 meses de arquivo diário, então a base de Δ ano (31/dez do ano anterior) já não dá
+// mais pra buscar ao vivo depois de meados do ano seguinte.
 async function fetchNtnbBatch(refKey) {
  const r1 = await fetch(`/api/ntnb?dates=${encodeURIComponent(keyToBr(refKey))}`);
  const d1 = await r1.json();
@@ -2918,56 +2940,57 @@ async function fetchNtnbBatch(refKey) {
 
  const todayKey = brToKey(todayResult.date);
  const prevDayAnchor = keyToBr(addDaysToKey(todayKey, -1));
- const monthAnchor = keyToBr(lastDayOfPrevMonthKey(refKey));
- const yearAnchor = keyToBr(lastDayOfPrevYearKey(refKey));
 
- const r2 = await fetch(`/api/ntnb?dates=${[prevDayAnchor, monthAnchor, yearAnchor].map(encodeURIComponent).join(',')}`);
- const d2 = await r2.json();
- const [prevResult, monthResult, yearResult] = d2?.results ?? [];
+ const [r2, staticAnchors] = await Promise.all([
+ fetch(`/api/ntnb?dates=${encodeURIComponent(prevDayAnchor)}`).then(r => r.json()),
+ getNtnbStaticAnchorsCached(),
+ ]);
+ const prevResult = r2?.results?.[0];
 
- // Fallback pro Tesouro Direto quando a ANBIMA já não retém mais a base de Δ ano (retenção de
- // ~5-6 meses do arquivo diário) — cobre 4 dos 6 vencimentos; 2028/2029 não têm equivalente no
- // Tesouro Direto e continuam "n/d". Cache permanente (a taxa de um ano já fechado não muda).
- const prevYearNum = keyParts(refKey).y - 1;
- const yearMissingSome = NTNB_MATURITIES.some(m => yearResult?.rates?.[m.year] == null);
- const tdAnchor = yearMissingSome ? await getNtnbYtdAnchorCached(prevYearNum) : null;
+ // A planilha só serve de base se a data que ela traz cair no MÊS certo (não precisa ser o dia
+ // exato — 31/dez pode não ter tido pregão, por isso a planilha real veio com 30/12/2025, não
+ // 31/12; exigir o dia exato pegaria isso como "desatualizado" por engano). Comparar só
+ // 'YYYY-MM' ainda pega o caso real de estar desatualizado (mês/ano errado).
+ const sameYearMonth = (a, b) => a && b && a.slice(0, 7) === b.slice(0, 7);
+ const monthKey = staticAnchors?.month ? brToKey(staticAnchors.month.date) : null;
+ const yearKey = staticAnchors?.year ? brToKey(staticAnchors.year.date) : null;
+ const monthValid = sameYearMonth(monthKey, lastDayOfPrevMonthKey(refKey));
+ const yearValid = sameYearMonth(yearKey, lastDayOfPrevYearKey(refKey));
 
  const out = {};
  for (const m of NTNB_MATURITIES) {
  const mat = m.year;
  const cur = todayResult.rates?.[mat];
  if (cur == null) continue;
- const prev = prevResult?.rates?.[mat], month = monthResult?.rates?.[mat];
- let year = yearResult?.rates?.[mat];
- let yearFromTD = false;
- if (year == null && tdAnchor?.rates?.[mat] != null) { year = tdAnchor.rates[mat]; yearFromTD = true; }
+ const prev = prevResult?.rates?.[mat];
+ const month = monthValid ? staticAnchors.month.rates?.[mat] : null;
+ const year = yearValid ? staticAnchors.year.rates?.[mat] : null;
  out[mat] = {
  value: cur,
  asOfKey: todayKey,
  dChg: prev != null ? cur - prev : null,
  mChg: month != null ? cur - month : null,
  yChg: year != null ? cur - year : null,
- yFromTD: yearFromTD,
  };
  }
  return out;
 }
 
-// Cache permanente em localStorage — a taxa de fim de ano de um ano já encerrado nunca muda, e
-// buscar o CSV do Tesouro Direto pra achar essa base é uma requisição pesada (~15MB) que vale a
-// pena evitar repetir a cada dia; só refaz se o navegador limpar o localStorage.
-async function getNtnbYtdAnchorCached(year) {
- const cacheKey = `ntnb_ytd_anchor_${year}`;
+// Cache curto (1h) — a planilha é um arquivo que o Daniel atualiza manualmente a qualquer
+// momento (não um dado que "nunca muda" como o antigo fallback do Tesouro Direto), então não
+// faz sentido cache permanente; mas também não precisa buscar de novo a cada clique.
+async function getNtnbStaticAnchorsCached() {
+ const cacheKey = 'ntnb_static_anchors';
  const cached = cacheGet(cacheKey);
- if (cached) return cached;
+ if (cached && Date.now() - cached.fetchedAt < 3600_000) return cached.data;
  try {
- const r = await fetch(`/api/ntnb?ytdAnchor=${year}`);
+ const r = await fetch('/api/ntnb?staticAnchors=1');
  const d = await r.json();
- if (d.error || !d.rates) return null;
- cachePut(cacheKey, d);
+ if (d.error) return cached?.data ?? null;
+ cachePut(cacheKey, { data: d, fetchedAt: Date.now() });
  return d;
  } catch {
- return null;
+ return cached?.data ?? null;
  }
 }
 
@@ -2993,7 +3016,7 @@ async function computeCloseItem(item, refKey, ntnbBatchPromise) {
  const batch = await ntnbBatchPromise;
  const d = batch?.[item.maturity];
  if (!d) throw new Error('sem dados');
- return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey, yFromTD: d.yFromTD };
+ return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey };
  }
  throw new Error('kind desconhecido: ' + item.kind);
 }
@@ -3002,7 +3025,7 @@ async function computeCloseItem(item, refKey, ntnbBatchPromise) {
 // (instrumento adicionado/removido, campo novo no payload, etc). Sem isso, quem já tinha o
 // relatório em cache no navegador continuaria vendo a versão antiga (mesmo refKey, payload
 // desatualizado) até a data de referência virar sozinha — já aconteceu na prática.
-const CLOSE_REPORT_CACHE_KEY = 'close_report_v2';
+const CLOSE_REPORT_CACHE_KEY = 'close_report_v3';
 
 async function loadClosingReport(force = false) {
  const refKey = computeRefKey();
@@ -3044,9 +3067,7 @@ function renderCloseRow(row, refKey) {
  const valTxt = row.unit === 'bps' ? num(row.value, 2) + '%' : num(row.value, row.decimals ?? 2);
  const dHtml = closeDeltaHtml(row.unit === 'bps' ? row.dBps : row.dPct, row.unit);
  const mHtml = closeDeltaHtml(row.unit === 'bps' ? row.mBps : row.mPct, row.unit);
- // Δ ano de NTN-B que veio do fallback do Tesouro Direto (ANBIMA já não retém a base) ganha um
- // "*" — mesmo espírito do aviso de rodapé, só que marcado na própria célula.
- const yHtml = closeDeltaHtml(row.unit === 'bps' ? row.yBps : row.yPct, row.unit) + (row.yFromTD ? '<sup class="dim2">*</sup>' : '');
+ const yHtml = closeDeltaHtml(row.unit === 'bps' ? row.yBps : row.yPct, row.unit);
  // Quando o mercado desse ativo fechou num dia diferente do refKey do relatório (feriado local,
  // ou fuso — ex: Ásia já fechou "amanhã" em horário de Brasília), mostra a data efetiva usada.
  const asOf = (row.asOfKey && row.asOfKey !== refKey) ? ` <span class="dim2">(${keyToBr(row.asOfKey)})</span>` : '';
@@ -3180,12 +3201,10 @@ async function downloadClosingReportImage() {
  const deltas = row.unit === 'bps' ? [row.dBps, row.mBps, row.yBps] : [row.dPct, row.mPct, row.yPct];
  deltas.forEach((v, i) => {
  const col = COLS[i + 2];
- const isYear = i === 2;
  if (v == null || isNaN(v)) { cell('n/d', col, COLORS.dim, `500 12px "${MONO}"`); return; }
  const color = v > 0 ? COLORS.green : v < 0 ? COLORS.red : COLORS.text;
  const arrow = v > 0 ? ' ↑' : v < 0 ? ' ↓' : '';
- const star = (isYear && row.yFromTD) ? '*' : '';
- const text = (row.unit === 'bps' ? (v >= 0 ? '+' : '') + Math.round(v) + ' bps' : pct(v)) + arrow + star;
+ const text = (row.unit === 'bps' ? (v >= 0 ? '+' : '') + Math.round(v) + ' bps' : pct(v)) + arrow;
  cell(text, col, color, `600 12px "${MONO}"`);
  });
  }

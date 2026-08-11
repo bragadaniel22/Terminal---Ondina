@@ -145,44 +145,105 @@ function Get-NtnbNear {
     return $null
 }
 
-# Espelho de handleYtdAnchor em api/ntnb.js — a ANBIMA só retém ~5-6 meses de arquivo diário,
-# então a base de Δ ano (31/dez do ano anterior) some por volta de meados do ano seguinte. Pra 4
-# dos 6 vencimentos (2030/2032/2035/2045) existe equivalente no Tesouro Direto, cujo CSV público
-# guarda histórico completo desde ~2011 (2028 e 2029 não têm equivalente — ver comentário no JS).
-# Usa o ponto médio entre taxa de compra e venda como aproximação da taxa institucional da ANBIMA.
-$TD_CSV_URL = 'https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/PrecoTaxaTesouroDireto.csv'
-$TD_TITLE = 'Tesouro IPCA+ com Juros Semestrais'
-$TD_MATURITY_MAP = [ordered]@{ '2030' = '15/08/2030'; '2032' = '15/08/2032'; '2035' = '15/05/2035'; '2045' = '15/05/2045' }
+# Espelho de handleStaticAnchors em api/ntnb.js — lê "Taxas Antigas NTNB.xlsx" (raiz do repo)
+# direto do .xlsx (é um zip de XML por baixo do capô), sem depender de nenhuma lib de Excel:
+# workbook.xml resolve nome-da-aba -> r:id, workbook.xml.rels resolve r:id -> arquivo da aba,
+# sharedStrings.xml resolve os índices de texto, e a aba em si (sheetN.xml) tem os valores.
+# Estrutura fixa da planilha: data de referência em C2, vencimentos em C5:C10, taxas em D5:D10.
+function ConvertTo-NtnbAnchorJson([PSCustomObject]$Anchor) {
+    if (-not $Anchor) { return 'null' }
+    $ratesJson = ($Anchor.rates.GetEnumerator() | ForEach-Object { "`"$($_.Key)`":$($_.Value)" }) -join ','
+    return "{`"date`":`"$($Anchor.date)`",`"rates`":{$ratesJson}}"
+}
 
-function Get-NtnbYtdAnchor {
-    param([int]$Year)
+function Get-NtnbStaticAnchors {
+    param([string]$Path)
     try {
-        $r = Invoke-WebRequest -Uri $TD_CSV_URL -TimeoutSec 60 -Headers @{'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        $prefix = "$TD_TITLE;"
-        $index = @{}
-        foreach ($line in ($r.Content -split "`n")) {
-            if (-not $line.StartsWith($prefix)) { continue }
-            $cols = $line.TrimEnd("`r") -split ';'
-            $index["$($cols[1]);$($cols[2])"] = $cols
-        }
-        $rates = @{}
-        $usedDate = $null
-        foreach ($mat in $TD_MATURITY_MAP.Keys) {
-            $tdMaturity = $TD_MATURITY_MAP[$mat]
-            for ($back = 0; $back -lt 8; $back++) {
-                $dt = ([datetime]::new($Year, 12, 31)).AddDays(-$back).ToString('dd/MM/yyyy')
-                $cols = $index["$tdMaturity;$dt"]
-                if ($cols) {
-                    $compra = [double]($cols[3].Replace(',', '.'))
-                    $venda = [double]($cols[4].Replace(',', '.'))
-                    $rates[$mat] = ($compra + $venda) / 2.0
-                    $usedDate = $dt
-                    break
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
+        try {
+            # Encoding UTF-8 explícito é obrigatório aqui — sem isso, nomes de aba com acento
+            # (ex: "Mês Anterior") saem corrompidos do StreamReader e a busca por nome falha
+            # silenciosamente (mesma classe de bug já documentada pro WebClient — seção 3 da
+            # METODOLOGIA — só que aqui é o StreamReader).
+            function Read-ZipEntryText([string]$EntryName) {
+                $entry = $zip.Entries | Where-Object { $_.FullName -eq $EntryName }
+                if (-not $entry) { return $null }
+                $sr = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
+                try { return $sr.ReadToEnd() } finally { $sr.Dispose() }
+            }
+
+            $sharedStringsXml = Read-ZipEntryText 'xl/sharedStrings.xml'
+            $sharedStrings = @()
+            if ($sharedStringsXml) {
+                $sharedStrings = [regex]::Matches($sharedStringsXml, '<si>(.*?)</si>', 'Singleline') | ForEach-Object {
+                    $_.Groups[1].Value -replace '<[^>]+>', ''
                 }
             }
+
+            $wbXml = Read-ZipEntryText 'xl/workbook.xml'
+            $sheetToRid = @{}
+            foreach ($m in [regex]::Matches($wbXml, '<sheet[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"')) {
+                $sheetToRid[$m.Groups[1].Value] = $m.Groups[2].Value
+            }
+            $relsXml = Read-ZipEntryText 'xl/_rels/workbook.xml.rels'
+            $ridToTarget = @{}
+            foreach ($m in [regex]::Matches($relsXml, '<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"')) {
+                $ridToTarget[$m.Groups[1].Value] = $m.Groups[2].Value
+            }
+
+            function Get-CellValue([string]$SheetXml, [string]$Ref) {
+                $m = [regex]::Match($SheetXml, "<c r=`"$Ref`"[^>]*/>|<c r=`"$Ref`"[^>]*>.*?</c>", 'Singleline')
+                if (-not $m.Success) { return $null }
+                $block = $m.Value
+                $vMatch = [regex]::Match($block, '<v>([^<]*)</v>')
+                if (-not $vMatch.Success) { return $null }
+                $raw = $vMatch.Groups[1].Value
+                if ($block -match 't="s"') { return $sharedStrings[[int]$raw] }
+                return [double]$raw
+            }
+
+            function Read-StaticSheet([string]$SheetName) {
+                $rid = $sheetToRid[$SheetName]
+                if (-not $rid) { return $null }
+                $target = $ridToTarget[$rid]
+                $sheetXml = Read-ZipEntryText "xl/$target"
+                if (-not $sheetXml) { return $null }
+
+                $dateSerial = Get-CellValue $sheetXml 'C2'
+                if ($null -eq $dateSerial) { return $null }
+                # serial de data do Excel: dias desde 30/12/1899 (base 1900, já compensando o
+                # bug histórico do "29/02/1900" que o Excel herdou do Lotus 1-2-3)
+                $date = ([datetime]::new(1899, 12, 30)).AddDays([double]$dateSerial)
+
+                $rates = @{}
+                foreach ($row in 5..10) {
+                    $label = Get-CellValue $sheetXml "C$row"
+                    $val = Get-CellValue $sheetXml "D$row"
+                    if ($label -and $null -ne $val) {
+                        $year = ($label -replace '\D', '')
+                        $rates[$year] = [double]$val * 100.0
+                    }
+                }
+                if ($rates.Count -eq 0) { return $null }
+                return [PSCustomObject]@{ date = $date.ToString('dd/MM/yyyy'); rates = $rates }
+            }
+
+            # Evita comparar contra o literal acentuado "Mês Anterior" diretamente: o Windows
+            # PowerShell 5.1 lê arquivo .ps1 sem BOM usando o codepage do sistema, não UTF-8 — o
+            # literal viraria "MÃªs Anterior" em tempo de execução e nunca bateria com o nome
+            # correto extraído do .xlsx (que esse mesmo bloco já lê como UTF-8 de verdade via
+            # Read-ZipEntryText). Identifica as abas pela ordem/padrão do nome em vez do texto
+            # exato, o que também sobrevive se o Daniel renomear os acentos de outro jeito.
+            $monthSheetName = $sheetToRid.Keys | Where-Object { $_ -notlike 'Ano*' -and $_ -like '*Anterior' } | Select-Object -First 1
+            $yearSheetName = $sheetToRid.Keys | Where-Object { $_ -like 'Ano*' } | Select-Object -First 1
+            $month = if ($monthSheetName) { Read-StaticSheet $monthSheetName } else { $null }
+            $year = if ($yearSheetName) { Read-StaticSheet $yearSheetName } else { $null }
+            if (-not $month -and -not $year) { return $null }
+            return [PSCustomObject]@{ month = $month; year = $year }
+        } finally {
+            $zip.Dispose()
         }
-        if ($rates.Count -eq 0) { return $null }
-        return [PSCustomObject]@{ year = $Year; date = $usedDate; rates = $rates }
     } catch {
         return $null
     }
@@ -1304,23 +1365,22 @@ while ($listener.IsListening) {
         continue
     }
 
-    # ── Proxy Tesouro Direto · base de Δ ano (relatório de Fechamento, ?ytdAnchor=) ─────────
-    # Espelho de handleYtdAnchor em api/ntnb.js — precisa vir ANTES dos outros blocos de
+    # ── Proxy planilha estática NTN-B (relatório de Fechamento, ?staticAnchors=) ────────────
+    # Espelho de handleStaticAnchors em api/ntnb.js — precisa vir ANTES dos outros blocos de
     # /api/ntnb abaixo.
-    if ($path -eq '/api/ntnb' -and $req.QueryString['ytdAnchor']) {
+    if ($path -eq '/api/ntnb' -and $req.QueryString['staticAnchors']) {
         try {
-            $year = [int]($req.QueryString['ytdAnchor'])
-            $found = Get-NtnbYtdAnchor -Year $year
+            $xlsxPath = Join-Path $root 'Taxas Antigas NTNB.xlsx'
+            $found = Get-NtnbStaticAnchors -Path $xlsxPath
             if ($found) {
-                $ratesJson = ($found.rates.GetEnumerator() | ForEach-Object { "`"$($_.Key)`":$($_.Value)" }) -join ','
-                $result = "{`"year`":$($found.year),`"date`":`"$($found.date)`",`"rates`":{$ratesJson},`"source`":`"tesouro-direto`"}"
+                $result = "{`"month`":$(ConvertTo-NtnbAnchorJson $found.month),`"year`":$(ConvertTo-NtnbAnchorJson $found.year)}"
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
                 $res.ContentType = 'application/json'
                 $res.Headers.Add('Access-Control-Allow-Origin', '*')
                 $res.ContentLength64 = $bytes.Length
                 $res.OutputStream.Write($bytes, 0, $bytes.Length)
             } else {
-                $err = [System.Text.Encoding]::UTF8.GetBytes('{"error":"Tesouro Direto: sem dados"}')
+                $err = [System.Text.Encoding]::UTF8.GetBytes('{"error":"Taxas Antigas NTNB.xlsx: sem dados"}')
                 $res.StatusCode = 500
                 $res.ContentType = 'application/json'
                 $res.ContentLength64 = $err.Length

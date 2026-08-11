@@ -4,6 +4,6 @@
     { "src": "/", "dest": "/index.html" }
   ],
   "functions": {
-    "api/ntnb.js": { "maxDuration": 45 }
+    "api/ntnb.js": { "maxDuration": 15, "includeFiles": "Taxas Antigas NTNB.xlsx" }
   }
 }
