@@ -41,6 +41,67 @@ function Get-YahooOfficialPreviousClose {
     return $prev
 }
 
+# Busca o vértice 252 da ETTJ (Pré/IPCA/Inflação Implícita) num único dia — espelho de
+# fetchOneDay em api/anbima.js. Devolve $null (não lança) em qualquer falha, pra permitir
+# busca-pra-trás em Get-EttjNear sem try/catch aninhado em cada chamador.
+function Get-EttjOneDay {
+    param([string]$Dt)
+    try {
+        $postBody = "Idioma=PT&Dt_Ref=$([Uri]::EscapeDataString($Dt))&saida=csv"
+        $wc = [System.Net.WebClient]::new()
+        $wc.Headers.Add('Content-Type', 'application/x-www-form-urlencoded')
+        $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+        $wc.Headers.Add('Referer', 'https://www.anbima.com.br/informacoes/est-termo/CZ.asp')
+        $rawBytes = $wc.UploadData('https://www.anbima.com.br/informacoes/est-termo/CZ-down.asp', 'POST', [System.Text.Encoding]::UTF8.GetBytes($postBody))
+        $csvText = [System.Text.Encoding]::UTF8.GetString($rawBytes)
+        if (-not $csvText -or $csvText.Length -lt 100) { return $null }
+
+        $sep = if ($csvText.Contains(';')) { ';' } else { ',' }
+        foreach ($line in ($csvText -split "`n")) {
+            $cols = $line.Trim() -split [regex]::Escape($sep)
+            $v = $cols[0].Trim().Trim('"')
+            if ($v -eq '252' -or $v -eq '252.0') {
+                $ipca = [double]($cols[1].Trim().Trim('"').Replace(',', '.'))
+                $pre  = [double]($cols[2].Trim().Trim('"').Replace(',', '.'))
+                $inf  = [double]($cols[3].Trim().Trim('"').Replace(',', '.'))
+                return [PSCustomObject]@{ ettjIpca = $ipca; ettjPre = $pre; infImpl = $inf; date = $Dt }
+            }
+        }
+        return $null
+    } catch {
+        return $null
+    }
+}
+
+# Espelho de businessDaysBackFrom em api/anbima.js — gera N datas úteis (dd/MM/yyyy) a partir
+# de (e incluindo) $StartDate, andando pra trás dia a dia e pulando fim de semana.
+function Get-BusinessDaysBack {
+    param([datetime]$StartDate, [int]$Count)
+    $list = [System.Collections.Generic.List[string]]::new()
+    $d = $StartDate
+    while ($list.Count -lt $Count) {
+        if ($d.DayOfWeek -ne 'Saturday' -and $d.DayOfWeek -ne 'Sunday') {
+            $list.Add($d.ToString('dd/MM/yyyy'))
+        }
+        $d = $d.AddDays(-1)
+    }
+    return $list
+}
+
+# Espelho de fetchEttjNear em api/anbima.js — usado pelo relatório de Fechamento (?dates=) pra
+# resolver ETTJ Pré em datas de referência específicas, tolerando feriado (anda pra trás em dias
+# úteis) e devolvendo $null se esgotar as tentativas (fora da retenção de ~5-6 meses da ANBIMA).
+function Get-EttjNear {
+    param([string]$DateStr, [int]$MaxTries = 3)
+    if ($DateStr -notmatch '^(\d{2})/(\d{2})/(\d{4})$') { return $null }
+    $anchor = [datetime]::new([int]$Matches[3], [int]$Matches[2], [int]$Matches[1])
+    foreach ($dt in (Get-BusinessDaysBack -StartDate $anchor -Count $MaxTries)) {
+        $found = Get-EttjOneDay -Dt $dt
+        if ($found) { return $found }
+    }
+    return $null
+}
+
 function Get-XmlTag {
     param([string]$Block, [string]$Tag)
     $m = [regex]::Match($Block, "<$Tag[^>]*>([\s\S]*?)</$Tag>", 'IgnoreCase')
@@ -1294,46 +1355,41 @@ while ($listener.IsListening) {
     }
 
     # ── Proxy ANBIMA ETTJ ────────────────────────────────────────────────────
+    # ?dates=DD/MM/YYYY,DD/MM/YYYY,... → espelho do branch em api/anbima.js, usado pelo
+    # relatório de Fechamento (aba ÍNDICES) pra buscar ETTJ Pré em datas de referência
+    # específicas. Sem ?dates, comportamento original (snapshot do dia mais recente).
     if ($path -eq '/api/anbima') {
         try {
-            $today = Get-Date
-            $dates = @()
-            $d = $today
-            while ($dates.Count -lt 5) {
-                if ($d.DayOfWeek -ne 'Saturday' -and $d.DayOfWeek -ne 'Sunday') {
-                    $dates += $d.ToString('dd/MM/yyyy')
-                }
-                $d = $d.AddDays(-1)
-            }
-
-            $result = $null
-            foreach ($dt in $dates) {
-                try {
-                    $postBody = "Idioma=PT&Dt_Ref=$([Uri]::EscapeDataString($dt))&saida=csv"
-                    $wc = [System.Net.WebClient]::new()
-                    $wc.Headers.Add('Content-Type', 'application/x-www-form-urlencoded')
-                    $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-                    $wc.Headers.Add('Referer', 'https://www.anbima.com.br/informacoes/est-termo/CZ.asp')
-                    $rawBytes = $wc.UploadData('https://www.anbima.com.br/informacoes/est-termo/CZ-down.asp', 'POST', [System.Text.Encoding]::UTF8.GetBytes($postBody))
-                    $csvText = [System.Text.Encoding]::UTF8.GetString($rawBytes)
-
-                    $sep = if ($csvText.Contains(';')) { ';' } else { ',' }
-                    foreach ($line in ($csvText -split "`n")) {
-                        $cols = $line.Trim() -split [regex]::Escape($sep)
-                        $v = $cols[0].Trim().Trim('"')
-                        if ($v -eq '252' -or $v -eq '252.0') {
-                            $ipca = [double]($cols[1].Trim().Trim('"').Replace(',','.'))
-                            $pre  = [double]($cols[2].Trim().Trim('"').Replace(',','.'))
-                            $inf  = [double]($cols[3].Trim().Trim('"').Replace(',','.'))
-                            $result = "{`"ettjIpca`":$ipca,`"ettjPre`":$pre,`"infImpl`":$inf,`"date`":`"$dt`"}"
-                            break
-                        }
+            if ($req.QueryString['dates']) {
+                $requested = $req.QueryString['dates'] -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+                $items = [System.Collections.Generic.List[string]]::new()
+                foreach ($dt in $requested) {
+                    $found = Get-EttjNear -DateStr $dt
+                    if ($found) {
+                        $items.Add("{`"ettjIpca`":$($found.ettjIpca),`"ettjPre`":$($found.ettjPre),`"infImpl`":$($found.infImpl),`"date`":`"$($found.date)`"}")
+                    } else {
+                        $items.Add('null')
                     }
-                    if ($result) { break }
-                } catch {}
+                }
+                $result = "{`"results`":[$($items -join ',')]}"
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
+                $res.ContentType = 'application/json'
+                $res.Headers.Add('Access-Control-Allow-Origin', '*')
+                $res.ContentLength64 = $bytes.Length
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+                $res.OutputStream.Close()
+                continue
             }
 
-            if ($result) {
+            $dates = Get-BusinessDaysBack -StartDate (Get-Date) -Count 5
+            $found = $null
+            foreach ($dt in $dates) {
+                $found = Get-EttjOneDay -Dt $dt
+                if ($found) { break }
+            }
+
+            if ($found) {
+                $result = "{`"ettjIpca`":$($found.ettjIpca),`"ettjPre`":$($found.ettjPre),`"infImpl`":$($found.infImpl),`"date`":`"$($found.date)`"}"
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
                 $res.ContentType = 'application/json'
                 $res.Headers.Add('Access-Control-Allow-Origin', '*')

@@ -90,6 +90,54 @@
  .tab-panel { display: none; }
  .tab-panel.active { display: block; }
 
+ /* SUB-ABAS (ex: HOJE / FECHAMENTO dentro de ÍNDICES) — pílula própria, classe separada de
+    .tab-btn/.range-btn porque loadPortfolio() faz document.querySelectorAll('.range-btn') sem
+    escopo e mexeria nestes botões se reaproveitássemos a mesma classe. */
+ .subtabs {
+ display: inline-flex; gap: 3px; margin-bottom: 14px;
+ background: #e6e8ec; padding: 4px; border-radius: 10px; border: none;
+ }
+ .subtab-btn {
+ padding: 7px 15px; font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+ letter-spacing: .2px; color: var(--dim); background: transparent;
+ border: none; border-radius: 7px; cursor: pointer; text-transform: none;
+ }
+ .subtab-btn.active { color: #fff; background: var(--ink); }
+ .subtab-btn:hover:not(.active) { color: var(--ink); }
+ .subtab-panel { display: none; }
+ .subtab-panel.active { display: block; }
+
+ /* RELATÓRIO DE FECHAMENTO */
+ .close-report { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; overflow-x: auto; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+ .close-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); gap: 12px; flex-wrap: wrap; }
+ .close-title { font-family: var(--sans); font-size: 14px; font-weight: 700; color: var(--ink); }
+ .close-sub { font-family: var(--sans); font-size: 11px; color: var(--dim); margin-top: 2px; }
+ .close-refresh { font-family: var(--sans); font-size: 10.5px; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; white-space: nowrap; }
+ .close-status, .close-err { padding: 22px 16px; font-family: var(--sans); font-size: 12px; color: var(--dim); }
+ .close-note { padding: 10px 16px; font-family: var(--sans); font-size: 10px; color: var(--dim); border-top: 1px solid var(--border); }
+ .close-table { min-width: 620px; }
+ .close-section-title {
+ background: var(--ink); color: #fff; font-family: var(--sans); font-size: 11px; font-weight: 700;
+ letter-spacing: .4px; text-transform: uppercase; padding: 8px 16px;
+ }
+ .close-region {
+ font-family: var(--sans); font-size: 10px; font-weight: 700; color: var(--accent);
+ text-transform: uppercase; letter-spacing: .4px; padding: 8px 16px 3px; background: var(--page);
+ }
+ .close-row, .close-row-head {
+ display: grid; grid-template-columns: minmax(150px, 1.6fr) repeat(4, minmax(66px, 1fr));
+ align-items: center; padding: 8px 16px; gap: 6px; border-bottom: 1px solid var(--border);
+ }
+ .close-row:last-child { border-bottom: none; }
+ .close-row-head {
+ font-family: var(--sans); font-size: 9.5px; font-weight: 700; color: var(--dim);
+ text-transform: uppercase; letter-spacing: .3px; background: var(--page);
+ }
+ .close-row-head > div:not(:first-child) { text-align: right; }
+ .close-row { font-family: var(--mono); font-size: 12.5px; }
+ .close-row > div:not(:first-child) { text-align: right; }
+ .close-name { font-family: var(--sans) !important; font-weight: 600; color: var(--text); font-size: 12px; }
+
  /* GRID */
  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 
@@ -397,6 +445,8 @@
  .clock { font-size: 20px; }
  .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
  .tab-btn { padding: 7px 12px; font-size: 10.5px; white-space: nowrap; flex-shrink: 0; }
+ .subtabs { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+ .subtab-btn { padding: 6px 12px; font-size: 10.5px; white-space: nowrap; flex-shrink: 0; }
  .grid { grid-template-columns: 1fr; }
  .ainews-secondary-wrap { grid-template-columns: 1fr; }
  .ainews-compact-wrap { grid-template-columns: 1fr; }
@@ -450,6 +500,13 @@
 </nav>
 
 <div id="tab-indices" class="tab-panel active">
+
+<div class="subtabs">
+ <button class="subtab-btn active" data-sub="today" onclick="switchIndicesSub(this)">HOJE</button>
+ <button class="subtab-btn" data-sub="close" onclick="switchIndicesSub(this)">FECHAMENTO</button>
+</div>
+
+<div id="indices-today" class="subtab-panel active">
 <div class="grid">
 
  <!-- ── BRASIL ── -->
@@ -685,6 +742,27 @@
  </div>
  </div>
  </div>
+
+</div>
+</div><!-- /indices-today -->
+
+<div id="indices-close" class="subtab-panel">
+<div class="close-report">
+ <div class="close-head">
+ <div>
+ <div class="close-title">Fechamento de Mercado</div>
+ <div class="close-sub">Dados com referência de <span id="close-refdate">…</span></div>
+ </div>
+ <span class="close-refresh" onclick="loadClosingReport(true)">atualizar</span>
+ </div>
+ <div id="close-body"><div class="close-status">clique em FECHAMENTO pra carregar…</div></div>
+ <div class="close-note">Fontes: Yahoo Finance, B3/TradingView (DI Futuro), ANBIMA (ETTJ Pré). Δ mês e Δ ano contra o
+ último pregão do mês/ano anterior (MTD/YTD). Uma data entre parênteses ao lado do nome indica que aquele
+ mercado fechou num dia diferente da referência do relatório (feriado local ou fuso horário). MSCI EM (EEM) é
+ retorno de preço do ETF, não do índice total return. ETTJ Pré: a ANBIMA retém só ~5-6 meses de arquivo diário
+ — Δ ano aparece como "n/d" quando a base sai dessa janela (normalmente entre meados do ano e a virada do ano).</div>
+</div>
+</div>
 
 </div>
 </div><!-- /tab-indices -->
@@ -1964,6 +2042,16 @@ function switchTab(btn) {
  if (name === 'ainews' && !aiNewsLoaded) { aiNewsLoaded = true; loadAiNews(); }
 }
 
+let closeReportLoaded = false;
+function switchIndicesSub(btn) {
+ const name = btn.dataset.sub;
+ document.querySelectorAll('#tab-indices .subtab-btn').forEach(b => b.classList.remove('active'));
+ document.querySelectorAll('#tab-indices .subtab-panel').forEach(p => p.classList.remove('active'));
+ btn.classList.add('active');
+ document.getElementById('indices-' + name).classList.add('active');
+ if (name === 'close' && !closeReportLoaded) { closeReportLoaded = true; loadClosingReport(); }
+}
+
 // ── Heatmap · Portfólio ─────────────────────────────────────────────────────
 function getHeatmapGroups() {
  return [
@@ -2624,6 +2712,273 @@ function alignSeries(allSeries) {
  dates: common.map(ts => new Date(ts * 1000)),
  series: maps.map(m => common.map(ts => m.get(ts))),
  };
+}
+
+// ── Fechamento de Mercado (sub-aba FECHAMENTO dentro de ÍNDICES) ───────────────
+// Cálculo on-demand (sem cron/storage) — todos os instrumentos abaixo fecham antes das 19h de
+// Brasília, então calcular a qualquer hora depois disso dá sempre o mesmo resultado. Δ mês/Δ ano
+// são MTD/YTD (contra o fechamento do último pregão do mês/ano anterior).
+const CLOSE_REPORT_CONFIG = [
+ { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F30', label: 'DI FUTURO JAN/30', unit: 'bps' },
+ { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F35', label: 'DI FUTURO JAN/35', unit: 'bps' },
+ { section: 'Renda fixa', region: 'Brasil', kind: 'ettj', label: 'ETTJ PRÉ 252DU', unit: 'bps' },
+ { section: 'Bolsa', region: 'Brasil', kind: 'yahoo', ticker: '^BVSP', label: 'IBOVESPA', unit: 'pct', decimals: 0 },
+ { section: 'Bolsa', region: 'Estados Unidos', kind: 'yahoo', ticker: '^GSPC', label: 'S&P 500', unit: 'pct', decimals: 2 },
+ { section: 'Bolsa', region: 'Estados Unidos', kind: 'yahoo', ticker: '^IXIC', label: 'NASDAQ', unit: 'pct', decimals: 2 },
+ { section: 'Bolsa', region: 'Estados Unidos', kind: 'yahoo', ticker: '^DJI', label: 'DOW JONES', unit: 'pct', decimals: 2 },
+ { section: 'Bolsa', region: 'Europa', kind: 'yahoo', ticker: '^STOXX50E', label: 'EURO STOXX 50', unit: 'pct', decimals: 2 },
+ { section: 'Bolsa', region: 'Europa', kind: 'yahoo', ticker: '^GDAXI', label: 'DAX', unit: 'pct', decimals: 2 },
+ { section: 'Bolsa', region: 'Ásia e Pacífico', kind: 'yahoo', ticker: '^KS11', label: 'KOSPI', unit: 'pct', decimals: 2 },
+ { section: 'Bolsa', region: 'Ásia e Pacífico', kind: 'yahoo', ticker: '^N225', label: 'NIKKEI 225', unit: 'pct', decimals: 2 },
+ { section: 'Bolsa', region: 'Emergentes', kind: 'yahoo', ticker: 'EEM', label: 'MSCI EM', unit: 'pct', decimals: 2 },
+ { section: 'Commodities e Cripto', region: null, kind: 'yahoo', ticker: 'BZ=F', label: 'BRENT', unit: 'pct', decimals: 2 },
+ { section: 'Commodities e Cripto', region: null, kind: 'yahoo', ticker: 'GC=F', label: 'OURO', unit: 'pct', decimals: 2 },
+ { section: 'Commodities e Cripto', region: null, kind: 'yahoo', ticker: 'BTC-USD', label: 'BITCOIN', unit: 'pct', decimals: 0 },
+ { section: 'Câmbio', region: null, kind: 'yahoo', ticker: 'BRL=X', label: 'USD/BRL', unit: 'pct', decimals: 4 },
+ { section: 'Câmbio', region: null, kind: 'yahoo', ticker: 'EURUSD=X', label: 'EUR/USD', unit: 'pct', decimals: 4 },
+];
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+// Chave de data 'YYYY-MM-DD' de um instante, NO FUSO DE QUEM GEROU O DADO (bolsa de origem —
+// ver comentário em closingSeriesFromChart). Comparar essas chaves como string equivale a
+// comparar datas (mesmo formato lexicográfico = cronológico), sem nenhuma aritmética de Date
+// sujeita a bug de fuso — a mesma classe de bug que o fmtEntryDate() já teve que contornar.
+const _dateKeyFmtCache = new Map();
+function dateKeyTZ(ms, tz) {
+ let f = _dateKeyFmtCache.get(tz);
+ if (!f) { f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }); _dateKeyFmtCache.set(tz, f); }
+ return f.format(new Date(ms)); // 'en-CA' formata nativamente como YYYY-MM-DD
+}
+function hourInTZ(ms, tz) {
+ const h = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', hour12: false }).format(new Date(ms));
+ return h === '24' ? 0 : Number(h);
+}
+// Meio-dia UTC nunca muda de dia em nenhum fuso horário do planeta — forma segura de fazer
+// aritmética de calendário sobre uma chave 'YYYY-MM-DD' sem tocar em getDate()/toISOString().
+function weekdayOfKey(key) { return new Date(key + 'T12:00:00Z').getUTCDay(); }
+function addDaysToKey(key, n) {
+ const d = new Date(key + 'T12:00:00Z');
+ d.setUTCDate(d.getUTCDate() + n);
+ return d.toISOString().slice(0, 10);
+}
+function keyParts(key) { const [y, m, d] = key.split('-').map(Number); return { y, m, d }; }
+function keyToBr(key) { const { y, m, d } = keyParts(key); return `${pad2(d)}/${pad2(m)}/${y}`; }
+function brToKey(s) { const [d, m, y] = s.split('/'); return `${y}-${m}-${d}`; }
+function lastDayOfPrevMonthKey(key) {
+ const { y, m } = keyParts(key);
+ const dt = new Date(Date.UTC(y, m - 1, 0)); // dia 0 do mês atual (UTC) = último dia do mês anterior
+ return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+}
+function lastDayOfPrevYearKey(key) { return `${keyParts(key).y - 1}-12-31`; }
+
+// Data de referência do relatório ('YYYY-MM-DD'). Antes das 19h em São Paulo (ou em fim de
+// semana) recua — evita tratar a barra diária ainda em formação como "fechamento". Feriado por
+// bolsa não precisa de calendário aqui: cada série é filtrada por "último ponto com key ≤
+// refKey", então um feriado nos EUA mantém o índice americano no valor de sexta, sozinho.
+function computeRefKey() {
+ const now = Date.now();
+ let key = dateKeyTZ(now, 'America/Sao_Paulo');
+ if (hourInTZ(now, 'America/Sao_Paulo') < 19) key = addDaysToKey(key, -1);
+ for (let i = 0; i < 3; i++) {
+ const wd = weekdayOfKey(key);
+ if (wd === 0 || wd === 6) key = addDaysToKey(key, -1); else break;
+ }
+ return key;
+}
+
+function lastOnOrBefore(series, key) {
+ let best = null;
+ for (const pt of series) if (pt.key <= key && (!best || pt.key > best.key)) best = pt;
+ return best;
+}
+
+// Remove a barra do dia corrente enquanto a sessão regular daquele ativo ainda está aberta —
+// sem isso, pedir o relatório durante o pregão (ou entre 19h e a meia-noite pra ativos que
+// negociam até mais tarde que as bolsas de ação, tipo Brent/Ouro/Bitcoin/câmbio) mostraria um
+// preço intraday parcial como se fosse "fechamento". Baseado em currentTradingPeriod (mesmo
+// campo que já alimenta o indicador de mercado fechado — seção 7 da METODOLOGIA).
+function dropPartialTail(series, meta) {
+ const ctp = meta?.currentTradingPeriod?.regular;
+ if (!ctp || !series.length) return series;
+ const nowSec = Date.now() / 1000;
+ const last = series[series.length - 1];
+ const sessionStillOpen = nowSec < ctp.end;
+ const lastIsThisSession = last.ts >= ctp.start;
+ return (sessionStillOpen && lastIsThisSession) ? series.slice(0, -1) : series;
+}
+
+// Δ dia compara com o ponto imediatamente anterior DA PRÓPRIA série (não com "ontem" fixo) —
+// assim cada instrumento respeita seu próprio calendário de feriados sem precisar de uma lista
+// de feriados por bolsa.
+function computeDeltas(series, refKey) {
+ if (!series || !series.length) return null;
+ const capped = series.filter(pt => pt.key <= refKey).sort((a, b) => a.ts - b.ts);
+ if (!capped.length) return null;
+ const last = capped[capped.length - 1];
+ const prev = capped.length > 1 ? capped[capped.length - 2] : null;
+ const monthBase = lastOnOrBefore(capped, lastDayOfPrevMonthKey(refKey));
+ const yearBase = lastOnOrBefore(capped, lastDayOfPrevYearKey(refKey));
+ const pctChg = (a, b) => (b == null || b === 0) ? null : (a - b) / b * 100;
+ return {
+ value: last.p,
+ asOfKey: last.key,
+ dChg: prev ? last.p - prev.p : null,
+ dPct: prev ? pctChg(last.p, prev.p) : null,
+ mChg: monthBase ? last.p - monthBase.p : null,
+ mPct: monthBase ? pctChg(last.p, monthBase.p) : null,
+ yChg: yearBase ? last.p - yearBase.p : null,
+ yPct: yearBase ? pctChg(last.p, yearBase.p) : null,
+ };
+}
+
+async function fetchYahooChartRaw(ticker, range) {
+ const r = await fetch(`/api/yahoo?t=${encodeURIComponent(ticker)}&range=${range}`);
+ if (!r.ok) throw new Error(`${ticker}: ${r.status}`);
+ const d = await r.json();
+ const res = d?.chart?.result?.[0];
+ if (!res) throw new Error(`sem dados: ${ticker}`);
+ return res;
+}
+
+// Usa "close" (preço cotado), não "adjclose" — o relatório mostra nível de fechamento, e
+// misturar nível de close com delta calculado sobre adjclose (ajustado por dividendo) seria
+// inconsistente. Único instrumento onde isso importa de fato é o MSCI EM via ETF (EEM): o Δ ano
+// aqui é retorno de preço, não retorno total. A chave de data usa o fuso da PRÓPRIA bolsa
+// (`meta.exchangeTimezoneName`) — comparar epoch bruto contra um corte único em horário de
+// Brasília erra a data de mercados asiáticos (cuja barra "de hoje" já nasce à noite anterior em
+// SP) e de câmbio (cuja barra publica perto da meia-noite UTC, do lado errado da data conforme
+// horário de verão europeu).
+function closingSeriesFromChart(res) {
+ const tz = res.meta?.exchangeTimezoneName || 'UTC';
+ const ts = res.timestamp || [];
+ const closes = res.indicators?.quote?.[0]?.close || [];
+ const series = ts.map((t, i) => ({ ts: t, p: closes[i], key: dateKeyTZ(t * 1000, tz) })).filter(pt => pt.p != null);
+ return dropPartialTail(series, res.meta);
+}
+
+async function closingDiSeries(symbol) {
+ const r = await fetch(`/api/b3?s=${symbol}&history=1`);
+ const d = await r.json();
+ if (d.error) throw new Error(d.error);
+ if (!d.history?.length) throw new Error('sem histórico');
+ return d.history.map(h => ({ ts: h.date, p: h.value, key: dateKeyTZ(h.date * 1000, 'America/Sao_Paulo') }));
+}
+
+// ETTJ Pré não tem endpoint de série contínua (só snapshot por data), então em vez de um Δ dia
+// "ontem fixo" fazemos 2 idas: primeiro resolve a data efetiva de hoje (pode recuar por feriado),
+// depois pede ontem/MTD/YTD a partir dessa data já confirmada — evita a base de "ontem" colidir
+// com a de "hoje" quando as duas caem no mesmo feriado.
+async function closingEttjDeltas(refKey) {
+ const r1 = await fetch(`/api/anbima?dates=${encodeURIComponent(keyToBr(refKey))}`);
+ const d1 = await r1.json();
+ const todayResult = d1?.results?.[0];
+ if (!todayResult) throw new Error('ETTJ: sem dado no período');
+
+ const todayKey = brToKey(todayResult.date);
+ const prevDayAnchor = keyToBr(addDaysToKey(todayKey, -1));
+ const monthAnchor = keyToBr(lastDayOfPrevMonthKey(refKey));
+ const yearAnchor = keyToBr(lastDayOfPrevYearKey(refKey));
+
+ const r2 = await fetch(`/api/anbima?dates=${[prevDayAnchor, monthAnchor, yearAnchor].map(encodeURIComponent).join(',')}`);
+ const d2 = await r2.json();
+ const [prevResult, monthResult, yearResult] = d2?.results ?? [];
+
+ return {
+ value: todayResult.ettjPre,
+ asOfKey: todayKey,
+ dChg: prevResult ? todayResult.ettjPre - prevResult.ettjPre : null,
+ mChg: monthResult ? todayResult.ettjPre - monthResult.ettjPre : null,
+ yChg: yearResult ? todayResult.ettjPre - yearResult.ettjPre : null,
+ };
+}
+
+async function computeCloseItem(item, refKey) {
+ if (item.kind === 'yahoo') {
+ const res = await fetchYahooChartRaw(item.ticker, '2y');
+ const series = closingSeriesFromChart(res);
+ const d = computeDeltas(series, refKey);
+ if (!d) throw new Error('sem dados');
+ return { ...item, value: d.value, dPct: d.dPct, mPct: d.mPct, yPct: d.yPct, asOfKey: d.asOfKey };
+ }
+ if (item.kind === 'di') {
+ const series = await closingDiSeries(item.symbol);
+ const d = computeDeltas(series, refKey);
+ if (!d) throw new Error('sem dados');
+ return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey };
+ }
+ if (item.kind === 'ettj') {
+ const d = await closingEttjDeltas(refKey);
+ return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey };
+ }
+ throw new Error('kind desconhecido: ' + item.kind);
+}
+
+async function loadClosingReport(force = false) {
+ const refKey = computeRefKey();
+ const body = document.getElementById('close-body');
+
+ if (!force) {
+ const cached = cacheGet('close_report');
+ if (cached && cached.refKey === refKey) { renderClosingReport(cached); return; }
+ }
+ body.innerHTML = '<div class="close-status">carregando fechamento…</div>';
+
+ const settled = await Promise.allSettled(CLOSE_REPORT_CONFIG.map(item => computeCloseItem(item, refKey)));
+ const rows = settled.map((r, i) => {
+ if (r.status === 'fulfilled') return r.value;
+ console.error('Fechamento', CLOSE_REPORT_CONFIG[i].label, r.reason);
+ return { ...CLOSE_REPORT_CONFIG[i], error: true };
+ });
+
+ const payload = { refKey, rows };
+ cachePut('close_report', payload);
+ renderClosingReport(payload);
+}
+
+function closeDeltaHtml(value, unit) {
+ if (value == null || isNaN(value)) return '<span class="dim2">n/d</span>';
+ const cls = value > 0 ? 'pos' : value < 0 ? 'neg' : '';
+ const arrow = value > 0 ? ' ↑' : value < 0 ? ' ↓' : '';
+ const text = unit === 'bps' ? (value >= 0 ? '+' : '') + Math.round(value) + ' bps' : pct(value);
+ return `<span class="${cls}">${text}${arrow}</span>`;
+}
+
+function renderCloseRow(row, refKey) {
+ if (row.error) {
+ return `<div class="close-row"><div class="close-name">${row.label}</div><div class="dim2">—</div><div class="dim2">—</div><div class="dim2">—</div><div class="dim2">—</div></div>`;
+ }
+ const valTxt = row.unit === 'bps' ? num(row.value, 2) + '%' : num(row.value, row.decimals ?? 2);
+ const dHtml = closeDeltaHtml(row.unit === 'bps' ? row.dBps : row.dPct, row.unit);
+ const mHtml = closeDeltaHtml(row.unit === 'bps' ? row.mBps : row.mPct, row.unit);
+ const yHtml = closeDeltaHtml(row.unit === 'bps' ? row.yBps : row.yPct, row.unit);
+ // Quando o mercado desse ativo fechou num dia diferente do refKey do relatório (feriado local,
+ // ou fuso — ex: Ásia já fechou "amanhã" em horário de Brasília), mostra a data efetiva usada.
+ const asOf = (row.asOfKey && row.asOfKey !== refKey) ? ` <span class="dim2">(${keyToBr(row.asOfKey)})</span>` : '';
+ return `<div class="close-row"><div class="close-name">${row.label}${asOf}</div><div>${valTxt}</div><div>${dHtml}</div><div>${mHtml}</div><div>${yHtml}</div></div>`;
+}
+
+function renderClosingReport(payload) {
+ const body = document.getElementById('close-body');
+ document.getElementById('close-refdate').textContent = keyToBr(payload.refKey);
+ if (!payload.rows?.length) { body.innerHTML = '<div class="close-err">Não foi possível montar o relatório.</div>'; return; }
+
+ let curSection = null, curRegion = null;
+ let html = '<div class="close-table">';
+ for (const row of payload.rows) {
+ if (row.section !== curSection) {
+ curSection = row.section; curRegion = null;
+ html += `<div class="close-section-title">${curSection}</div>`;
+ html += '<div class="close-row-head"><div>Instrumento</div><div>Fechamento</div><div>Δ dia</div><div>Δ mês</div><div>Δ ano</div></div>';
+ }
+ if (row.region && row.region !== curRegion) {
+ curRegion = row.region;
+ html += `<div class="close-region">${curRegion}</div>`;
+ }
+ html += renderCloseRow(row, payload.refKey);
+ }
+ html += '</div>';
+ body.innerHTML = html;
 }
 
 // ── ETFs Internos ─────────────────────────────────────────────────────────────
