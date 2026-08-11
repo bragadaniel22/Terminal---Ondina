@@ -2998,12 +2998,18 @@ async function computeCloseItem(item, refKey, ntnbBatchPromise) {
  throw new Error('kind desconhecido: ' + item.kind);
 }
 
+// Versão do formato/config do relatório — bump manual sempre que CLOSE_REPORT_CONFIG mudar
+// (instrumento adicionado/removido, campo novo no payload, etc). Sem isso, quem já tinha o
+// relatório em cache no navegador continuaria vendo a versão antiga (mesmo refKey, payload
+// desatualizado) até a data de referência virar sozinha — já aconteceu na prática.
+const CLOSE_REPORT_CACHE_KEY = 'close_report_v2';
+
 async function loadClosingReport(force = false) {
  const refKey = computeRefKey();
  const body = document.getElementById('close-body');
 
  if (!force) {
- const cached = cacheGet('close_report');
+ const cached = cacheGet(CLOSE_REPORT_CACHE_KEY);
  if (cached && cached.refKey === refKey) { renderClosingReport(cached); return; }
  }
  body.innerHTML = '<div class="close-status">carregando fechamento…</div>';
@@ -3019,7 +3025,7 @@ async function loadClosingReport(force = false) {
  });
 
  const payload = { refKey, rows };
- cachePut('close_report', payload);
+ cachePut(CLOSE_REPORT_CACHE_KEY, payload);
  renderClosingReport(payload);
 }
 
