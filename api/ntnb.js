@@ -9,23 +9,13 @@
 // seção 6.8 da METODOLOGIA) — um único arquivo diário já traz as 6 taxas de uma vez, então isso
 // cobre todos os vencimentos NTN-B do relatório com só 1-2 requisições por data, ao contrário da
 // ETTJ (que precisa de 1 requisição por vértice).
-// GET /api/ntnb?ytdAnchor=YYYY → taxa do último pregão de dezembro/YYYY, via Tesouro Direto (ver
-// handleYtdAnchor abaixo) — usado quando a ANBIMA já não retém mais essa data (retenção de
-// ~5-6 meses do arquivo diário faz a base de Δ ano sumir a partir de meados do ano seguinte).
+// GET /api/ntnb?staticAnchors=1 → bases de Δ mês/Δ ano vindas da planilha "Taxas Antigas
+// NTNB.xlsx" (ver handleStaticAnchors abaixo) — a ANBIMA só retém ~5-6 meses de arquivo diário,
+// então a base de Δ ano (31/dez do ano anterior) some por volta de meados do ano seguinte. O
+// Daniel mantém essa planilha manualmente (atualiza 1x/mês e 1x/ano) com o dado real da ANBIMA
+// capturado enquanto ainda estava disponível.
 const TARGETS = ['20280815', '20290515', '20300815', '20320815', '20350515', '20450515'];
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-
-// Tesouro Nacional publica um CSV público (~15MB) com o histórico DIÁRIO completo (desde ~2011,
-// atualizado todo dia útil) de todos os títulos do Tesouro Direto, incluindo o equivalente de
-// varejo da NTN-B ("Tesouro IPCA+ com Juros Semestrais"). Isso resolve o problema de retenção da
-// ANBIMA pra 4 dos 6 vencimentos que o relatório acompanha — **2028 e 2029 não têm equivalente
-// no Tesouro Direto** (verificado ao vivo: 15/08/2028 não existe em nenhum título do catálogo, e
-// 15/05/2029 só existe como "Tesouro IPCA+" sem juros semestrais, um título de estrutura
-// diferente — NTN-B Principal/zero-coupon, não a NTN-B com cupom que a ANBIMA reporta). Pra esses
-// dois, o Δ ano continua "n/d" — não tem fonte pública alternativa confiável.
-const TD_CSV_URL = 'https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/PrecoTaxaTesouroDireto.csv';
-const TD_TITLE = 'Tesouro IPCA+ com Juros Semestrais';
-const TD_MATURITY_MAP = { '2030': '15/08/2030', '2032': '15/08/2032', '2035': '15/05/2035', '2045': '15/05/2045' };
 
 function businessDaysBackFrom(startDate, n) {
   const days = [];
@@ -102,55 +92,45 @@ async function handleDatesMode(datesParam, res) {
   return res.json({ results });
 }
 
-// Nota importante sobre a taxa devolvida: Tesouro Direto cobra um spread de varejo sobre a
-// curva institucional da ANBIMA (a taxa de compra é sempre um pouco mais alta, a de venda um
-// pouco mais baixa) — usamos o PONTO MÉDIO entre compra e venda como aproximação da taxa
-// institucional. O front-end (fetchNtnbBatch) usa esse valor só como base de comparação pro
-// Δ ano (nunca como "Fechamento" exibido, que continua sempre vindo puro da ANBIMA), então um
-// pequeno viés de spread aqui afeta o Δ ano em poucos bps, não os outros números do relatório.
-async function handleYtdAnchor(yearParam, res) {
-  const year = parseInt(yearParam, 10);
-  if (!year || year < 2011) return res.status(400).json({ error: 'ano inválido' });
-
+// Lê a planilha "Taxas Antigas NTNB.xlsx" (raiz do repo, ao lado de index.html) — duas abas,
+// "Mês Anterior" e "Ano Anterior", cada uma com a data de referência em C2 e os 6 vencimentos
+// em C5:C10/D5:D10. O Daniel atualiza essa planilha manualmente (1x/mês, 1x/ano) e sobe de novo
+// pelo fluxo normal de upload no GitHub — nenhum código muda quando ele atualiza os números.
+async function handleStaticAnchors(res) {
   try {
-    const r = await fetch(TD_CSV_URL, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(35000) });
-    if (!r.ok) return res.status(502).json({ error: `Tesouro Direto: HTTP ${r.status}` });
-    const text = await r.text();
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const path = await import('node:path');
+    const XLSX = await import('xlsx');
 
-    // indexa só as linhas do título que interessa (vencimento;dataBase -> colunas) — evita
-    // varrer o arquivo inteiro (~175 mil linhas) uma vez por vencimento/tentativa
-    const index = new Map();
-    const prefix = TD_TITLE + ';';
-    for (const line of text.split('\n')) {
-      if (!line.startsWith(prefix)) continue;
-      const cols = line.split(';');
-      index.set(`${cols[1]};${cols[2]}`, cols);
-    }
+    const filePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'Taxas Antigas NTNB.xlsx');
+    const wb = XLSX.read(readFileSync(filePath), { type: 'buffer', cellDates: true });
 
-    const rates = {};
-    let usedDate = null;
-    for (const [mat, tdMaturity] of Object.entries(TD_MATURITY_MAP)) {
-      // anda pra trás dia a dia a partir de 31/dez (cobre feriado/fim de semana de virada de ano)
-      for (let back = 0; back < 8; back++) {
-        const d = new Date(year, 11, 31 - back);
-        const dt = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-        const cols = index.get(`${tdMaturity};${dt}`);
-        if (cols) {
-          const compra = parseFloat(cols[3].replace(',', '.'));
-          const venda = parseFloat(cols[4].replace(',', '.'));
-          if (!isNaN(compra) && !isNaN(venda)) {
-            rates[mat] = (compra + venda) / 2;
-            usedDate = dt;
-          }
-          break;
+    const readSheet = (sheetName) => {
+      const ws = wb.Sheets[sheetName];
+      const dateCell = ws?.['C2'];
+      if (!dateCell?.v) return null;
+      const d = dateCell.v instanceof Date ? dateCell.v : null;
+      if (!d) return null;
+      const date = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+      const rates = {};
+      for (let row = 5; row <= 10; row++) {
+        const label = ws[`C${row}`]?.v;
+        const val = ws[`D${row}`]?.v;
+        if (label != null && val != null) {
+          const year = String(label).replace(/\D/g, '');
+          rates[year] = Math.round(val * 100 * 10000) / 10000; // 0.0847 -> 8.47
         }
       }
-    }
+      return Object.keys(rates).length ? { date, rates } : null;
+    };
 
-    if (!Object.keys(rates).length) return res.status(500).json({ error: 'Tesouro Direto: sem dados pro período' });
-    return res.json({ year, date: usedDate, rates, source: 'tesouro-direto' });
+    const month = readSheet('Mês Anterior');
+    const year = readSheet('Ano Anterior');
+    if (!month && !year) return res.status(500).json({ error: 'Taxas Antigas NTNB.xlsx: nenhuma aba reconhecida' });
+    return res.json({ month, year });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: `Taxas Antigas NTNB.xlsx: ${e.message}` });
   }
 }
 
@@ -199,7 +179,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-store');
 
-  if (req.query.ytdAnchor != null) return handleYtdAnchor(req.query.ytdAnchor, res);
+  if (req.query.staticAnchors != null) return handleStaticAnchors(res);
   if (req.query.dates != null) return handleDatesMode(req.query.dates, res);
   if (req.query.days != null) return handleHistory(req.query.days, res);
   return handleSnapshot(res);
