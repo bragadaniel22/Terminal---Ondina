@@ -2,5 +2,8 @@
   "version": 2,
   "routes": [
     { "src": "/", "dest": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/ntnb.js": { "maxDuration": 45 }
+  }
 }

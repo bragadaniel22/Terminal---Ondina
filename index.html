@@ -112,6 +112,7 @@
  .close-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); gap: 12px; flex-wrap: wrap; }
  .close-title { font-family: var(--sans); font-size: 14px; font-weight: 700; color: var(--ink); }
  .close-sub { font-family: var(--sans); font-size: 11px; color: var(--dim); margin-top: 2px; }
+ .close-actions { display: flex; gap: 14px; flex-shrink: 0; }
  .close-refresh { font-family: var(--sans); font-size: 10.5px; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; white-space: nowrap; }
  .close-status, .close-err { padding: 22px 16px; font-family: var(--sans); font-size: 12px; color: var(--dim); }
  .close-note { padding: 10px 16px; font-family: var(--sans); font-size: 10px; color: var(--dim); border-top: 1px solid var(--border); }
@@ -753,14 +754,20 @@
  <div class="close-title">Fechamento de Mercado</div>
  <div class="close-sub">Dados com referência de <span id="close-refdate">…</span></div>
  </div>
+ <div class="close-actions">
  <span class="close-refresh" onclick="loadClosingReport(true)">atualizar</span>
+ <span class="close-refresh" onclick="downloadClosingReportImage()">baixar imagem</span>
+ </div>
  </div>
  <div id="close-body"><div class="close-status">clique em FECHAMENTO pra carregar…</div></div>
- <div class="close-note">Fontes: Yahoo Finance, B3/TradingView (DI Futuro), ANBIMA (ETTJ Pré). Δ mês e Δ ano contra o
- último pregão do mês/ano anterior (MTD/YTD). Uma data entre parênteses ao lado do nome indica que aquele
- mercado fechou num dia diferente da referência do relatório (feriado local ou fuso horário). MSCI EM (EEM) é
- retorno de preço do ETF, não do índice total return. ETTJ Pré: a ANBIMA retém só ~5-6 meses de arquivo diário
- — Δ ano aparece como "n/d" quando a base sai dessa janela (normalmente entre meados do ano e a virada do ano).</div>
+ <div class="close-note">Fontes: Yahoo Finance, B3/TradingView (DI Futuro), ANBIMA (ETTJ Pré e NTN-B), Tesouro Direto
+ (base de Δ ano de NTN-B, ver *). Δ mês e Δ ano contra o último pregão do mês/ano anterior (MTD/YTD). Uma data
+ entre parênteses ao lado do nome indica que aquele mercado fechou num dia diferente da referência do relatório
+ (feriado local ou fuso horário). MSCI EM (EEM) é retorno de preço do ETF, não do índice total return. ETTJ Pré:
+ a ANBIMA retém só ~5-6 meses de arquivo diário — Δ ano aparece como "n/d" quando a base sai dessa janela
+ (normalmente entre meados do ano e a virada do ano). <strong>*</strong> Δ ano de NTN-B 2030/2032/2035/2045
+ usa o Tesouro Direto como base quando a ANBIMA não retém mais a data (ponto médio compra/venda, aproxima a taxa
+ institucional). NTN-B 2028/2029 não têm título equivalente no Tesouro Direto e continuam "n/d" nesse caso.</div>
 </div>
 </div>
 
@@ -2718,10 +2725,17 @@ function alignSeries(allSeries) {
 // Cálculo on-demand (sem cron/storage) — todos os instrumentos abaixo fecham antes das 19h de
 // Brasília, então calcular a qualquer hora depois disso dá sempre o mesmo resultado. Δ mês/Δ ano
 // são MTD/YTD (contra o fechamento do último pregão do mês/ano anterior).
+// NTN-B: um único arquivo diário da ANBIMA já traz as 6 taxas de uma vez (ver
+// fetchNtnbBatch), diferente da ETTJ (um vértice só) — por isso os 6 vencimentos aqui
+// carregam `kind: 'ntnb'` + `maturity`, e computeCloseItem busca o valor no lote já
+// resolvido em vez de disparar uma requisição por vencimento. Reaproveita a constante
+// NTNB_MATURITIES já existente (seção "NTN-B · Histórico de Taxas") em vez de duplicar a
+// lista de vencimentos.
 const CLOSE_REPORT_CONFIG = [
  { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F30', label: 'DI FUTURO JAN/30', unit: 'bps' },
  { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F35', label: 'DI FUTURO JAN/35', unit: 'bps' },
  { section: 'Renda fixa', region: 'Brasil', kind: 'ettj', label: 'ETTJ PRÉ 252DU', unit: 'bps' },
+ ...NTNB_MATURITIES.map(m => ({ section: 'Renda fixa', region: 'Brasil', kind: 'ntnb', maturity: m.year, label: `NTN-B ${m.year}`, unit: 'bps' })),
  { section: 'Bolsa', region: 'Brasil', kind: 'yahoo', ticker: '^BVSP', label: 'IBOVESPA', unit: 'pct', decimals: 0 },
  { section: 'Bolsa', region: 'Estados Unidos', kind: 'yahoo', ticker: '^GSPC', label: 'S&P 500', unit: 'pct', decimals: 2 },
  { section: 'Bolsa', region: 'Estados Unidos', kind: 'yahoo', ticker: '^IXIC', label: 'NASDAQ', unit: 'pct', decimals: 2 },
@@ -2731,9 +2745,8 @@ const CLOSE_REPORT_CONFIG = [
  { section: 'Bolsa', region: 'Ásia e Pacífico', kind: 'yahoo', ticker: '^KS11', label: 'KOSPI', unit: 'pct', decimals: 2 },
  { section: 'Bolsa', region: 'Ásia e Pacífico', kind: 'yahoo', ticker: '^N225', label: 'NIKKEI 225', unit: 'pct', decimals: 2 },
  { section: 'Bolsa', region: 'Emergentes', kind: 'yahoo', ticker: 'EEM', label: 'MSCI EM', unit: 'pct', decimals: 2 },
- { section: 'Commodities e Cripto', region: null, kind: 'yahoo', ticker: 'BZ=F', label: 'BRENT', unit: 'pct', decimals: 2 },
- { section: 'Commodities e Cripto', region: null, kind: 'yahoo', ticker: 'GC=F', label: 'OURO', unit: 'pct', decimals: 2 },
- { section: 'Commodities e Cripto', region: null, kind: 'yahoo', ticker: 'BTC-USD', label: 'BITCOIN', unit: 'pct', decimals: 0 },
+ { section: 'Commodities', region: null, kind: 'yahoo', ticker: 'BZ=F', label: 'BRENT', unit: 'pct', decimals: 2 },
+ { section: 'Commodities', region: null, kind: 'yahoo', ticker: 'GC=F', label: 'OURO', unit: 'pct', decimals: 2 },
  { section: 'Câmbio', region: null, kind: 'yahoo', ticker: 'BRL=X', label: 'USD/BRL', unit: 'pct', decimals: 4 },
  { section: 'Câmbio', region: null, kind: 'yahoo', ticker: 'EURUSD=X', label: 'EUR/USD', unit: 'pct', decimals: 4 },
 ];
@@ -2893,7 +2906,72 @@ async function closingEttjDeltas(refKey) {
  };
 }
 
-async function computeCloseItem(item, refKey) {
+// NTN-B: um arquivo diário da ANBIMA traz as 6 taxas de uma vez (/api/ntnb, mesma mecânica de
+// dois-round-trips da ETTJ acima), então resolve os 6 vencimentos com só 2 requisições no total
+// em vez de 12 (2 por vencimento). Mesma limitação de retenção da ANBIMA (~5-6 meses) — Δ ano
+// vira "n/d" pra todos os vencimentos ao mesmo tempo, não vencimento a vencimento.
+async function fetchNtnbBatch(refKey) {
+ const r1 = await fetch(`/api/ntnb?dates=${encodeURIComponent(keyToBr(refKey))}`);
+ const d1 = await r1.json();
+ const todayResult = d1?.results?.[0];
+ if (!todayResult) throw new Error('NTN-B: sem dado no período');
+
+ const todayKey = brToKey(todayResult.date);
+ const prevDayAnchor = keyToBr(addDaysToKey(todayKey, -1));
+ const monthAnchor = keyToBr(lastDayOfPrevMonthKey(refKey));
+ const yearAnchor = keyToBr(lastDayOfPrevYearKey(refKey));
+
+ const r2 = await fetch(`/api/ntnb?dates=${[prevDayAnchor, monthAnchor, yearAnchor].map(encodeURIComponent).join(',')}`);
+ const d2 = await r2.json();
+ const [prevResult, monthResult, yearResult] = d2?.results ?? [];
+
+ // Fallback pro Tesouro Direto quando a ANBIMA já não retém mais a base de Δ ano (retenção de
+ // ~5-6 meses do arquivo diário) — cobre 4 dos 6 vencimentos; 2028/2029 não têm equivalente no
+ // Tesouro Direto e continuam "n/d". Cache permanente (a taxa de um ano já fechado não muda).
+ const prevYearNum = keyParts(refKey).y - 1;
+ const yearMissingSome = NTNB_MATURITIES.some(m => yearResult?.rates?.[m.year] == null);
+ const tdAnchor = yearMissingSome ? await getNtnbYtdAnchorCached(prevYearNum) : null;
+
+ const out = {};
+ for (const m of NTNB_MATURITIES) {
+ const mat = m.year;
+ const cur = todayResult.rates?.[mat];
+ if (cur == null) continue;
+ const prev = prevResult?.rates?.[mat], month = monthResult?.rates?.[mat];
+ let year = yearResult?.rates?.[mat];
+ let yearFromTD = false;
+ if (year == null && tdAnchor?.rates?.[mat] != null) { year = tdAnchor.rates[mat]; yearFromTD = true; }
+ out[mat] = {
+ value: cur,
+ asOfKey: todayKey,
+ dChg: prev != null ? cur - prev : null,
+ mChg: month != null ? cur - month : null,
+ yChg: year != null ? cur - year : null,
+ yFromTD: yearFromTD,
+ };
+ }
+ return out;
+}
+
+// Cache permanente em localStorage — a taxa de fim de ano de um ano já encerrado nunca muda, e
+// buscar o CSV do Tesouro Direto pra achar essa base é uma requisição pesada (~15MB) que vale a
+// pena evitar repetir a cada dia; só refaz se o navegador limpar o localStorage.
+async function getNtnbYtdAnchorCached(year) {
+ const cacheKey = `ntnb_ytd_anchor_${year}`;
+ const cached = cacheGet(cacheKey);
+ if (cached) return cached;
+ try {
+ const r = await fetch(`/api/ntnb?ytdAnchor=${year}`);
+ const d = await r.json();
+ if (d.error || !d.rates) return null;
+ cachePut(cacheKey, d);
+ return d;
+ } catch {
+ return null;
+ }
+}
+
+async function computeCloseItem(item, refKey, ntnbBatchPromise) {
  if (item.kind === 'yahoo') {
  const res = await fetchYahooChartRaw(item.ticker, '2y');
  const series = closingSeriesFromChart(res);
@@ -2911,6 +2989,12 @@ async function computeCloseItem(item, refKey) {
  const d = await closingEttjDeltas(refKey);
  return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey };
  }
+ if (item.kind === 'ntnb') {
+ const batch = await ntnbBatchPromise;
+ const d = batch?.[item.maturity];
+ if (!d) throw new Error('sem dados');
+ return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey, yFromTD: d.yFromTD };
+ }
  throw new Error('kind desconhecido: ' + item.kind);
 }
 
@@ -2924,7 +3008,10 @@ async function loadClosingReport(force = false) {
  }
  body.innerHTML = '<div class="close-status">carregando fechamento…</div>';
 
- const settled = await Promise.allSettled(CLOSE_REPORT_CONFIG.map(item => computeCloseItem(item, refKey)));
+ // fetchNtnbBatch roda uma vez só e é compartilhado pelos 6 itens 'ntnb' via await — não
+ // dispara 6 buscas independentes.
+ const ntnbBatchPromise = fetchNtnbBatch(refKey).catch(e => { console.error('Fechamento NTN-B', e); return null; });
+ const settled = await Promise.allSettled(CLOSE_REPORT_CONFIG.map(item => computeCloseItem(item, refKey, ntnbBatchPromise)));
  const rows = settled.map((r, i) => {
  if (r.status === 'fulfilled') return r.value;
  console.error('Fechamento', CLOSE_REPORT_CONFIG[i].label, r.reason);
@@ -2951,14 +3038,18 @@ function renderCloseRow(row, refKey) {
  const valTxt = row.unit === 'bps' ? num(row.value, 2) + '%' : num(row.value, row.decimals ?? 2);
  const dHtml = closeDeltaHtml(row.unit === 'bps' ? row.dBps : row.dPct, row.unit);
  const mHtml = closeDeltaHtml(row.unit === 'bps' ? row.mBps : row.mPct, row.unit);
- const yHtml = closeDeltaHtml(row.unit === 'bps' ? row.yBps : row.yPct, row.unit);
+ // Δ ano de NTN-B que veio do fallback do Tesouro Direto (ANBIMA já não retém a base) ganha um
+ // "*" — mesmo espírito do aviso de rodapé, só que marcado na própria célula.
+ const yHtml = closeDeltaHtml(row.unit === 'bps' ? row.yBps : row.yPct, row.unit) + (row.yFromTD ? '<sup class="dim2">*</sup>' : '');
  // Quando o mercado desse ativo fechou num dia diferente do refKey do relatório (feriado local,
  // ou fuso — ex: Ásia já fechou "amanhã" em horário de Brasília), mostra a data efetiva usada.
  const asOf = (row.asOfKey && row.asOfKey !== refKey) ? ` <span class="dim2">(${keyToBr(row.asOfKey)})</span>` : '';
  return `<div class="close-row"><div class="close-name">${row.label}${asOf}</div><div>${valTxt}</div><div>${dHtml}</div><div>${mHtml}</div><div>${yHtml}</div></div>`;
 }
 
+let lastCloseReportPayload = null;
 function renderClosingReport(payload) {
+ lastCloseReportPayload = payload;
  const body = document.getElementById('close-body');
  document.getElementById('close-refdate').textContent = keyToBr(payload.refKey);
  if (!payload.rows?.length) { body.innerHTML = '<div class="close-err">Não foi possível montar o relatório.</div>'; return; }
@@ -2979,6 +3070,137 @@ function renderClosingReport(payload) {
  }
  html += '</div>';
  body.innerHTML = html;
+}
+
+// Baixa o relatório já renderizado como PNG, desenhado à mão num <canvas> (sem lib externa tipo
+// html2canvas — o projeto evita dependências de CDN além do Chart.js/Google Fonts já existentes,
+// ver seção 4 da METODOLOGIA). Layout replica as colunas/cores do card em tela.
+async function downloadClosingReportImage() {
+ const payload = lastCloseReportPayload;
+ if (!payload?.rows?.length) return;
+ await document.fonts.ready; // garante IBM Plex já carregada antes de medir/desenhar texto
+
+ const COLORS = { ink: '#0f172a', card: '#faf9f5', page: '#eeece7', border: '#e2dfd7', accent: '#1d4ed8', green: '#16a34a', red: '#dc2626', text: '#1f2430', dim: '#6b7280', bright: '#0b0e14' };
+ const SANS = 'IBM Plex Sans', MONO = 'IBM Plex Mono';
+ const COLS = [
+ { x: 20, w: 260, align: 'left' },
+ { x: 280, w: 150, align: 'right' },
+ { x: 440, w: 140, align: 'right' },
+ { x: 590, w: 140, align: 'right' },
+ { x: 740, w: 140, align: 'right' },
+ ];
+ const WIDTH = 900, ROW_H = 30, SECTION_H = 30, HEAD_H = 24, REGION_H = 22, TITLE_H = 66, FOOT_H = 30, PAD = 20;
+
+ let height = TITLE_H;
+ let curSection = null, curRegion = null;
+ for (const row of payload.rows) {
+ if (row.section !== curSection) { curSection = row.section; curRegion = null; height += SECTION_H + HEAD_H; }
+ if (row.region && row.region !== curRegion) { curRegion = row.region; height += REGION_H; }
+ height += ROW_H;
+ }
+ height += FOOT_H;
+
+ const scale = 2; // retina — texto nítido no PNG exportado
+ const canvas = document.createElement('canvas');
+ canvas.width = WIDTH * scale;
+ canvas.height = height * scale;
+ const ctx = canvas.getContext('2d');
+ ctx.scale(scale, scale);
+ ctx.textBaseline = 'middle';
+
+ ctx.fillStyle = COLORS.card;
+ ctx.fillRect(0, 0, WIDTH, height);
+
+ ctx.fillStyle = COLORS.ink;
+ ctx.font = `700 18px "${SANS}"`;
+ ctx.textAlign = 'left';
+ ctx.fillText('Fechamento de Mercado', PAD, 26);
+ ctx.fillStyle = COLORS.dim;
+ ctx.font = `400 12px "${SANS}"`;
+ ctx.fillText(`Dados com referência de ${keyToBr(payload.refKey)}`, PAD, 48);
+ ctx.strokeStyle = COLORS.border;
+ ctx.beginPath(); ctx.moveTo(0, TITLE_H - 0.5); ctx.lineTo(WIDTH, TITLE_H - 0.5); ctx.stroke();
+
+ function cell(text, col, color, font) {
+ ctx.fillStyle = color;
+ ctx.font = font;
+ ctx.textAlign = col.align;
+ ctx.fillText(text, col.align === 'right' ? col.x + col.w : col.x, y + ROW_H / 2);
+ }
+
+ let y = TITLE_H;
+ curSection = null; curRegion = null;
+ for (const row of payload.rows) {
+ if (row.section !== curSection) {
+ curSection = row.section; curRegion = null;
+ ctx.fillStyle = COLORS.ink;
+ ctx.fillRect(0, y, WIDTH, SECTION_H);
+ ctx.fillStyle = '#ffffff';
+ ctx.font = `700 12px "${SANS}"`;
+ ctx.textAlign = 'left';
+ ctx.fillText(curSection.toUpperCase(), PAD, y + SECTION_H / 2);
+ y += SECTION_H;
+
+ ctx.fillStyle = COLORS.page;
+ ctx.fillRect(0, y, WIDTH, HEAD_H);
+ ctx.fillStyle = COLORS.dim;
+ ctx.font = `700 10px "${SANS}"`;
+ const heads = ['INSTRUMENTO', 'FECHAMENTO', 'Δ DIA', 'Δ MÊS', 'Δ ANO'];
+ COLS.forEach((c, i) => { ctx.textAlign = c.align; ctx.fillText(heads[i], c.align === 'right' ? c.x + c.w : c.x, y + HEAD_H / 2); });
+ y += HEAD_H;
+ }
+ if (row.region && row.region !== curRegion) {
+ curRegion = row.region;
+ ctx.fillStyle = COLORS.page;
+ ctx.fillRect(0, y, WIDTH, REGION_H);
+ ctx.fillStyle = COLORS.accent;
+ ctx.font = `700 10px "${SANS}"`;
+ ctx.textAlign = 'left';
+ ctx.fillText(curRegion.toUpperCase(), PAD, y + REGION_H / 2);
+ y += REGION_H;
+ }
+
+ ctx.strokeStyle = COLORS.border;
+ ctx.beginPath(); ctx.moveTo(0, y + ROW_H - 0.5); ctx.lineTo(WIDTH, y + ROW_H - 0.5); ctx.stroke();
+
+ if (row.error) {
+ cell(row.label, COLS[0], COLORS.text, `600 12px "${SANS}"`);
+ for (let i = 1; i < COLS.length; i++) cell('—', COLS[i], COLORS.dim, `500 12px "${MONO}"`);
+ } else {
+ const asOf = (row.asOfKey && row.asOfKey !== payload.refKey) ? ` (${keyToBr(row.asOfKey)})` : '';
+ cell(row.label + asOf, COLS[0], COLORS.text, `600 12px "${SANS}"`);
+ const valTxt = row.unit === 'bps' ? num(row.value, 2) + '%' : num(row.value, row.decimals ?? 2);
+ cell(valTxt, COLS[1], COLORS.bright, `700 13px "${MONO}"`);
+ const deltas = row.unit === 'bps' ? [row.dBps, row.mBps, row.yBps] : [row.dPct, row.mPct, row.yPct];
+ deltas.forEach((v, i) => {
+ const col = COLS[i + 2];
+ const isYear = i === 2;
+ if (v == null || isNaN(v)) { cell('n/d', col, COLORS.dim, `500 12px "${MONO}"`); return; }
+ const color = v > 0 ? COLORS.green : v < 0 ? COLORS.red : COLORS.text;
+ const arrow = v > 0 ? ' ↑' : v < 0 ? ' ↓' : '';
+ const star = (isYear && row.yFromTD) ? '*' : '';
+ const text = (row.unit === 'bps' ? (v >= 0 ? '+' : '') + Math.round(v) + ' bps' : pct(v)) + arrow + star;
+ cell(text, col, color, `600 12px "${MONO}"`);
+ });
+ }
+ y += ROW_H;
+ }
+
+ ctx.fillStyle = COLORS.dim;
+ ctx.font = `400 10px "${SANS}"`;
+ ctx.textAlign = 'left';
+ ctx.fillText('Fontes: Yahoo Finance · B3/TradingView · ANBIMA', PAD, y + FOOT_H / 2);
+
+ canvas.toBlob(blob => {
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement('a');
+ a.href = url;
+ a.download = `fechamento-mercado-${payload.refKey}.png`;
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ URL.revokeObjectURL(url);
+ }, 'image/png');
 }
 
 // ── ETFs Internos ─────────────────────────────────────────────────────────────

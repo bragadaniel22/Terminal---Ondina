@@ -102,6 +102,92 @@ function Get-EttjNear {
     return $null
 }
 
+# Espelho de fetchDayFile em api/ntnb.js — baixa e faz o parse de um único arquivo diário da
+# ANBIMA (traz as 6 taxas NTN-B de uma vez). Devolve $null (não lança) em qualquer falha.
+function Get-NtnbDayFile {
+    param([datetime]$Dt)
+    try {
+        $targets = @('20280815', '20290515', '20300815', '20320815', '20350515', '20450515')
+        $yy = $Dt.ToString('yy'); $mm = $Dt.ToString('MM'); $dd = $Dt.ToString('dd')
+        $ntnbUrl = "https://www.anbima.com.br/informacoes/merc-sec/arqs/ms$yy$mm$dd.txt"
+        $wc = [System.Net.WebClient]::new()
+        $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+        $csvText = $wc.DownloadString($ntnbUrl)
+        $rates = @{}
+        foreach ($line in ($csvText -split "`n")) {
+            $cols = $line.Trim() -split '@'
+            if ($cols.Count -lt 8) { continue }
+            if ($cols[0].Trim() -ne 'NTN-B') { continue }
+            $mat = $cols[4].Trim()
+            if ($targets -contains $mat) {
+                $rate = [double]($cols[7].Trim().Replace(',', '.'))
+                $rates[$mat.Substring(0, 4)] = $rate
+            }
+        }
+        if ($rates.Count -eq 0) { return $null }
+        return $rates
+    } catch {
+        return $null
+    }
+}
+
+# Espelho de fetchNtnbNear em api/ntnb.js — usado pelo relatório de Fechamento (?dates=) pra
+# resolver as taxas NTN-B em datas de referência específicas, tolerando feriado.
+function Get-NtnbNear {
+    param([string]$DateStr, [int]$MaxTries = 3)
+    if ($DateStr -notmatch '^(\d{2})/(\d{2})/(\d{4})$') { return $null }
+    $anchor = [datetime]::new([int]$Matches[3], [int]$Matches[2], [int]$Matches[1])
+    foreach ($dtStr in (Get-BusinessDaysBack -StartDate $anchor -Count $MaxTries)) {
+        $dt = [datetime]::ParseExact($dtStr, 'dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture)
+        $rates = Get-NtnbDayFile -Dt $dt
+        if ($rates) { return [PSCustomObject]@{ date = $dtStr; rates = $rates } }
+    }
+    return $null
+}
+
+# Espelho de handleYtdAnchor em api/ntnb.js — a ANBIMA só retém ~5-6 meses de arquivo diário,
+# então a base de Δ ano (31/dez do ano anterior) some por volta de meados do ano seguinte. Pra 4
+# dos 6 vencimentos (2030/2032/2035/2045) existe equivalente no Tesouro Direto, cujo CSV público
+# guarda histórico completo desde ~2011 (2028 e 2029 não têm equivalente — ver comentário no JS).
+# Usa o ponto médio entre taxa de compra e venda como aproximação da taxa institucional da ANBIMA.
+$TD_CSV_URL = 'https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/PrecoTaxaTesouroDireto.csv'
+$TD_TITLE = 'Tesouro IPCA+ com Juros Semestrais'
+$TD_MATURITY_MAP = [ordered]@{ '2030' = '15/08/2030'; '2032' = '15/08/2032'; '2035' = '15/05/2035'; '2045' = '15/05/2045' }
+
+function Get-NtnbYtdAnchor {
+    param([int]$Year)
+    try {
+        $r = Invoke-WebRequest -Uri $TD_CSV_URL -TimeoutSec 60 -Headers @{'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        $prefix = "$TD_TITLE;"
+        $index = @{}
+        foreach ($line in ($r.Content -split "`n")) {
+            if (-not $line.StartsWith($prefix)) { continue }
+            $cols = $line.TrimEnd("`r") -split ';'
+            $index["$($cols[1]);$($cols[2])"] = $cols
+        }
+        $rates = @{}
+        $usedDate = $null
+        foreach ($mat in $TD_MATURITY_MAP.Keys) {
+            $tdMaturity = $TD_MATURITY_MAP[$mat]
+            for ($back = 0; $back -lt 8; $back++) {
+                $dt = ([datetime]::new($Year, 12, 31)).AddDays(-$back).ToString('dd/MM/yyyy')
+                $cols = $index["$tdMaturity;$dt"]
+                if ($cols) {
+                    $compra = [double]($cols[3].Replace(',', '.'))
+                    $venda = [double]($cols[4].Replace(',', '.'))
+                    $rates[$mat] = ($compra + $venda) / 2.0
+                    $usedDate = $dt
+                    break
+                }
+            }
+        }
+        if ($rates.Count -eq 0) { return $null }
+        return [PSCustomObject]@{ year = $Year; date = $usedDate; rates = $rates }
+    } catch {
+        return $null
+    }
+}
+
 function Get-XmlTag {
     param([string]$Block, [string]$Tag)
     $m = [regex]::Match($Block, "<$Tag[^>]*>([\s\S]*?)</$Tag>", 'IgnoreCase')
@@ -1209,6 +1295,72 @@ while ($listener.IsListening) {
         } catch {
             $errMsg = ($_.Exception.Message -replace '"', '\"') -replace "`n", ' '
             $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$errMsg`"}")
+            $res.StatusCode = 500
+            $res.ContentType = 'application/json'
+            $res.ContentLength64 = $err.Length
+            $res.OutputStream.Write($err, 0, $err.Length)
+        }
+        $res.OutputStream.Close()
+        continue
+    }
+
+    # ── Proxy Tesouro Direto · base de Δ ano (relatório de Fechamento, ?ytdAnchor=) ─────────
+    # Espelho de handleYtdAnchor em api/ntnb.js — precisa vir ANTES dos outros blocos de
+    # /api/ntnb abaixo.
+    if ($path -eq '/api/ntnb' -and $req.QueryString['ytdAnchor']) {
+        try {
+            $year = [int]($req.QueryString['ytdAnchor'])
+            $found = Get-NtnbYtdAnchor -Year $year
+            if ($found) {
+                $ratesJson = ($found.rates.GetEnumerator() | ForEach-Object { "`"$($_.Key)`":$($_.Value)" }) -join ','
+                $result = "{`"year`":$($found.year),`"date`":`"$($found.date)`",`"rates`":{$ratesJson},`"source`":`"tesouro-direto`"}"
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
+                $res.ContentType = 'application/json'
+                $res.Headers.Add('Access-Control-Allow-Origin', '*')
+                $res.ContentLength64 = $bytes.Length
+                $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            } else {
+                $err = [System.Text.Encoding]::UTF8.GetBytes('{"error":"Tesouro Direto: sem dados"}')
+                $res.StatusCode = 500
+                $res.ContentType = 'application/json'
+                $res.ContentLength64 = $err.Length
+                $res.OutputStream.Write($err, 0, $err.Length)
+            }
+        } catch {
+            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$($_.Exception.Message)`"}")
+            $res.StatusCode = 500
+            $res.ContentType = 'application/json'
+            $res.ContentLength64 = $err.Length
+            $res.OutputStream.Write($err, 0, $err.Length)
+        }
+        $res.OutputStream.Close()
+        continue
+    }
+
+    # ── Proxy ANBIMA NTN-B · datas específicas (relatório de Fechamento, ?dates=) ──────────
+    # Espelho do modo multi-data de api/ntnb.js — precisa vir ANTES do bloco de snapshot
+    # abaixo, senão uma requisição com ?dates= (sem ?days=) cairia lá por engano.
+    if ($path -eq '/api/ntnb' -and $req.QueryString['dates']) {
+        try {
+            $requested = $req.QueryString['dates'] -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+            $items = [System.Collections.Generic.List[string]]::new()
+            foreach ($dt in $requested) {
+                $found = Get-NtnbNear -DateStr $dt
+                if ($found) {
+                    $ratesJson = ($found.rates.GetEnumerator() | ForEach-Object { "`"$($_.Key)`":$($_.Value)" }) -join ','
+                    $items.Add("{`"date`":`"$($found.date)`",`"rates`":{$ratesJson}}")
+                } else {
+                    $items.Add('null')
+                }
+            }
+            $result = "{`"results`":[$($items -join ',')]}"
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
+            $res.ContentType = 'application/json'
+            $res.Headers.Add('Access-Control-Allow-Origin', '*')
+            $res.ContentLength64 = $bytes.Length
+            $res.OutputStream.Write($bytes, 0, $bytes.Length)
+        } catch {
+            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$($_.Exception.Message)`"}")
             $res.StatusCode = 500
             $res.ContentType = 'application/json'
             $res.ContentLength64 = $err.Length
