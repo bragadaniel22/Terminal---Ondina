@@ -2,8 +2,13 @@
 
 > Documento de handoff completo — suficiente para qualquer sessão nova (Claude ou humano)
 > entender o projeto do zero e continuar o trabalho sem perguntar de novo o que já foi decidido.
-> **Reescrito 100% nessa sessão** pra refletir uma repaginação completa de design + uma reforma
-> grande da aba NOTÍCIAS (fontes, nota de relevância, classificação por assunto, notificações).
+> **Reescrito 100% numa sessão anterior** pra refletir uma repaginação completa de design + uma
+> reforma grande da aba NOTÍCIAS (fontes, nota de relevância, classificação por assunto,
+> notificações). **Atualizado (não reescrito) numa sessão mais recente** que adicionou a sub-aba
+> FECHAMENTO (relatório de fechamento de mercado, seção 6.8, com NTN-B saindo de uma planilha
+> mantida à mão — seção 6.8.1), um botão de exportar o relatório como imagem (seção 6.8.2), duas
+> otimizações de carregamento inicial (seção 22), e um projeto irmão fora do deploy do Vercel que
+> manda esse relatório por WhatsApp em horário agendado (seção 6.8.3).
 > Se você está lendo isso numa conversa nova, **leia até o fim antes de tocar em qualquer código**.
 
 ---
@@ -72,11 +77,41 @@ acima).
 
 **ÍNDICES ganhou uma sub-aba FECHAMENTO** (pílula HOJE/FECHAMENTO logo abaixo do seletor de
 abas) — relatório de fechamento de mercado (Δ dia/mês/ano) pros instrumentos que o usuário
-acompanha, calculado on-demand sem cron nem storage. `api/anbima.js` ganhou um modo `?dates=`
-multi-data (sem gastar slot novo do teto de 12). Ver seção 6.8 pra tudo em detalhe, incluindo dois
-bugs de fuso horário reais encontrados e corrigidos antes de publicar (data errada pra mercados
-asiáticos e câmbio com um corte ingênuo de epoch, e a suposição errada de que todo instrumento já
-fecha às 19h de Brasília — Brent/Ouro/Bitcoin/câmbio negociam depois disso).
+acompanha, calculado on-demand sem cron nem storage. `api/ntnb.js` ganhou um modo `?dates=`
+multi-data (sem gastar slot novo do teto de 12) — `api/anbima.js` teve um modo equivalente
+adicionado e **depois removido** na mesma sessão, ver parágrafo abaixo. Ver seção 6.8 pra tudo em
+detalhe, incluindo dois bugs de fuso horário reais encontrados e corrigidos antes de publicar
+(data errada pra mercados asiáticos e câmbio com um corte ingênuo de epoch, e a suposição errada
+de que todo instrumento já fecha às 19h de Brasília — Brent/Ouro/câmbio negociam depois disso).
+Relatório inclui os 6 vencimentos de NTN-B (seção 6.8.1) e **não inclui Bitcoin** (removido a
+pedido do usuário — continua normal no card ao vivo e no Heatmap). Tem também um botão "baixar
+imagem" que exporta o relatório como PNG desenhado num `<canvas>`, sem dependência nova de CDN
+(seção 6.8.2).
+
+**Cinco instrumentos removidos do relatório de Fechamento nessa mesma sessão, a pedido do
+usuário**: ETTJ PRÉ, DOW JONES, DAX, NIKKEI 225 e KOSPI (os dois últimos eram toda a região "Ásia
+e Pacífico" do relatório — ela deixou de aparecer). O card ETTJ ao vivo (sub-aba HOJE) **não foi
+afetado**. Isso deixou órfão e já removido: `closingEttjDeltas()` no front-end, o branch `?dates=`
+inteiro de `api/anbima.js` (só existia pra essa entrada) e `Get-EttjNear` no espelho
+`server.ps1` — ver seção 6.8 pro detalhe exato do que ficou e do que saiu. **Não recriar nenhum
+desses 5 itens sem pedido explícito.**
+
+**Δ mês/Δ ano da NTN-B vêm de uma planilha mantida à mão** (`Taxas Antigas NTNB.xlsx`, raiz do
+repo), não mais de busca ao vivo — a ANBIMA não retém histórico suficiente pra base de Δ ano (ver
+seção 6.8.1). O Daniel precisa atualizar essa planilha manualmente (1x/mês, no fim do mês; 1x/ano,
+31/dez) — ver pendência 8 abaixo.
+
+**Novo projeto irmão: `Envio Fechamento WhatsApp/`** (fora do deploy do Vercel, pasta separada na
+raiz de `R:\X - Daniel\Claude\`) — script Node.js local que tira um screenshot da sub-aba
+FECHAMENTO do site publicado e manda por WhatsApp em horário agendado. Depende de seletores CSS
+estáveis do relatório (`.subtab-btn[data-sub="close"]`, `.close-table`, `.close-status`,
+`.close-report`, `#close-refdate`) — ver seção 6.8.3, **mudar esses seletores/IDs quebra o
+projeto de WhatsApp sem avisar**.
+
+> **Ideia dormente (NÃO ativa, não implementar sem pedido explícito) — ver seção 6.8.4**: mover
+> esse envio pra depender só do Vercel (Cron + função serverless com canvas em Node em vez de
+> Puppeteer, sessão do Baileys guardada num KV externo tipo Upstash), pra funcionar mesmo com o
+> PC do Daniel desligado. Guardada só pra não perder a ideia, discutida numa sessão anterior.
 
 **As abas BUSCAR e CNBC (BETA) foram REMOVIDAS** (não pausadas, removidas de vez) a pedido do
 usuário — "CNBC não faz sentido, já temos o portal na parte de notícias". A busca de ativos foi
@@ -117,6 +152,14 @@ continua no repo só como registro histórico da matemática. Ver seção 12.
 9. **Horário exato de publicação do arquivo diário da ANBIMA (NTN-B) não é conhecido** — só
    sabemos que o prazo de coleta das instituições é 12h; a publicação em si acontece em algum
    momento depois disso, sem SLA público documentado. Ver seção 6.7.
+10. **`Taxas Antigas NTNB.xlsx` precisa de manutenção manual recorrente** (1x/mês, no último dia
+    útil do mês; 1x/ano, 31/dez) — é a base de Δ mês/Δ ano da NTN-B no relatório de Fechamento, e
+    se ficar desatualizada o Δ correspondente vira "n/d" sozinho (não mostra número errado, mas
+    também para de mostrar o número certo). Ver seção 6.8.1 pra estrutura exata do arquivo.
+11. **Otimizações de carregamento inicial identificadas e corrigidas nessa sessão** (Chart.js
+    bloqueava a renderização da página inteira; `loadBrasil()`/`loadJuros()` faziam 3 chamadas em
+    série sem necessidade) — ver seção 22. Ainda não implementada: a otimização maior de
+    consolidar chamadas de ticker do Yahoo (pendência 2 acima).
 
 ---
 
@@ -157,6 +200,12 @@ deploy do Vercel) com um popup replicando ÍNDICES (5 principais), SINGLE NAMES 
 repaginada nessa sessão** pro novo visual claro (seção 21). Ainda não reflete ETFs Internos nem
 NOTÍCIAS — trabalho novo se quiserem isso na extensão.
 
+Também existe, **fora dessa pasta** (irmã dela, em `R:\X - Daniel\Claude\Envio Fechamento
+WhatsApp\`), um projeto Node.js separado que tira screenshot da sub-aba FECHAMENTO do site
+publicado e manda por WhatsApp em horário agendado — não faz parte do deploy do Vercel, roda
+localmente no PC do Daniel. Tem seu próprio `README.md` com todo o setup. Ver seção 6.8.3 pra
+como ele depende do HTML do relatório de Fechamento.
+
 ---
 
 ## 2. Arquitetura de Arquivos
@@ -164,8 +213,8 @@ NOTÍCIAS — trabalho novo se quiserem isso na extensão.
 ```
 /
 ├── index.html                     # Aplicação completa (HTML + CSS + JS embutidos)
-├── package.json                   # { "type": "module" } — OBRIGATÓRIO pro Vercel (ver seção 19); tem dependência `ws` (seção 6.1.1)
-├── vercel.json                    # Configuração de deploy no Vercel
+├── package.json                   # { "type": "module" } — OBRIGATÓRIO pro Vercel (ver seção 19); dependências `ws` (seção 6.1.1) e `xlsx` (lê a planilha abaixo, seção 6.8.1)
+├── vercel.json                    # Configuração de deploy no Vercel. Ver seção 19 sobre `functions.api/ntnb.js.includeFiles` (garante que a planilha .xlsx vá junto no bundle da função)
 ├── favicon.ico                    # Favicon (16px + 32px, PNG-in-ICO) — logo ANTIGA, não atualizada na repaginação
 ├── server.ps1                     # Servidor local de desenvolvimento (PowerShell)
 ├── vercel-usage.ps1                # Script local p/ monitorar uso/custo do Vercel via API
@@ -174,6 +223,7 @@ NOTÍCIAS — trabalho novo se quiserem isso na extensão.
 ├── PALAVRAS_CHAVE_NOTICIAS.md     # Lista completa de KEYWORDS/EXCLUDE_KEYWORDS da aba NOTÍCIAS, extraída do código — pode ficar desatualizada se a lista mudar de novo sem regenerar este arquivo
 ├── SIMULADOR_METODOLOGIA.md       # [HISTÓRICO] fórmulas do Simulador — aba removida, feature não existe mais
 ├── Bonds Carteira.xlsx            # [ÓRFÃO] planilha do usuário — fonte da extinta aba BONDS, sem uso agora
+├── Taxas Antigas NTNB.xlsx        # Base de Δ mês/Δ ano da NTN-B no relatório de Fechamento — mantida À MÃO pelo Daniel (seção 6.8.1). PRECISA estar no repo/deploy, não é órfã
 ├── assets/                        # Logo/favicon fonte
 │   ├── icon.svg                  # Logo vetor NOVA (quadrado azul arredondado + check branco) — trocada nessa sessão
 │   ├── icon-16.png, icon-32.png, icon-192.png, icon-512.png   # PNGs — AINDA COM A LOGO ANTIGA (raster, não regenerado)
@@ -190,7 +240,7 @@ NOTÍCIAS — trabalho novo se quiserem isso na extensão.
     ├── anbima.js                  # Proxy ANBIMA ETTJ (POST). Sem ?dates= → snapshot do dia; ?dates=DD/MM/YYYY,... → multi-data (relatório de Fechamento, seção 6.8)
     ├── b3.js                      # Cotação B3 (fallback TradingView) + histórico DI Futuro. ?s=X → cotação; ?s=X&history=1 → histórico
     ├── ecb.js                     # Proxy ECB taxa de juros
-    ├── ntnb.js                    # Snapshot + histórico NTN-B. Sem ?days → snapshot; ?days=N → histórico
+    ├── ntnb.js                    # Snapshot + histórico NTN-B. Sem query → snapshot; ?days=N → histórico; ?dates=DD/MM/YYYY,... → datas específicas (Δ dia); ?staticAnchors=1 → lê "Taxas Antigas NTNB.xlsx" (Δ mês/Δ ano, seção 6.8.1)
     ├── news.js                    # Notícias por ticker (busca de Single Names) + resumo por IA. Sem ?action → lista por ticker; ?action=summarize&url=...&title=... → resumo Gemini
     ├── ai-news.js                 # Aba NOTÍCIAS: recorte por palavra-chave, 12 fontes, classificação por assunto, nota de relevância — seção 15.1
     └── summary.js                 # [ÓRFÃO] resumo diário via OpenAI, não usado pelo front-end (pendência 4 da seção 0)
@@ -453,18 +503,23 @@ A aba ÍNDICES ganhou duas sub-abas em pílula logo abaixo do seletor de abas: *
 descrito acima, inalterado) e **FECHAMENTO** (`switchIndicesSub()`, lazy-load via flag
 `closeReportLoaded`, igual ao padrão de `switchTab()`). Relatório único no estilo "fechamento de
 mercado" de banco (Fechamento · Δ dia · Δ mês · Δ ano), agrupado em Renda Fixa / Bolsa /
-Commodities e Cripto / Câmbio, com subcategoria de região dentro de Bolsa (Brasil, Estados
-Unidos, Europa, Ásia e Pacífico, Emergentes). Config declarativa em `CLOSE_REPORT_CONFIG`.
+Commodities / Câmbio, com subcategoria de região dentro de Bolsa (Brasil, Estados Unidos, Europa,
+Ásia e Pacífico, Emergentes). Config declarativa em `CLOSE_REPORT_CONFIG` (mais os 6 vencimentos
+de NTN-B gerados a partir da constante `NTNB_MATURITIES` já existente — ver seção 6.8.1).
+
+**Bitcoin não entra nesse relatório** (removido a pedido do usuário) — continua normalmente no
+card ao vivo "Commodities & Cripto" da sub-aba HOJE e no Heatmap; a seção do relatório de
+Fechamento por isso chama-se só "Commodities", sem "e Cripto".
 
 **Cálculo on-demand, sem cron nem storage.** Cada clique em FECHAMENTO recalcula na hora (com
 cache em `localStorage` chaveado pela própria data de referência — reabrir no mesmo "dia de
-mercado" não refaz as ~16 chamadas). Fica fora do ciclo de 60s do `loadAll()`, de propósito.
+mercado" não refaz as ~20 chamadas). Fica fora do ciclo de 60s do `loadAll()`, de propósito.
 
 **Data de referência (`computeRefKey()`)**: string `'YYYY-MM-DD'` calculada a partir da hora de
 São Paulo via `Intl.DateTimeFormat` (nunca o fuso do navegador — tem colega acessando de fora do
 Brasil). Antes das 19h em SP (ou fim de semana) recua pro último dia útil. **Isso não assume que
-todo instrumento já fechou às 19h** — Brent/Ouro/Bitcoin/câmbio negociam depois disso — quem
-resolve isso é o filtro de barra parcial abaixo, não a hora de corte em si.
+todo instrumento já fechou às 19h** — Brent/Ouro/câmbio negociam depois disso — quem resolve isso
+é o filtro de barra parcial abaixo, não a hora de corte em si.
 
 **Dois filtros por série, nessa ordem** (`closingSeriesFromChart()`):
 1. **Chave de data no fuso da PRÓPRIA bolsa** (`dateKeyTZ(ts, meta.exchangeTimezoneName)`), não
@@ -488,7 +543,7 @@ disponível no/antes do último dia do mês/ano anterior (`lastDayOfPrevMonthKey
 `lastDayOfPrevYearKey` + `lastOnOrBefore`).
 
 **Fontes por instrumento**:
-- **13 tickers via Yahoo** (`fetchYahooChartRaw(ticker, '2y')`) — usa **`close`**, não `adjclose`
+- **9 tickers via Yahoo** (`fetchYahooChartRaw(ticker, '2y')`) — usa **`close`**, não `adjclose`
   (o relatório mostra nível de fechamento; misturar nível de `close` com delta de `adjclose`
   seria inconsistente). Único caso onde isso importa de fato: MSCI EM é o ETF `EEM`, então o Δ
   ano ali é retorno de preço, não retorno total do índice — não usar esse número pra comparar com
@@ -497,27 +552,146 @@ disponível no/antes do último dia do mês/ano anterior (`lastDayOfPrevMonthKey
   histórico), chave de data em `America/Sao_Paulo` (não tem `currentTradingPeriod`, então só o
   filtro 1 se aplica — funciona porque o filtro de refKey já exclui a barra de hoje enquanto ela
   ainda está em formação).
-- **ETTJ Pré**: `api/anbima.js` ganhou um modo `?dates=DD/MM/YYYY,DD/MM/YYYY,...` (não gasta slot
-  do teto de 12 — ver seção 19.1.1) que devolve `{results: [...]}`, um item por data pedida,
-  `null` quando não encontra. Cada data pedida anda pra trás em dias úteis (`maxTries = 3`, com
-  timeout de 3s por tentativa — reduzido de um valor maior por risco real de estourar o limite de
-  ~10s de função do Vercel Hobby) até achar um arquivo publicado ou desistir. Front-end faz **duas
-  idas** (`closingEttjDeltas()`): primeiro resolve a data efetiva de "hoje" (pode recuar por
-  feriado), depois pede ontem/MTD/YTD a partir dessa data já confirmada — evita a base de "ontem"
-  colidir com a de "hoje" quando as duas caem no mesmo feriado. Espelho completo em `server.ps1`
-  (`Get-EttjOneDay`/`Get-EttjNear`/`Get-BusinessDaysBack`).
+- **6 vencimentos de NTN-B** — ver seção 6.8.1.
 
-**Limitação real e permanente**: a ANBIMA só retém ~5-6 meses de arquivo diário nesse endpoint —
-testado ao vivo (11/08/2026): `27/02/2026` responde, `20/02/2026` e `30/12/2025` voltam vazio.
-**Δ ano da ETTJ Pré aparece como "n/d"** sempre que a base (31/dez do ano anterior) já saiu dessa
-janela — na prática, de meados do ano até a virada. Δ dia e Δ mês não são afetados. Isso é
+**[REMOVIDO desta sessão] ETTJ Pré, Dow Jones, DAX, Nikkei 225 e Kospi (os dois de Ásia e
+Pacífico) saíram do relatório de Fechamento**, a pedido do Daniel — o card ETTJ ao vivo (HOJE)
+**não foi afetado**, só a entrada do relatório. Removido também o código que só existia pra essa
+entrada: função `closingEttjDeltas()` (front-end), branch `?dates=` de `api/anbima.js` e a função
+`Get-EttjNear` do espelho em `server.ps1` (o modo snapshot de `api/anbima.js`, usado pelo card ao
+vivo, e `Get-EttjOneDay`/`Get-BusinessDaysBack`, usados também pela NTN-B, continuam intactos). A
+seção "Ásia e Pacífico" de Bolsa simplesmente não aparece mais no relatório (nenhum item restante
+usa essa região) — não recriar nenhum desses 5 itens sem pedido explícito.
+
+**Limitação real e permanente**: a ANBIMA só retém ~5-6 meses de arquivo diário no endpoint da
+NTN-B — testado ao vivo (11/08/2026): `27/02/2026` responde, `20/02/2026` e `30/12/2025` voltam
+vazio. **Δ ano das NTN-B aparece como "n/d"** sempre que a base (31/dez do ano anterior) já saiu
+dessa janela — na prática, de meados do ano até a virada. Δ dia e Δ mês não são afetados. Isso é
 esperado, não é bug; o código degrada sozinho sem hardcode de data.
+
+### 6.8.1 NTN-B no relatório de Fechamento
+Os 6 vencimentos (2028/2029/2030/2032/2035/2045, mesma constante `NTNB_MATURITIES` do card NTN-B
+da sub-aba HOJE — seção 8.2) entram em Renda Fixa/Brasil junto com DI Futuro.
+
+**Δ dia continua ao vivo, igual a antes**: um único arquivo diário da ANBIMA (`ms{aa}{mm}{dd}.txt`)
+já traz as 6 taxas de uma vez — `api/ntnb.js` tem um modo `?dates=DD/MM/YYYY,...` (mesma mecânica
+de walk-back/timeout/limite de tentativas da ETTJ) que resolve os 6 vencimentos com só 2
+requisições no total (hoje + ontem), via `fetchNtnbBatch()`. O resultado fica num lote
+compartilhado (`ntnbBatchPromise`) que os 6 itens `kind:'ntnb'` de `CLOSE_REPORT_CONFIG` esperam
+via `await` — dispara uma vez só, não uma vez por vencimento. Espelho em `server.ps1`
+(`Get-NtnbDayFile`/`Get-NtnbNear`), inserido **antes** do bloco de snapshot existente na ordem das
+rotas (uma requisição com `?dates=` sem `?days=` cairia por engano no snapshot antigo senão).
+
+**Δ mês e Δ ano MUDARAM de fonte — não vêm mais de busca ao vivo.** Histórico da sessão:
+1. Primeira tentativa: `?dates=` também pra base de MTD/YTD, igual à ETTJ. Funcionava pro mês,
+   mas a base de YTD (31/dez do ano anterior) já tinha saído da retenção da ANBIMA na maior parte
+   do ano.
+2. Segunda tentativa: fallback pro CSV público do Tesouro Direto (Tesouro Transparente) pra achar
+   a taxa de 31/dez. Resolvia só 4 dos 6 vencimentos (2030/2032/2035/2045 têm título equivalente
+   lá; **2028 nunca foi ofertado no Tesouro Direto, e 2029 só existe como "Tesouro IPCA+" sem
+   cupom, um título de estrutura diferente da NTN-B com cupom que a ANBIMA reporta** — misturar os
+   dois dá número estruturalmente errado, não só aproximado). Essa versão foi **abandonada**.
+3. **Versão atual**: o Daniel mantém uma planilha (`Taxas Antigas NTNB.xlsx`, raiz do repo) com 2
+   abas — **"Mês Anterior"** e **"Ano Anterior"** — capturadas da ANBIMA enquanto o dado ainda
+   estava disponível. Estrutura fixa: data de referência em `C2`, vencimento em `C5:C10` (texto
+   tipo `"NTNB 2028"`), taxa em `D5:D10` (fração, ex. `0.0847` = 8,47%). Cobre **os 6 vencimentos**,
+   inclusive 2028/2029 que nenhuma fonte pública (ANBIMA nem Tesouro Direto) mais tem.
+
+**`api/ntnb.js?staticAnchors=1`** lê essa planilha com a lib `xlsx` (SheetJS, `XLSX.read`) e
+devolve `{month: {date, rates}, year: {date, rates}}`. **Cuidado de encoding real encontrado**: o
+espelho em `server.ps1` (`Get-NtnbStaticAnchors`) lê o `.xlsx` na unha (é um zip de XML por baixo)
+e **não pode comparar contra o literal `"Mês Anterior"` escrito no próprio `.ps1`** — Windows
+PowerShell 5.1 lê arquivo `.ps1` sem BOM usando o codepage do sistema, não UTF-8, e o "ê" do
+literal vira `"MÃªs Anterior"` em tempo de execução, nunca batendo com o nome real extraído do
+XML. Solução: identificar as abas por padrão (`-like 'Ano*'` vs. `-notlike 'Ano*' -and -like
+'*Anterior'`), nunca pelo texto acentuado exato.
+
+**Validação de atualidade** (`fetchNtnbBatch()` no front-end): antes de usar a planilha, compara
+o **mês/ano** da data que ela traz com o mês/ano esperado pro refKey atual (não o dia exato — 31
+dez pode não ter tido pregão, a planilha real veio com 30/12, e exigir o dia exato trataria isso
+como desatualizado por engano). Se não bater, aquele Δ (mês ou ano, cada um checado
+independente) vira **"n/d"** em vez de calcular contra o período errado. Isso significa: se o
+Daniel esquecer de atualizar a planilha num mês, o sintoma é "n/d" aparecendo, não um número
+sutilmente errado — degrada do jeito certo.
+
+**Consequência prática**: essa planilha exige manutenção manual (pendência 10 da seção 0) — 1x/mês
+(último dia útil) e 1x/ano (31/dez, enquanto a ANBIMA ainda tem o dado fresco). A aba "Mês
+Anterior" da planilha, na prática, quase nunca é o gargalo (a ANBIMA tem retenção de sobra pra
+~1 mês) — é a base de YTD que precisa da captura anual pra não sumir.
+
+**Cache no front-end**: `getNtnbStaticAnchorsCached()` guarda o resultado por 1h em `localStorage`
+(não permanente, diferente de outros caches do relatório — é um arquivo que o Daniel pode
+atualizar a qualquer momento, então não faz sentido supor que nunca muda).
+
+### 6.8.2 Baixar como imagem
+Botão "baixar imagem" ao lado de "atualizar" no cabeçalho do card
+(`downloadClosingReportImage()`). Desenha o relatório já carregado (`lastCloseReportPayload`) à
+mão num `<canvas>` — cores, tipografia (IBM Plex, já carregada via Google Fonts) e colunas
+replicando o card em tela — e baixa como PNG (`canvas.toBlob` + link temporário com `download=`).
+
+**Decisão de não usar `html2canvas` (ou lib parecida)**: o projeto evita dependências de CDN além
+das duas já existentes (Chart.js, Google Fonts — seção 4) por princípio de manter o app leve e
+sem depender de infraestrutura de terceiros pra funcionar. Como o layout do relatório é tabular e
+previsível, desenhar direto no canvas é inteiramente viável e evita esse novo ponto de falha
+externo. `await document.fonts.ready` garante que a fonte web já esteja carregada antes de medir/
+desenhar texto (sem isso, a primeira exportação da sessão podia cair no fallback do sistema).
 
 **Divergências conhecidas vs. um relatório de fechamento de banco de verdade**: futuros de
 commodities (`BZ=F`/`GC=F`) usam o bucket diário do Yahoo, não o preço de ajuste/settlement
-oficial da bolsa (mesma ressalva já documentada na seção 6.6.1 pro card ao vivo); "fechamento" de
-Bitcoin é convenção do Yahoo (23:59 UTC), não um conceito real de fechamento de cripto; ETTJ Pré
-não existe em relatórios desse tipo, incluído aqui a pedido do usuário.
+oficial da bolsa (mesma ressalva já documentada na seção 6.6.1 pro card ao vivo). **Bitcoin foi
+removido do relatório** (não entra mais, a pedido do usuário — seção 0) — a ressalva de
+"fechamento de cripto é convenção do Yahoo" que existia aqui não se aplica mais a nada no
+relatório atual. **ETTJ Pré também foi removida do relatório** (junto com Dow Jones, DAX, Nikkei
+225 e Kospi — seção 6.8, a pedido do usuário); a ressalva de que "ETTJ Pré não existe em
+relatórios desse tipo de banco" que existia aqui não se aplica mais.
+
+### 6.8.3 Consumidor externo: `Envio Fechamento WhatsApp/`
+Projeto Node.js separado (fora do deploy do Vercel, ver seção 2) que abre o site publicado via
+Puppeteer, clica na sub-aba FECHAMENTO, espera carregar, e tira um screenshot do card — não
+reimplementa nenhuma lógica do relatório, só fotografa o HTML renderizado. Depende de:
+- `.subtab-btn[data-sub="close"]` — seletor pra clicar e abrir a sub-aba.
+- `.close-table` (aparece) e `.close-status` (some) — condição de "terminou de carregar".
+- `.close-report` — elemento fotografado (cabeçalho + tabela + nota de rodapé).
+- `#close-refdate` — extrai a data de referência real pra usar na legenda da mensagem (**não**
+  usa a data do relógio — já mandou uma legenda errada uma vez por causa disso, ver o README
+  desse projeto).
+
+**Se qualquer um desses seletores/IDs mudar de nome ou sumir, o script de WhatsApp quebra
+silenciosamente** (timeout esperando `.close-table`, ou screenshot de elemento errado) — sem
+nenhum teste automatizado ligando os dois projetos. Ao mexer na estrutura HTML do relatório de
+Fechamento, checar esse projeto (`R:\X - Daniel\Claude\Envio Fechamento WhatsApp\lib\screenshot.js`).
+
+Detalhes de biblioteca (WhatsApp), agendamento e troubleshooting ficam só no `README.md` desse
+projeto, não duplicados aqui — resumo rápido: usa **Baileys** (não `whatsapp-web.js` — essa foi
+tentada primeiro e abandonada por uma incompatibilidade ativa e não resolvida com a versão atual
+do WhatsApp Web, confirmada ao vivo nessa sessão), sessão local persistida em `.baileys_auth/`
+(QR Code só na primeira vez), e agendamento via Agendador de Tarefas do Windows chamando
+`npm run send` (não um processo próprio ficando ligado).
+
+### 6.8.4 [IDEIA DORMENTE — NÃO ATIVA] Envio sem depender do PC ligado
+**Status: só uma ideia registrada, discutida numa sessão anterior. Não implementar nada disto sem
+pedido explícito do usuário** — hoje o envio funciona (seção 6.8.3) mas só enquanto o PC do
+Daniel estiver ligado no horário agendado, o que ele identificou como uma limitação real.
+
+**Pergunta original**: dá pra fazer esse envio de forma gratuita, funcionando com o PC desligado,
+usando o Vercel?
+
+**Resposta discutida (não implementada)**: sim, mas exige trocar duas peças do pipeline, não só
+mudar onde o script roda:
+1. **Trocar o Cron do Windows por Vercel Cron** (gratuito no plano Hobby, suficiente pra 1x/dia).
+2. **Trocar a captura via Puppeteer (Chrome de verdade) por desenho direto num canvas em Node**
+   (reaproveitando a mesma lógica de `downloadClosingReportImage()` — seção 6.8.2 — portada pra
+   uma lib tipo `@napi-rs/canvas`), porque rodar um Chromium inteiro dentro de uma função
+   serverless no Hobby é pesado e frágil pro tempo/memória disponíveis.
+3. **Persistir a sessão do Baileys num KV externo gratuito** (ex: Upstash Redis, integra nativo
+   com Vercel) em vez do arquivo local `.baileys_auth/` — função serverless não tem disco
+   persistente entre execuções. Isso exige **reautenticar o WhatsApp do zero** (novo QR Code)
+   nesse formato novo.
+4. Consumiria **1 dos 2 slots de função serverless de folga** no teto de 12 do plano Hobby
+   (seção 19.1.1) — atualmente ainda 2 de folga.
+
+Se essa ideia for retomada, começar revalidando esses 4 pontos (limites atuais do Vercel Cron/
+Hobby podem ter mudado) antes de implementar.
 
 ---
 
@@ -981,8 +1155,9 @@ reais do deployment antes de qualquer suposição.
 
 ### 19.1 `package.json` é obrigatório
 Todo `api/*.js` usa ES Module. `package.json` declara `"type": "module"`. **Nunca** usar
-`module.exports` num arquivo novo. Também declara a dependência `ws` (cliente WebSocket, usado
-pelo histórico de DI Futuro) — precisa estar de fato no repositório pro build funcionar.
+`module.exports` num arquivo novo. Também declara as dependências `ws` (cliente WebSocket, usado
+pelo histórico de DI Futuro) e `xlsx` (lê "Taxas Antigas NTNB.xlsx", seção 6.8.1) — precisam
+estar de fato no repositório pro build funcionar.
 
 ### 19.1.1 Limite de 12 funções serverless no plano Hobby
 O Vercel Hobby limita a **12 Serverless Functions por deployment** (1 função = 1 arquivo em
@@ -996,6 +1171,15 @@ próximo upload não incluir a remoção explicitamente — já virou órfão co
 Sempre que remover uma aba/feature que tinha arquivo(s) próprio(s) em `api/`, **lembrar de
 deletar esses arquivos no GitHub também**. Ao criar uma função nova, considerar primeiro se ela
 pode virar uma rota dentro de um arquivo já existente da mesma fonte de dados.
+
+### 19.1.2 `vercel.json` → `functions.api/ntnb.js`
+Duas configs adicionadas pro modo `?staticAnchors=1` (seção 6.8.1):
+- `"maxDuration": 15` — ler e parsear o `.xlsx` é rápido, mas deixa uma margem sobre o timeout
+  default do Hobby.
+- `"includeFiles": "Taxas Antigas NTNB.xlsx"` — **obrigatório**. Sem isso o Vercel pode não
+  incluir esse arquivo no bundle da função (ele não é código, é um dado estático fora de `api/`),
+  e `?staticAnchors=1` funcionaria local mas quebraria em produção com "arquivo não encontrado".
+  Se a planilha for renomeada, esse campo precisa acompanhar.
 
 ### 19.2 Fluxo do Daniel (não é git CLI)
 Sobe arquivos manualmente pela interface web do GitHub ("Add files via upload"), que dispara
@@ -1103,7 +1287,25 @@ usa inline livremente).
   `Intl.DateTimeFormat` com a tz certa) e comparar as chaves como string — refina a lição da
   seção 13.2 (que já valia pra alinhar por dia calendário, mas assumia um fuso só).
 - **Não assumir que "depois de tal horário" significa "todo instrumento já fechou"** — Brent,
-  Ouro, Bitcoin e câmbio negociam bem depois do fechamento das bolsas de ação (seção 6.8). Pra
-  saber se a última barra é definitiva, checar `meta.currentTradingPeriod.regular` (mesmo campo
-  da seção 7) e descartar a barra enquanto a sessão daquele ativo especificamente ainda está
-  aberta — não uma hora de corte fixa pra todos.
+  Ouro e câmbio negociam bem depois do fechamento das bolsas de ação (seção 6.8). Pra saber se a
+  última barra é definitiva, checar `meta.currentTradingPeriod.regular` (mesmo campo da seção 7)
+  e descartar a barra enquanto a sessão daquele ativo especificamente ainda está aberta — não uma
+  hora de corte fixa pra todos.
+- **Script de terceiro no `<head>` sem `defer`/`async` bloqueia a renderização da página
+  inteira**, não só a feature que usa esse script — o Chart.js carregava assim (só é usado quando
+  alguém abre um gráfico, mas travava o parse do HTML e a execução do `<script>` principal até
+  baixar da CDN). Corrigido com `defer`; qualquer chamada de topo de página que dependa da lib
+  (ex: `Chart.register(...)`) precisa mover pra dentro de um listener de `DOMContentLoaded`
+  (scripts `defer` rodam antes desse evento, então nessa altura já está garantido que existem).
+- **Chamadas de rede independentes dentro do mesmo loader não devem ser `await`-adas em
+  sequência** — `loadBrasil()` (CDI → Selic → IBOV) e `loadJuros()` (Fed → BCE → T-Note) faziam 3
+  requisições em série sem nenhuma depender da anterior, o que soma os tempos de resposta em vez
+  de pegar só o da mais lenta. Corrigido envolvendo cada bloco `try/catch` num IIFE assíncrono e
+  rodando os três via `Promise.allSettled`. Ao adicionar um loader novo com mais de uma chamada
+  independente, usar esse padrão desde o início.
+- **Cache do relatório de Fechamento em `localStorage` precisa de versão no nome da chave**
+  (`CLOSE_REPORT_CACHE_KEY`, hoje `'close_report_v4'`) — a chave antiga só mudava quando a data de
+  referência mudava, então quem já tinha o relatório em cache continuava vendo a config antiga
+  (instrumento removido/adicionado) até o dia virar sozinho. **Bump o `v2`→`v3` etc. sempre que
+  `CLOSE_REPORT_CONFIG` mudar de forma relevante** (instrumento novo, campo novo no payload) —
+  isso invalida o cache de todo mundo automaticamente, sem exigir nenhuma ação manual do usuário.

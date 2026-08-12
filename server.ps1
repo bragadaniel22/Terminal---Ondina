@@ -88,20 +88,6 @@ function Get-BusinessDaysBack {
     return $list
 }
 
-# Espelho de fetchEttjNear em api/anbima.js — usado pelo relatório de Fechamento (?dates=) pra
-# resolver ETTJ Pré em datas de referência específicas, tolerando feriado (anda pra trás em dias
-# úteis) e devolvendo $null se esgotar as tentativas (fora da retenção de ~5-6 meses da ANBIMA).
-function Get-EttjNear {
-    param([string]$DateStr, [int]$MaxTries = 3)
-    if ($DateStr -notmatch '^(\d{2})/(\d{2})/(\d{4})$') { return $null }
-    $anchor = [datetime]::new([int]$Matches[3], [int]$Matches[2], [int]$Matches[1])
-    foreach ($dt in (Get-BusinessDaysBack -StartDate $anchor -Count $MaxTries)) {
-        $found = Get-EttjOneDay -Dt $dt
-        if ($found) { return $found }
-    }
-    return $null
-}
-
 # Espelho de fetchDayFile em api/ntnb.js — baixa e faz o parse de um único arquivo diário da
 # ANBIMA (traz as 6 taxas NTN-B de uma vez). Devolve $null (não lança) em qualquer falha.
 function Get-NtnbDayFile {
@@ -1567,32 +1553,9 @@ while ($listener.IsListening) {
     }
 
     # ── Proxy ANBIMA ETTJ ────────────────────────────────────────────────────
-    # ?dates=DD/MM/YYYY,DD/MM/YYYY,... → espelho do branch em api/anbima.js, usado pelo
-    # relatório de Fechamento (aba ÍNDICES) pra buscar ETTJ Pré em datas de referência
-    # específicas. Sem ?dates, comportamento original (snapshot do dia mais recente).
+    # Espelho do handler em api/anbima.js — snapshot do dia mais recente.
     if ($path -eq '/api/anbima') {
         try {
-            if ($req.QueryString['dates']) {
-                $requested = $req.QueryString['dates'] -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-                $items = [System.Collections.Generic.List[string]]::new()
-                foreach ($dt in $requested) {
-                    $found = Get-EttjNear -DateStr $dt
-                    if ($found) {
-                        $items.Add("{`"ettjIpca`":$($found.ettjIpca),`"ettjPre`":$($found.ettjPre),`"infImpl`":$($found.infImpl),`"date`":`"$($found.date)`"}")
-                    } else {
-                        $items.Add('null')
-                    }
-                }
-                $result = "{`"results`":[$($items -join ',')]}"
-                $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
-                $res.ContentType = 'application/json'
-                $res.Headers.Add('Access-Control-Allow-Origin', '*')
-                $res.ContentLength64 = $bytes.Length
-                $res.OutputStream.Write($bytes, 0, $bytes.Length)
-                $res.OutputStream.Close()
-                continue
-            }
-
             $dates = Get-BusinessDaysBack -StartDate (Get-Date) -Count 5
             $found = $null
             foreach ($dt in $dates) {

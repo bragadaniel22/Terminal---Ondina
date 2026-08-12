@@ -760,15 +760,13 @@
  </div>
  </div>
  <div id="close-body"><div class="close-status">clique em FECHAMENTO pra carregar…</div></div>
- <div class="close-note">Fontes: Yahoo Finance, B3/TradingView (DI Futuro), ANBIMA (Fechamento/Δ dia de ETTJ Pré e
- NTN-B). Δ mês e Δ ano de NTN-B usam a planilha "Taxas Antigas NTNB.xlsx" (mantida manualmente, atualizada 1x/mês
- e 1x/ano) — a ANBIMA só retém ~5-6 meses de arquivo diário, então essas bases somem da fonte ao vivo com o
- tempo. Se a planilha ficar desatualizada num mês, o Δ correspondente aparece como "n/d" em vez de um número
- calculado contra o período errado. Δ mês e Δ ano dos demais instrumentos contra o último pregão do mês/ano
- anterior (MTD/YTD). Uma data entre parênteses ao lado do nome indica que aquele mercado fechou num dia diferente
- da referência do relatório (feriado local ou fuso horário). MSCI EM (EEM) é retorno de preço do ETF, não do
- índice total return. ETTJ Pré: Δ ano aparece como "n/d" quando a base sai da janela de retenção da ANBIMA
- (normalmente entre meados do ano e a virada do ano).</div>
+ <div class="close-note">Fontes: Yahoo Finance, B3/TradingView (DI Futuro), ANBIMA (NTN-B). Δ mês e Δ ano de NTN-B usam
+ a planilha "Taxas Antigas NTNB.xlsx" (mantida manualmente, atualizada 1x/mês e 1x/ano) — a ANBIMA só retém ~5-6
+ meses de arquivo diário, então essa base some da fonte ao vivo com o tempo. Se a planilha ficar desatualizada
+ num mês, o Δ correspondente aparece como "n/d" em vez de um número calculado contra o período errado. Δ mês e
+ Δ ano dos demais instrumentos contra o último pregão do mês/ano anterior (MTD/YTD). Uma data entre parênteses
+ ao lado do nome indica que aquele mercado fechou num dia diferente da referência do relatório (feriado local ou
+ fuso horário). MSCI EM (EEM) é retorno de preço do ETF, não do índice total return.</div>
 </div>
 </div>
 
@@ -2755,16 +2753,11 @@ function alignSeries(allSeries) {
 const CLOSE_REPORT_CONFIG = [
  { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F30', label: 'DI FUTURO JAN/30', unit: 'bps' },
  { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F35', label: 'DI FUTURO JAN/35', unit: 'bps' },
- { section: 'Renda fixa', region: 'Brasil', kind: 'ettj', label: 'ETTJ PRÉ 252DU', unit: 'bps' },
  ...NTNB_MATURITIES.map(m => ({ section: 'Renda fixa', region: 'Brasil', kind: 'ntnb', maturity: m.year, label: `NTN-B ${m.year}`, unit: 'bps' })),
  { section: 'Bolsa', region: 'Brasil', kind: 'yahoo', ticker: '^BVSP', label: 'IBOVESPA', unit: 'pct', decimals: 0 },
  { section: 'Bolsa', region: 'Estados Unidos', kind: 'yahoo', ticker: '^GSPC', label: 'S&P 500', unit: 'pct', decimals: 2 },
  { section: 'Bolsa', region: 'Estados Unidos', kind: 'yahoo', ticker: '^IXIC', label: 'NASDAQ', unit: 'pct', decimals: 2 },
- { section: 'Bolsa', region: 'Estados Unidos', kind: 'yahoo', ticker: '^DJI', label: 'DOW JONES', unit: 'pct', decimals: 2 },
  { section: 'Bolsa', region: 'Europa', kind: 'yahoo', ticker: '^STOXX50E', label: 'EURO STOXX 50', unit: 'pct', decimals: 2 },
- { section: 'Bolsa', region: 'Europa', kind: 'yahoo', ticker: '^GDAXI', label: 'DAX', unit: 'pct', decimals: 2 },
- { section: 'Bolsa', region: 'Ásia e Pacífico', kind: 'yahoo', ticker: '^KS11', label: 'KOSPI', unit: 'pct', decimals: 2 },
- { section: 'Bolsa', region: 'Ásia e Pacífico', kind: 'yahoo', ticker: '^N225', label: 'NIKKEI 225', unit: 'pct', decimals: 2 },
  { section: 'Bolsa', region: 'Emergentes', kind: 'yahoo', ticker: 'EEM', label: 'MSCI EM', unit: 'pct', decimals: 2 },
  { section: 'Commodities', region: null, kind: 'yahoo', ticker: 'BZ=F', label: 'BRENT', unit: 'pct', decimals: 2 },
  { section: 'Commodities', region: null, kind: 'yahoo', ticker: 'GC=F', label: 'OURO', unit: 'pct', decimals: 2 },
@@ -2899,34 +2892,6 @@ async function closingDiSeries(symbol) {
  return d.history.map(h => ({ ts: h.date, p: h.value, key: dateKeyTZ(h.date * 1000, 'America/Sao_Paulo') }));
 }
 
-// ETTJ Pré não tem endpoint de série contínua (só snapshot por data), então em vez de um Δ dia
-// "ontem fixo" fazemos 2 idas: primeiro resolve a data efetiva de hoje (pode recuar por feriado),
-// depois pede ontem/MTD/YTD a partir dessa data já confirmada — evita a base de "ontem" colidir
-// com a de "hoje" quando as duas caem no mesmo feriado.
-async function closingEttjDeltas(refKey) {
- const r1 = await fetch(`/api/anbima?dates=${encodeURIComponent(keyToBr(refKey))}`);
- const d1 = await r1.json();
- const todayResult = d1?.results?.[0];
- if (!todayResult) throw new Error('ETTJ: sem dado no período');
-
- const todayKey = brToKey(todayResult.date);
- const prevDayAnchor = keyToBr(addDaysToKey(todayKey, -1));
- const monthAnchor = keyToBr(lastDayOfPrevMonthKey(refKey));
- const yearAnchor = keyToBr(lastDayOfPrevYearKey(refKey));
-
- const r2 = await fetch(`/api/anbima?dates=${[prevDayAnchor, monthAnchor, yearAnchor].map(encodeURIComponent).join(',')}`);
- const d2 = await r2.json();
- const [prevResult, monthResult, yearResult] = d2?.results ?? [];
-
- return {
- value: todayResult.ettjPre,
- asOfKey: todayKey,
- dChg: prevResult ? todayResult.ettjPre - prevResult.ettjPre : null,
- mChg: monthResult ? todayResult.ettjPre - monthResult.ettjPre : null,
- yChg: yearResult ? todayResult.ettjPre - yearResult.ettjPre : null,
- };
-}
-
 // NTN-B: um arquivo diário da ANBIMA traz as 6 taxas de uma vez (/api/ntnb), então resolve os
 // 6 vencimentos com só 2 requisições pra Δ dia (hoje + ontem). Δ mês e Δ ano vêm da planilha
 // estática "Taxas Antigas NTNB.xlsx" (Daniel mantém manualmente, 1x/mês e 1x/ano) — a ANBIMA só
@@ -3008,10 +2973,6 @@ async function computeCloseItem(item, refKey, ntnbBatchPromise) {
  if (!d) throw new Error('sem dados');
  return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey };
  }
- if (item.kind === 'ettj') {
- const d = await closingEttjDeltas(refKey);
- return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey };
- }
  if (item.kind === 'ntnb') {
  const batch = await ntnbBatchPromise;
  const d = batch?.[item.maturity];
@@ -3025,7 +2986,7 @@ async function computeCloseItem(item, refKey, ntnbBatchPromise) {
 // (instrumento adicionado/removido, campo novo no payload, etc). Sem isso, quem já tinha o
 // relatório em cache no navegador continuaria vendo a versão antiga (mesmo refKey, payload
 // desatualizado) até a data de referência virar sozinha — já aconteceu na prática.
-const CLOSE_REPORT_CACHE_KEY = 'close_report_v3';
+const CLOSE_REPORT_CACHE_KEY = 'close_report_v4';
 
 async function loadClosingReport(force = false) {
  const refKey = computeRefKey();
