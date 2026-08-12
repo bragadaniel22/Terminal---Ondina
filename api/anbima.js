@@ -2,40 +2,12 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-store');
 
-  // ?dates=DD/MM/YYYY,DD/MM/YYYY,... → usado pelo relatório de Fechamento (aba ÍNDICES) pra
-  // buscar a ETTJ Pré em datas de referência específicas (dia anterior, MTD, YTD). Cada data
-  // pedida anda pra trás em dias úteis até achar um arquivo publicado (cobre feriado) ou esgotar
-  // as tentativas — nesse caso devolve null naquela posição (o front-end mostra "n/d"). A ANBIMA
-  // só retém ~5-6 meses de arquivo diário nesse endpoint, então datas mais antigas que isso
-  // sempre voltam null (ex: a base de YTD em janeiro deixa de existir por volta de junho).
-  if (req.query.dates) {
-    const requested = String(req.query.dates).split(',').map(s => s.trim()).filter(Boolean);
-    const results = await Promise.all(requested.map(dt => fetchEttjNear(dt)));
-    return res.json({ results });
-  }
-
   const dates = lastBusinessDays(5);
   for (const dt of dates) {
     const parsed = await fetchOneDay(dt);
     if (parsed) return res.json(parsed);
   }
   return res.status(500).json({ error: 'ANBIMA: sem dados' });
-}
-
-// maxTries=3 (não 8): cada tentativa tem timeout de 3s, e o Vercel Hobby corta a função em
-// ~10s — 3 tentativas sequenciais de 3s é o teto seguro por invocação. Isso reduz a cobertura
-// de feriados longos (ex: só cobre um feriado + fim de semana, não um Carnaval de 4 dias), mas
-// evitar timeout da função é mais importante que cobrir o caso raro — o front-end já degrada
-// pra "n/d" com segurança quando esgota as tentativas.
-async function fetchEttjNear(dateStr, maxTries = 3) {
-  const anchor = parseBrDate(dateStr);
-  if (!anchor) return null;
-  const candidates = businessDaysBackFrom(anchor, maxTries);
-  for (const dt of candidates) {
-    const parsed = await fetchOneDay(dt);
-    if (parsed) return parsed;
-  }
-  return null;
 }
 
 async function fetchOneDay(dt) {
@@ -58,13 +30,6 @@ async function fetchOneDay(dt) {
   } catch {
     return null;
   }
-}
-
-function parseBrDate(s) {
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
-  if (!m) return null;
-  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-  return isNaN(d.getTime()) ? null : d;
 }
 
 function businessDaysBackFrom(startDate, n) {
