@@ -234,11 +234,20 @@
  .ntnb-cell { position: relative; }
  .sn-search-btn {
  position: absolute; top: 6px; right: 6px; width: 20px; height: 20px;
- display: flex; align-items: center; justify-content: center;
  background: transparent; border: none; font-size: 10px; line-height: 1;
  color: var(--dim); cursor: pointer; opacity: .8; border-radius: 5px;
  }
  .sn-search-btn:hover { color: var(--accent); opacity: 1; background: var(--page); }
+ /* Botão vazio (sem glifo/emoji, ver seção 4 do METODOLOGIA) — lupa desenhada só em CSS:
+ ::before é o aro, ::after é o cabo, herdam a cor do :hover acima via currentColor. */
+ .sn-search-btn::before {
+ content: ''; position: absolute; top: 3px; left: 3px; width: 8px; height: 8px;
+ border: 1.4px solid currentColor; border-radius: 50%;
+ }
+ .sn-search-btn::after {
+ content: ''; position: absolute; top: 12px; left: 10px; width: 5px; height: 1.4px;
+ background: currentColor; border-radius: 1px; transform: rotate(45deg);
+ }
 
  /* HEATMAP */
  .heatmap-wrap { padding: 14px; display: flex; flex-direction: column; gap: 16px; }
@@ -348,7 +357,19 @@
  border-radius: 10px;
  }
  .feed-search-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
- .feed-search-icon { font-size: 13px; color: var(--dim); flex-shrink: 0; }
+ /* Igual ao .sn-search-btn (seção 4 do METODOLOGIA) — elemento vazio, lupa em CSS puro. */
+ .feed-search-icon {
+ font-size: 13px; color: var(--dim); flex-shrink: 0;
+ position: relative; display: inline-block; width: 13px; height: 13px;
+ }
+ .feed-search-icon::before {
+ content: ''; position: absolute; top: 0; left: 0; width: 7px; height: 7px;
+ border: 1.4px solid currentColor; border-radius: 50%;
+ }
+ .feed-search-icon::after {
+ content: ''; position: absolute; top: 8px; left: 6px; width: 5px; height: 1.4px;
+ background: currentColor; border-radius: 1px; transform: rotate(45deg);
+ }
  .feed-search-wrap input {
  flex: 1; font-family: var(--sans); font-size: 13px; color: var(--ink);
  background: transparent; border: none; padding: 4px 0;
