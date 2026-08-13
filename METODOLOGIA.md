@@ -36,9 +36,21 @@ terminal"; copiamos o arquivo inteiro por cima do `index.html` depois de validar
 - **Abas e filtros**: viraram pílulas (`background: var(--ink)` quando ativo, cantos
   arredondados) em vez de texto sublinhado.
 - **Emojis decorativos removidos** de textos/labels (bandeiras, ícones de card, 🔒/🤖/⭐/🔔/✕/🔍
-  etc. em strings geradas por JS) — mantidos só como texto puro. Frameworks de emoji-como-ícone
-  (ex: `.sn-search-btn`, `.modal-close`, `.feed-search-icon`) ficaram com o elemento vazio
-  (dependem só do estilo CSS, sem glifo dentro).
+  etc. em strings geradas por JS) — mantidos só como texto puro. `.sn-search-btn`, `.modal-close`
+  e `.feed-search-icon` ficaram com o elemento HTML vazio (sem glifo/emoji dentro), com a
+  intenção de desenhar o ícone só em CSS.
+
+  **Bug real numa sessão seguinte**: essa intenção nunca foi implementada de fato — o CSS desses
+  três só definia cor/fundo, sem nenhum `::before`/`::after` desenhando algo. Resultado: os três
+  ficavam **completamente em branco** (nem X, nem lupa, nada), não só "meio claros" — o botão de
+  fechar dos modais em particular ficava quase invisível contra o fundo do card. Corrigido
+  desenhando os ícones com pseudo-elementos (`::before`/`::after`, `content: ''`, formas via
+  `border-radius`/`transform: rotate()`, cor via `currentColor` — herda automaticamente a cor do
+  `:hover` já existente, sem CSS extra): X (duas barras cruzadas) em `.modal-close`, lupa (aro +
+  cabo) em `.sn-search-btn` e `.feed-search-icon`. Continua sem emoji/glifo de texto, só que agora
+  o CSS de fato desenha algo. **Se um ícone novo desse tipo for adicionado, não repetir o erro de
+  deixar o elemento vazio sem o CSS correspondente** — testar visualmente antes de assumir que
+  "só CSS" está funcionando.
 - **Cores off-white testadas e ajustadas** a pedido explícito do usuário ("um off white bem
   claro ao invés do branco") — ver seção 4 pros valores exatos usados.
 - **Logo nova**: quadrado azul (`--accent`) arredondado com um check/linha branca (`assets/icon.svg`
@@ -149,9 +161,10 @@ continua no repo só como registro histórico da matemática. Ver seção 12.
 8. **Cuidado extra com credenciais**: o usuário já colou no chat, por engano, uma API key que
    pensava ser de um serviço mas era de outro completamente diferente (Blueticks/WhatsApp) — ver
    seção 20 antes de orientar sobre qualquer chave nova.
-9. **Horário exato de publicação do arquivo diário da ANBIMA (NTN-B) não é conhecido** — só
-   sabemos que o prazo de coleta das instituições é 12h; a publicação em si acontece em algum
-   momento depois disso, sem SLA público documentado. Ver seção 6.7.
+9. **[RESOLVIDO numa sessão seguinte] Horário de publicação do arquivo diário da ANBIMA
+   (NTN-B)**: não tem SLA público oficial, mas o header `Last-Modified` do próprio arquivo,
+   testado em 4 dias distintos, aponta consistentemente **entre 18h25 e 18h45 de Brasília**. Ver
+   seção 6.7 pro método e a ressalva sobre dois dias com padrão diferente.
 10. **`Taxas Antigas NTNB.xlsx` precisa de manutenção manual recorrente** (1x/mês, no último dia
     útil do mês; 1x/ano, 31/dez) — é a base de Δ mês/Δ ano da NTN-B no relatório de Fechamento, e
     se ficar desatualizada o Δ correspondente vira "n/d" sozinho (não mostra número errado, mas
@@ -493,10 +506,20 @@ célula é clicável e o cabeçalho tem um link "consolidado" — seção 8.2.
 **Não é intraday** — a ANBIMA publica **um arquivo por dia** (mercado secundário), não uma API
 de cotação ao vivo. O terminal mostra a taxa do **último arquivo publicado**, que fica parada
 durante o dia até a ANBIMA soltar o arquivo novo. Prazo de coleta das instituições: **12h**; a
-publicação em si acontece depois disso, sem horário exato documentado publicamente pela ANBIMA
-(confirmado via busca: não achamos um SLA oficial de horário de divulgação, só o prazo de
-coleta). Se precisar do horário exato, o jeito é monitorar o endpoint num dia e anotar quando o
-arquivo do dia aparece pela primeira vez.
+publicação em si acontece depois disso, sem SLA oficial documentado publicamente pela ANBIMA.
+
+**Horário real de publicação, descoberto numa sessão seguinte**: o arquivo diário
+(`ms{aa}{mm}{dd}.txt`, mesmo usado pelo card e pelo relatório de Fechamento — seção 6.8.1) expõe
+um header HTTP `Last-Modified` no próprio servidor da ANBIMA. Testado em 4 dias distintos de uma
+mesma semana (11/08, 10/08, 07/08, 05/08/2026): todos publicados **entre 18h25 e 18h45 de
+Brasília**, uns 30-45min depois do fechamento do pregão de DI Futuro (18h, seção 6.8.4/B3) — não é
+um SLA oficial da ANBIMA, mas é um sinal real e repetível direto do servidor deles, não uma
+suposição. **Ressalva**: em dois dias testados (04/08 e 06/08), o `Last-Modified` bateu quase no
+segundo com o do dia seguinte (05/08 e 07/08) — parece reprocessamento em lote nesses casos
+específicos, não o padrão normal; tratar "18h30-18h45" como janela típica, não garantia diária.
+Forma de checar de novo se precisar: `curl -I https://www.anbima.com.br/informacoes/merc-sec/arqs/ms{aa}{mm}{dd}.txt`
+e ler o header `Last-Modified` (o arquivo do dia atual só existe — HTTP 200 — depois de
+publicado; antes disso o servidor devolve 404).
 
 ### 6.8 Sub-aba FECHAMENTO — relatório de fechamento de mercado
 A aba ÍNDICES ganhou duas sub-abas em pílula logo abaixo do seletor de abas: **HOJE** (o conteúdo
