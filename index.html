@@ -376,6 +376,14 @@
  color: var(--dim); font-size: 14px; cursor: pointer; font-family: var(--sans); line-height: 1;
  }
  .modal-close:hover { color: var(--ink); background: var(--border); }
+ /* Botão vazio (sem glifo/emoji, ver seção 4 do METODOLOGIA) — o X é desenhado só em CSS,
+ duas barras cruzadas via pseudo-elemento, herdando a cor do :hover acima. */
+ .modal-close::before, .modal-close::after {
+ content: ''; position: absolute; left: 50%; top: 50%; width: 12px; height: 2px;
+ background: currentColor; border-radius: 1px;
+ }
+ .modal-close::before { transform: translate(-50%, -50%) rotate(45deg); }
+ .modal-close::after { transform: translate(-50%, -50%) rotate(-45deg); }
  .modal-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; padding-right: 30px; }
  .modal-title { font-family: var(--sans); font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: .2px; text-transform: none; }
  .modal-sub { display: flex; gap: 10px; align-items: baseline; }
