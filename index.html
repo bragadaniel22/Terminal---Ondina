@@ -10,7 +10,7 @@
  <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
  <link rel="preconnect" href="https://fonts.googleapis.com">
  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
- <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+ <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
  <style>
  * { margin: 0; padding: 0; box-sizing: border-box; }
  :root {
@@ -29,7 +29,7 @@
  --dim: #6b7280;
  --bright: #0b0e14;
  --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
- --mono: 'IBM Plex Mono', Consolas, Monaco, monospace;
+ --mono: 'JetBrains Mono', Consolas, Monaco, monospace;
  }
  html { font-variant-numeric: tabular-nums; }
  body {
@@ -925,7 +925,7 @@
  <div class="pf-chart-box">
  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
  <div class="pf-chart-title" style="margin-bottom:0">Risco × Retorno · Sharpe</div>
- <div style="display:flex;gap:12px;font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--dim);">
+ <div style="display:flex;gap:12px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--dim);">
  <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:rgba(217,45,63,.85);margin-right:4px;vertical-align:middle"></span>Sharpe &lt; 0</span>
  <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:rgba(217,83,15,.85);margin-right:4px;vertical-align:middle"></span>0 – 0,5</span>
  <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:rgba(184,146,0,.9);margin-right:4px;vertical-align:middle"></span>0,5 – 1</span>
@@ -1606,13 +1606,13 @@ async function loadDiHistory(days) {
  tooltip: {
  backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
  titleColor: '#2b3140', bodyColor: '#2b3140',
- titleFont: { family: 'IBM Plex Mono', size: 9 }, bodyFont: { family: 'IBM Plex Mono', size: 9 },
+ titleFont: { family: 'JetBrains Mono', size: 9 }, bodyFont: { family: 'JetBrains Mono', size: 9 },
  callbacks: { label: c => `${num(c.parsed.y, 2)}%` },
  },
  },
  scales: {
- x: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
- y: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 9 }, callback: v => v.toFixed(1) + '%' }, grid: { color: '#9aa1ac' } },
+ x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, callback: v => v.toFixed(1) + '%' }, grid: { color: '#9aa1ac' } },
  },
  },
  });
@@ -2341,7 +2341,7 @@ const dragRangePlugin = {
  const sign = l.pctv >= 0 ? '+' : '';
  return { text: `${l.label ? l.label + ': ' : ''}${sign}${num(l.delta, 2)} (${sign}${num(l.pctv, 2)}%)`, pos: l.pctv >= 0 };
  });
- ctx.font = "9px 'IBM Plex Mono'";
+ ctx.font = "9px 'JetBrains Mono'";
  const padding = 6, lineH = 12;
  const boxW = Math.max(...boxLines.map(b => ctx.measureText(b.text).width)) + padding * 2;
  const boxH = boxLines.length * lineH + padding * 2;
@@ -2516,17 +2516,17 @@ async function loadNtnbHistory(days) {
  events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
  plugins: {
  dragRange: { enabled: true },
- legend: { display: !ntnbHistoryFocus, labels: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 9 }, boxWidth: 10, padding: 8 } },
+ legend: { display: !ntnbHistoryFocus, labels: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 10, padding: 8 } },
  tooltip: {
  backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
  titleColor: '#2b3140', bodyColor: '#2b3140',
- titleFont: { family: 'IBM Plex Mono', size: 9 }, bodyFont: { family: 'IBM Plex Mono', size: 9 },
+ titleFont: { family: 'JetBrains Mono', size: 9 }, bodyFont: { family: 'JetBrains Mono', size: 9 },
  callbacks: { label: c => `${c.dataset.label}: ${num(c.parsed.y, 2)}%` },
  },
  },
  scales: {
- x: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
- y: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 9 }, callback: v => v.toFixed(1) + '%' }, grid: { color: '#9aa1ac' } },
+ x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, callback: v => v.toFixed(1) + '%' }, grid: { color: '#9aa1ac' } },
  },
  },
  });
@@ -2641,17 +2641,17 @@ async function loadModalChartInception(ticker) {
  events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
  plugins: {
  dragRange: { enabled: true },
- legend: { display: entryDates.length > 1, labels: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 9 }, boxWidth: 10 } },
+ legend: { display: entryDates.length > 1, labels: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 10 } },
  tooltip: {
  backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
  titleColor: '#2b3140', bodyColor: '#2b3140',
- titleFont: { family: 'IBM Plex Mono', size: 9 }, bodyFont: { family: 'IBM Plex Mono', size: 9 },
+ titleFont: { family: 'JetBrains Mono', size: 9 }, bodyFont: { family: 'JetBrains Mono', size: 9 },
  callbacks: { label: c => `${c.dataset.label}: ${num(c.parsed.y, 1)}` },
  },
  },
  scales: {
- x: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
- y: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 9 }, callback: v => v.toFixed(0) }, grid: { color: '#9aa1ac' } },
+ x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, callback: v => v.toFixed(0) }, grid: { color: '#9aa1ac' } },
  },
  },
  });
@@ -2703,13 +2703,13 @@ async function loadModalChart(range) {
  tooltip: {
  backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
  titleColor: '#2b3140', bodyColor: '#2b3140',
- titleFont: { family: 'IBM Plex Mono', size: 9 }, bodyFont: { family: 'IBM Plex Mono', size: 9 },
+ titleFont: { family: 'JetBrains Mono', size: 9 }, bodyFont: { family: 'JetBrains Mono', size: 9 },
  callbacks: { label: c => num(c.parsed.y, 2) },
  },
  },
  scales: {
- x: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
- y: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 9 } }, grid: { color: '#9aa1ac' } },
+ x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 } }, grid: { color: '#9aa1ac' } },
  },
  },
  });
@@ -3098,7 +3098,7 @@ async function downloadClosingReportImage() {
  await document.fonts.ready; // garante IBM Plex já carregada antes de medir/desenhar texto
 
  const COLORS = { ink: '#0f172a', card: '#faf9f5', page: '#eeece7', border: '#e2dfd7', accent: '#1d4ed8', green: '#16a34a', red: '#dc2626', text: '#1f2430', dim: '#6b7280', bright: '#0b0e14' };
- const SANS = 'IBM Plex Sans', MONO = 'IBM Plex Mono';
+ const SANS = 'IBM Plex Sans', MONO = 'JetBrains Mono';
  const COLS = [
  { x: 20, w: 260, align: 'left' },
  { x: 280, w: 150, align: 'right' },
@@ -3361,13 +3361,13 @@ async function loadOneEtfIntraday(key, etf) {
  tooltip: {
  backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
  titleColor: '#2b3140', bodyColor: '#2b3140',
- titleFont: { family: 'IBM Plex Mono', size: 8 }, bodyFont: { family: 'IBM Plex Mono', size: 8 },
+ titleFont: { family: 'JetBrains Mono', size: 8 }, bodyFont: { family: 'JetBrains Mono', size: 8 },
  callbacks: { label: c => `Índice: ${c.parsed.y.toFixed(2)}` },
  },
  },
  scales: {
- x: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 8 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
- y: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 8 }, callback: v => v.toFixed(1) }, grid: { color: '#9aa1ac' } },
+ x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 8 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 8 }, callback: v => v.toFixed(1) }, grid: { color: '#9aa1ac' } },
  },
  },
  });
@@ -3478,13 +3478,13 @@ async function loadOneEtf(key, etf, range) {
  tooltip: {
  backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
  titleColor: '#2b3140', bodyColor: '#2b3140',
- titleFont: { family: 'IBM Plex Mono', size: 8 }, bodyFont: { family: 'IBM Plex Mono', size: 8 },
+ titleFont: { family: 'JetBrains Mono', size: 8 }, bodyFont: { family: 'JetBrains Mono', size: 8 },
  callbacks: { label: c => `Índice: ${c.parsed.y.toFixed(1)}` },
  },
  },
  scales: {
- x: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 10 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
- y: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 10 }, callback: v => v.toFixed(0) }, grid: { color: '#9aa1ac' } },
+ x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 10 }, callback: v => v.toFixed(0) }, grid: { color: '#9aa1ac' } },
  },
  },
  });
@@ -3592,17 +3592,17 @@ async function loadPortfolio(range) {
  events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
  plugins: {
  dragRange: { enabled: true },
- legend: { labels: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 10 }, boxWidth: 12, padding: 10, usePointStyle: false } },
+ legend: { labels: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 10 }, boxWidth: 12, padding: 10, usePointStyle: false } },
  tooltip: {
  backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
  titleColor: '#2b3140', bodyColor: '#2b3140',
- titleFont: { family: 'IBM Plex Mono', size: 8 }, bodyFont: { family: 'IBM Plex Mono', size: 8 },
+ titleFont: { family: 'JetBrains Mono', size: 8 }, bodyFont: { family: 'JetBrains Mono', size: 8 },
  callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)}` },
  },
  },
  scales: {
- x: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 10 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
- y: { ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 10 }, callback: v => v.toFixed(0) }, grid: { color: '#9aa1ac' } },
+ x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 10 }, callback: v => v.toFixed(0) }, grid: { color: '#9aa1ac' } },
  },
  },
  });
@@ -3647,7 +3647,7 @@ async function loadPortfolio(range) {
  tooltip: {
  backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
  titleColor: '#2b3140', bodyColor: '#2b3140',
- titleFont: { family: 'IBM Plex Mono', size: 9 }, bodyFont: { family: 'IBM Plex Mono', size: 8 },
+ titleFont: { family: 'JetBrains Mono', size: 9 }, bodyFont: { family: 'JetBrains Mono', size: 8 },
  callbacks: {
  title: c => c[0].dataset.label,
  label: c => [`Retorno: ${c.parsed.y.toFixed(1)}%`, `Vol.: ${c.parsed.x.toFixed(1)}%`, `Sharpe: ${allStats[c.datasetIndex].sharpe.toFixed(2)}`],
@@ -3656,13 +3656,13 @@ async function loadPortfolio(range) {
  },
  scales: {
  x: {
- title: { display: true, text: 'Volatilidade (anualizada)', color: '#6b7280', font: { family: 'IBM Plex Mono', size: 10 } },
- ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 10 }, callback: v => v.toFixed(0) + '%' },
+ title: { display: true, text: 'Volatilidade (anualizada)', color: '#6b7280', font: { family: 'JetBrains Mono', size: 10 } },
+ ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 10 }, callback: v => v.toFixed(0) + '%' },
  grid: { color: '#9aa1ac' },
  },
  y: {
- title: { display: true, text: 'Retorno (anualizado)', color: '#6b7280', font: { family: 'IBM Plex Mono', size: 10 } },
- ticks: { color: '#6b7280', font: { family: 'IBM Plex Mono', size: 10 }, callback: v => v.toFixed(0) + '%' },
+ title: { display: true, text: 'Retorno (anualizado)', color: '#6b7280', font: { family: 'JetBrains Mono', size: 10 } },
+ ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 10 }, callback: v => v.toFixed(0) + '%' },
  grid: { color: '#9aa1ac' },
  },
  },
