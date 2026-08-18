@@ -2617,6 +2617,26 @@ let bondsHistoryName = null;
 let bondsMode = 'yield'; // 'yield' | 'price' — preço não tem sentido comparar com treasury
 const BONDS_MODE_LABEL = { yield: 'Bid Yield', price: 'Preço (Bid Close)' };
 
+// Dentro de cada seção geográfica (mesma ordem de aparição da planilha "Controle Duration"),
+// ordena os papéis por duration crescente. "Fundos de Bonds" fica de fora — mantém a ordem
+// original da planilha, sem reordenar (a pedido do Daniel: fundos não seguem esse critério).
+function sortBondsWithinSections(bonds) {
+ const groups = [];
+ let current = null;
+ for (const b of bonds) {
+ if (!current || current.section !== b.section) {
+ current = { section: b.section, items: [] };
+ groups.push(current);
+ }
+ current.items.push(b);
+ }
+ for (const g of groups) {
+ if (g.section === 'Fundos de Bonds') continue;
+ g.items.sort((a, b) => (a.duration ?? Infinity) - (b.duration ?? Infinity));
+ }
+ return groups.flatMap(g => g.items);
+}
+
 async function loadBonds() {
  const body = document.getElementById('bonds-body');
  const asOf = document.getElementById('bonds-asof');
@@ -2625,7 +2645,7 @@ async function loadBonds() {
  const r = await fetch('/api/bonds');
  const d = await r.json();
  if (d.error) throw new Error(d.error);
- bondsCache = d.bonds || [];
+ bondsCache = sortBondsWithinSections(d.bonds || []);
  asOf.textContent = `${bondsCache.length} papéis`;
  renderBondsTable();
  } catch (e) {
