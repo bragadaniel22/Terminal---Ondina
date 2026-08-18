@@ -1133,6 +1133,7 @@
  <div class="modal-sub">
  <span class="modal-last" id="bonds-history-last"></span>
  <span class="modal-chg" id="bonds-history-chg"></span>
+ <span class="modal-chg" id="bonds-history-spread"></span>
  <span class="dim2" style="font-size:10px" id="bonds-history-note">Bid Yield · Refinitiv/Eikon</span>
  </div>
  </div>
@@ -1159,7 +1160,6 @@
  <button class="range-btn active" data-r="130" onclick="loadBondsHistory(130)">6M</button>
  <button class="range-btn" data-r="260" onclick="loadBondsHistory(260)">1A</button>
  <button class="range-btn" data-r="520" onclick="loadBondsHistory(520)">2A</button>
- <button class="range-btn" data-r="0" onclick="loadBondsHistory(0)">DESDE O INÍCIO</button>
  </div>
  <div class="modal-chart-box">
  <div class="modal-status" id="bonds-history-status"></div>
@@ -2729,7 +2729,7 @@ async function loadBondsHistory(days) {
 
  const full = bondsHistoryCache;
  const series = days > 0 ? full.slice(-days) : full;
- const labels = series.map(h => h.date.slice(0, 5)); // DD/MM
+ const labels = series.map(h => h.date.slice(0, 5) + '/' + h.date.slice(8, 10)); // DD/MM/AA
  const unit = bondsMode === 'yield' ? '%' : '';
  const fmt = (v) => bondsMode === 'yield' ? `${num(v, 2)}%` : num(v, 2);
 
@@ -2740,6 +2740,25 @@ async function loadBondsHistory(days) {
  treasuryByDate = new Map(tSeries.map(t => [t.date, t.value]));
  }
  statusEl.textContent = '';
+
+ // Spread = yield do papel − yield do treasury, no último dia em que os dois têm dado
+ // (nem sempre é o último ponto da série do papel — as duas fontes podem atualizar em dias
+ // diferentes).
+ const spreadEl = document.getElementById('bonds-history-spread');
+ if (treasuryByDate) {
+ let spreadVal = null;
+ for (let i = series.length - 1; i >= 0; i--) {
+ const tv = treasuryByDate.get(series[i].date);
+ if (tv != null) { spreadVal = series[i].value - tv; break; }
+ }
+ if (spreadVal != null) {
+ setC('bonds-history-spread', `spread vs UST ${treasuryMaturity}: ${spreadVal >= 0 ? '+' : ''}${num(spreadVal, 2)} p.p.`, spreadVal >= 0 ? 'pos' : 'neg');
+ } else {
+ spreadEl.textContent = ''; spreadEl.className = 'modal-chg';
+ }
+ } else {
+ spreadEl.textContent = ''; spreadEl.className = 'modal-chg';
+ }
 
  if (series.length >= 2) {
  const first = series[0].value, last = series[series.length - 1].value;
