@@ -527,6 +527,7 @@
  <button class="tab-btn" data-tab="etfs" onclick="switchTab(this)">ETFS INTERNOS</button>
  <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
  <button class="tab-btn" data-tab="ainews" onclick="switchTab(this)">NOTÍCIAS</button>
+ <button class="tab-btn" data-tab="bonds" onclick="switchTab(this)">BONDS</button>
 </nav>
 
 <div id="tab-indices" class="tab-panel active">
@@ -1029,6 +1030,26 @@
  </div>
 </div><!-- /tab-ainews -->
 
+<div id="tab-bonds" class="tab-panel">
+<div class="grid" style="grid-template-columns: 1fr;">
+ <div class="card">
+ <div class="card-head">
+ <h2>Bonds</h2>
+ <span id="bonds-asof">carregando…</span>
+ </div>
+ <div id="bonds-body">
+ <div class="close-status">carregando…</div>
+ </div>
+ <div class="close-note">
+ Fontes: planilha "Bonds Terminal.xlsx" (Refinitiv/Eikon), mantida manualmente. Clique num
+ papel pra ver o histórico de Bid Yield. Alguns papéis aparecem 2x com bancos/dealers
+ diferentes (mesmo ISIN) — mostrado como vem na planilha. Preço (PU) histórico e comparação
+ com treasury de datas passadas ainda não estão disponíveis nessa versão.
+ </div>
+ </div>
+</div>
+</div><!-- /tab-bonds -->
+
 <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this) closeChart()">
  <div class="modal-box">
  <button class="modal-close" onclick="closeChart()"></button>
@@ -1100,6 +1121,49 @@
  <div class="modal-chart-box">
  <div class="modal-status" id="di-history-status"></div>
  <canvas id="di-history-chart"></canvas>
+ </div>
+ </div>
+</div>
+
+<div class="modal-overlay" id="bonds-history-overlay" onclick="if(event.target===this) closeBondsHistory()">
+ <div class="modal-box">
+ <button class="modal-close" onclick="closeBondsHistory()"></button>
+ <div class="modal-header">
+ <div class="modal-title" id="bonds-history-title">—</div>
+ <div class="modal-sub">
+ <span class="modal-last" id="bonds-history-last"></span>
+ <span class="modal-chg" id="bonds-history-chg"></span>
+ <span class="dim2" style="font-size:10px" id="bonds-history-note">Bid Yield · Refinitiv/Eikon</span>
+ </div>
+ </div>
+ <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+ <div class="modal-range" style="margin:0;">
+ <button class="range-btn active" data-mode="yield" onclick="setBondsMode('yield')">YIELD</button>
+ <button class="range-btn" data-mode="price" onclick="setBondsMode('price')">PREÇO</button>
+ </div>
+ <select id="bonds-treasury-select" onchange="loadBondsHistory(bondsHistoryDays)" style="font-family:var(--sans); font-size:10.5px; font-weight:600; color:var(--dim); background:var(--page); border:1px solid var(--border); border-radius:6px; padding:5px 8px;">
+ <option value="">comparar com treasury…</option>
+ <option value="3M">UST 3M</option>
+ <option value="6M">UST 6M</option>
+ <option value="1Y">UST 1A</option>
+ <option value="2Y">UST 2A</option>
+ <option value="3Y">UST 3A</option>
+ <option value="5Y">UST 5A</option>
+ <option value="7Y">UST 7A</option>
+ <option value="10Y">UST 10A</option>
+ </select>
+ </div>
+ <div class="modal-range bonds-date-range">
+ <button class="range-btn" data-r="22" onclick="loadBondsHistory(22)">1M</button>
+ <button class="range-btn" data-r="65" onclick="loadBondsHistory(65)">3M</button>
+ <button class="range-btn active" data-r="130" onclick="loadBondsHistory(130)">6M</button>
+ <button class="range-btn" data-r="260" onclick="loadBondsHistory(260)">1A</button>
+ <button class="range-btn" data-r="520" onclick="loadBondsHistory(520)">2A</button>
+ <button class="range-btn" data-r="0" onclick="loadBondsHistory(0)">DESDE O INÍCIO</button>
+ </div>
+ <div class="modal-chart-box">
+ <div class="modal-status" id="bonds-history-status"></div>
+ <canvas id="bonds-history-chart"></canvas>
  </div>
  </div>
 </div>
@@ -2080,6 +2144,7 @@ let pfLoaded = false;
 let heatmapLoaded = false;
 let etfLoaded = false;
 let aiNewsLoaded = false;
+let bondsLoaded = false;
 function switchTab(btn) {
  const name = btn.dataset.tab;
  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -2091,6 +2156,7 @@ function switchTab(btn) {
  if (name === 'etfs' && !etfLoaded) { etfLoaded = true; loadEtfs('3mo'); }
  if (name === 'heatmap' && !heatmapLoaded) { heatmapLoaded = true; loadHeatmap(); }
  if (name === 'ainews' && !aiNewsLoaded) { aiNewsLoaded = true; loadAiNews(); }
+ if (name === 'bonds' && !bondsLoaded) { bondsLoaded = true; loadBonds(); }
 }
 
 let closeReportLoaded = false;
@@ -2533,6 +2599,199 @@ async function loadNtnbHistory(days) {
  } catch (e) {
  statusEl.textContent = 'erro ao carregar';
  console.error('NTN-B histórico', e);
+ }
+}
+
+// ── Aba BONDS ────────────────────────────────────────────────────────────────
+// Fonte: planilha "Bonds Terminal.xlsx" (api/bonds.js). Snapshot ("Controle Duration") tem
+// nome/ISIN/banco/volume/bid yield/cupom/duration/spread — uma entrada por LINHA da planilha,
+// sem agrupar por ISIN (alguns papéis aparecem 2x com bancos/dealers diferentes, mesmo ISIN;
+// ver comentário em api/bonds.js). Histórico (aba "Bid Yield") é buscado só quando o papel é
+// clicado, casando pelo nome exato — nem todo papel tem série (funds/ETFs da lista não têm
+// bloco correspondente na aba "Bid Yield", ver aviso retornado pela API nesse caso).
+let bondsCache = [];
+let bondsHistoryCache = null; // série completa (ascendente) do papel/modo aberto no momento
+let bondsHistoryChart = null;
+let bondsHistoryDays = 130;
+let bondsHistoryName = null;
+let bondsMode = 'yield'; // 'yield' | 'price' — preço não tem sentido comparar com treasury
+const BONDS_MODE_LABEL = { yield: 'Bid Yield', price: 'Preço (Bid Close)' };
+
+async function loadBonds() {
+ const body = document.getElementById('bonds-body');
+ const asOf = document.getElementById('bonds-asof');
+ body.innerHTML = '<div class="close-status">carregando…</div>';
+ try {
+ const r = await fetch('/api/bonds');
+ const d = await r.json();
+ if (d.error) throw new Error(d.error);
+ bondsCache = d.bonds || [];
+ asOf.textContent = `${bondsCache.length} papéis`;
+ renderBondsTable();
+ } catch (e) {
+ body.innerHTML = `<div class="close-err">Não foi possível carregar (${e.message}).</div>`;
+ console.error('Bonds', e);
+ }
+}
+
+function renderBondsTable() {
+ const body = document.getElementById('bonds-body');
+ if (!bondsCache.length) { body.innerHTML = '<div class="close-status">sem papéis</div>'; return; }
+ let html = '<div class="close-table">';
+ html += '<div class="close-row-head"><div>Papel</div><div>Cupom</div><div>Duration</div><div>Bid Yield</div><div>Spread / Treas.</div></div>';
+ for (const b of bondsCache) {
+ const cupom = b.cupomPct != null ? num(b.cupomPct, 2) + '%' : '—';
+ const dur = b.duration != null ? num(b.duration, 2) : '—';
+ const yld = b.bidYield != null ? num(b.bidYield, 2) : '—';
+ const spread = b.spreadOverTreasury != null ? num(b.spreadOverTreasury, 2) : '—';
+ const bancoTag = b.banco ? ` <span class="dim2" style="font-size:9.5px">· ${esc(b.banco)}</span>` : '';
+ html += `<div class="close-row row-click" onclick="openBondHistory('${escJs(b.name)}')">`
+ + `<div class="close-name">${esc(b.name)}${bancoTag}</div>`
+ + `<div>${cupom}</div><div>${dur}</div><div class="hl">${yld}</div><div>${spread}</div>`
+ + `</div>`;
+ }
+ html += '</div>';
+ body.innerHTML = html;
+}
+
+function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function escJs(s) { return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
+function brDateToTs(d) {
+ const [dd, mm, yyyy] = d.split('/').map(Number);
+ return Date.UTC(yyyy, mm - 1, dd);
+}
+
+function openBondHistory(name) {
+ bondsHistoryName = name;
+ bondsHistoryCache = null;
+ bondsMode = 'yield';
+ document.querySelectorAll('#bonds-history-overlay [data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === 'yield'));
+ const treasurySelect = document.getElementById('bonds-treasury-select');
+ treasurySelect.value = '';
+ treasurySelect.disabled = false;
+ document.getElementById('bonds-history-title').textContent = name;
+ document.getElementById('bonds-history-overlay').classList.add('active');
+ loadBondsHistory(bondsHistoryDays);
+}
+
+function closeBondsHistory() {
+ document.getElementById('bonds-history-overlay')?.classList.remove('active');
+ if (bondsHistoryChart) { bondsHistoryChart.destroy(); bondsHistoryChart = null; }
+}
+
+function setBondsMode(mode) {
+ if (mode === bondsMode) return;
+ bondsMode = mode;
+ bondsHistoryCache = null;
+ document.querySelectorAll('#bonds-history-overlay [data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+ // Preço não é comparável com yield de treasury (unidades diferentes) — desliga o combo.
+ const treasurySelect = document.getElementById('bonds-treasury-select');
+ treasurySelect.disabled = mode !== 'yield';
+ loadBondsHistory(bondsHistoryDays);
+}
+
+// Cache simples por vencimento — a série de treasury não depende do papel aberto, então
+// sobrevive a troca de papel/modo dentro da mesma sessão da página.
+const bondsTreasuryCache = {};
+async function fetchTreasurySeries(maturity) {
+ if (bondsTreasuryCache[maturity]) return bondsTreasuryCache[maturity];
+ const r = await fetch(`/api/bonds?history=treasury&maturity=${encodeURIComponent(maturity)}`);
+ const d = await r.json();
+ if (d.error) throw new Error(d.error);
+ const series = (d.history || [])
+ .map(h => ({ ts: brDateToTs(h.date), date: h.date, value: h.value }))
+ .sort((a, b) => a.ts - b.ts);
+ bondsTreasuryCache[maturity] = series;
+ return series;
+}
+
+async function loadBondsHistory(days) {
+ bondsHistoryDays = days;
+ document.querySelectorAll('#bonds-history-overlay .bonds-date-range .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === String(days)));
+ const statusEl = document.getElementById('bonds-history-status');
+ const lastEl = document.getElementById('bonds-history-last');
+ const chgEl = document.getElementById('bonds-history-chg');
+ const noteEl = document.getElementById('bonds-history-note');
+ statusEl.textContent = 'carregando…';
+ noteEl.textContent = `${BONDS_MODE_LABEL[bondsMode]} · Refinitiv/Eikon`;
+
+ try {
+ if (!bondsHistoryCache) {
+ const r = await fetch(`/api/bonds?history=${bondsMode}&name=${encodeURIComponent(bondsHistoryName)}`);
+ const d = await r.json();
+ if (d.error) throw new Error(d.error);
+ if (!d.history?.length) throw new Error(d.warning || 'sem histórico pra esse papel ainda');
+ bondsHistoryCache = d.history
+ .map(h => ({ ts: brDateToTs(h.date), date: h.date, value: h.value }))
+ .sort((a, b) => a.ts - b.ts);
+ }
+
+ const full = bondsHistoryCache;
+ const series = days > 0 ? full.slice(-days) : full;
+ const labels = series.map(h => h.date.slice(0, 5)); // DD/MM
+ const unit = bondsMode === 'yield' ? '%' : '';
+ const fmt = (v) => bondsMode === 'yield' ? `${num(v, 2)}%` : num(v, 2);
+
+ const treasuryMaturity = document.getElementById('bonds-treasury-select').value;
+ let treasuryByDate = null;
+ if (bondsMode === 'yield' && treasuryMaturity) {
+ const tSeries = await fetchTreasurySeries(treasuryMaturity);
+ treasuryByDate = new Map(tSeries.map(t => [t.date, t.value]));
+ }
+ statusEl.textContent = '';
+
+ if (series.length >= 2) {
+ const first = series[0].value, last = series[series.length - 1].value;
+ const chg = last - first;
+ lastEl.textContent = fmt(last);
+ setC('bonds-history-chg', `${chg >= 0 ? '+' : ''}${num(chg, 2)}${bondsMode === 'yield' ? ' p.p.' : ''}`, chg >= 0 ? 'pos' : 'neg');
+ } else {
+ lastEl.textContent = series[0] ? fmt(series[0].value) : '';
+ chgEl.textContent = ''; chgEl.className = 'modal-chg';
+ }
+
+ const datasets = [{
+ label: BONDS_MODE_LABEL[bondsMode], data: series.map(h => h.value),
+ borderColor: '#1d4ed8', backgroundColor: '#1d4ed8', borderWidth: 1.8,
+ pointRadius: 0, tension: .05, fill: false, spanGaps: true,
+ }];
+ if (treasuryByDate) {
+ datasets.push({
+ label: `UST ${treasuryMaturity}`, data: series.map(h => treasuryByDate.get(h.date) ?? null),
+ borderColor: '#6b7280', backgroundColor: '#6b7280', borderWidth: 1.5, borderDash: [4, 3],
+ pointRadius: 0, tension: .05, fill: false, spanGaps: true,
+ });
+ }
+
+ if (bondsHistoryChart) bondsHistoryChart.destroy();
+ const ctx = document.getElementById('bonds-history-chart').getContext('2d');
+ bondsHistoryChart = new Chart(ctx, {
+ type: 'line',
+ data: { labels, datasets },
+ options: {
+ responsive: true, animation: false, maintainAspectRatio: false,
+ interaction: { mode: 'index', intersect: false },
+ events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
+ plugins: {
+ dragRange: { enabled: true },
+ legend: { display: !!treasuryByDate, labels: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 10, padding: 8 } },
+ tooltip: {
+ backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
+ titleColor: '#2b3140', bodyColor: '#2b3140',
+ titleFont: { family: 'JetBrains Mono', size: 9 }, bodyFont: { family: 'JetBrains Mono', size: 9 },
+ callbacks: { label: c => `${c.dataset.label}: ${fmt(c.parsed.y)}` },
+ },
+ },
+ scales: {
+ x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, callback: v => v.toFixed(1) + unit }, grid: { color: '#9aa1ac' } },
+ },
+ },
+ });
+ } catch (e) {
+ statusEl.textContent = `erro ao carregar (${e.message})`;
+ console.error('Bonds histórico', e);
  }
 }
 

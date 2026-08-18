@@ -235,6 +235,188 @@ function Get-NtnbStaticAnchors {
     }
 }
 
+# ── Espelho de api/bonds.js (Bonds Terminal.xlsx) ────────────────────────────
+# Converte número de coluna (1-based) pra letra de coluna do Excel (1->A, 27->AA, ...).
+function ConvertTo-ColLetter([int]$N) {
+    $s = ''
+    while ($N -gt 0) {
+        $rem = ($N - 1) % 26
+        $s = [char](65 + $rem) + $s
+        $N = [int](($N - 1) / 26)
+    }
+    return $s
+}
+
+# Monta um hashtable ref-de-célula -> valor pra aba inteira. A aba "Bid Yield" tem ~300 mil
+# células (233 colunas x ~1300 linhas) — buscar célula por célula com Regex.Match direto na
+# string XML inteira (como Get-NtnbStaticAnchors faz pra planilha pequena da NTN-B) ficaria
+# lento demais aqui.
+#
+# Bug real encontrado nessa sessão: rodar o regex de célula (`<c r="...">...</c>`) numa ÚNICA
+# passada sobre a string XML inteira (~5MB) perdia células silenciosamente — testado e
+# confirmado num caso real (célula A10 da aba "Bid Yield" desaparecia do mapa mesmo com XML
+# válido, `<c r="A10" s="2"><v>46245</v></c>` igualzinho a outras que funcionavam). O MESMO
+# padrão de regex, rodado num trecho pequeno isolado com a mesma estrutura, casava certo — o
+# problema só aparece em documentos muito grandes com "Regex.Matches" processando o padrão não-
+# greedy `(.*?)` de ponta a ponta. **Corrigido em duas passadas**: primeiro separa por `<row>`
+# (bem menor cada, curto-circuita o range de busca do não-greedy), depois casa células DENTRO
+# de cada linha. Mais robusto e continua O(n).
+function ConvertTo-XlsxCellMap([string]$SheetXml, [string[]]$SharedStrings) {
+    $map = @{}
+    # Segundo bug real nessa sessão: células vazias-mas-estilizadas o Excel escreve como tag
+    # AUTOFECHADA (`<c r="C1" s="138"/>`, sem `</c>`) — comum em colunas "espaçador" entre
+    # blocos que só têm formatação, sem dado nenhum. O regex antigo (só `<c r="..."...>(.*?)</c>`)
+    # não reconhecia isso: ao tentar casar a tag autofechada como se fosse aberta, o `(.*?)`
+    # não-greedy "vazava" através dela e das próximas tags autofechadas até achar o primeiro
+    # `</c>` de verdade — atribuindo o VALOR DE UMA CÉLULA VIZINHA à célula errada (confirmado
+    # ao vivo: "C1" recebia o valor real de "E1"). Corrigido com alternância: casa a forma
+    # autofechada primeiro (sem valor, ignora) OU a forma aberta+conteúdo+fechamento.
+    foreach ($rowMatch in [regex]::Matches($SheetXml, '<row[^>]*>(.*?)</row>', 'Singleline')) {
+        $rowContent = $rowMatch.Groups[1].Value
+        $cellPattern = '<c r="([A-Z]+\d+)"[^>]*/>|<c r="([A-Z]+\d+)"([^>]*)>(.*?)</c>'
+        foreach ($m in [regex]::Matches($rowContent, $cellPattern, 'Singleline')) {
+            if ($m.Groups[1].Success) { continue } # autofechada, sem valor — nada a guardar
+            $ref = $m.Groups[2].Value
+            $attrs = $m.Groups[3].Value
+            $vMatch = [regex]::Match($m.Groups[4].Value, '<v>([^<]*)</v>')
+            if (-not $vMatch.Success) { continue }
+            $raw = $vMatch.Groups[1].Value
+            if ($attrs -match 't="s"') {
+                $idx = [int]$raw
+                $map[$ref] = if ($idx -ge 0 -and $idx -lt $SharedStrings.Count) { $SharedStrings[$idx] } else { $null }
+            } elseif ($attrs -match 't="str"' -or $attrs -match 't="inlineStr"' -or $attrs -match 't="e"') {
+                # "str" = resultado de fórmula (texto), "inlineStr" = string inline (rara),
+                # "e" = célula com erro (#NOME? etc.) — nenhum desses é número, guarda como texto.
+                $map[$ref] = $raw
+            } else {
+                $map[$ref] = [double]$raw
+            }
+        }
+    }
+    return $map
+}
+
+# Boilerplate comum de resolução de aba por nome (workbook.xml -> r:id -> xl/worksheets/sheetN.xml),
+# igual ao já usado em Get-NtnbStaticAnchors. Resolve por PADRÃO (-like), não igualdade exata —
+# mesmo motivo já documentado pra "Mês Anterior"/"Ano Anterior": o Windows PowerShell 5.1 lê
+# este .ps1 (sem BOM) no codepage do sistema, não UTF-8, então um literal acentuado escrito
+# aqui (ex: "Preços") chega corrompido em tempo de execução e nunca bateria por igualdade
+# contra o nome real extraído do .xlsx (esse sim lido como UTF-8 de verdade via Read-Entry
+# abaixo). $SheetNamePattern deve usar só prefixo sem acento (ex: "Pre*" em vez de "Preços*").
+# Devolve $null se nenhuma aba bater com o padrão.
+function Get-XlsxSheetMap([System.IO.Compression.ZipArchive]$Zip, [string]$SheetNamePattern) {
+    function Read-Entry([string]$EntryName) {
+        $entry = $Zip.Entries | Where-Object { $_.FullName -eq $EntryName }
+        if (-not $entry) { return $null }
+        $sr = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
+        try { return $sr.ReadToEnd() } finally { $sr.Dispose() }
+    }
+    $sharedStringsXml = Read-Entry 'xl/sharedStrings.xml'
+    $sharedStrings = @()
+    if ($sharedStringsXml) {
+        $sharedStrings = [regex]::Matches($sharedStringsXml, '<si>(.*?)</si>', 'Singleline') | ForEach-Object {
+            ($_.Groups[1].Value -replace '<[^>]+>', '')
+        }
+    }
+    $wbXml = Read-Entry 'xl/workbook.xml'
+    $sheetToRid = @{}
+    foreach ($m in [regex]::Matches($wbXml, '<sheet[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"')) {
+        $sheetToRid[$m.Groups[1].Value] = $m.Groups[2].Value
+    }
+    $relsXml = Read-Entry 'xl/_rels/workbook.xml.rels'
+    $ridToTarget = @{}
+    foreach ($m in [regex]::Matches($relsXml, '<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"')) {
+        $ridToTarget[$m.Groups[1].Value] = $m.Groups[2].Value
+    }
+    $matchedName = $sheetToRid.Keys | Where-Object { $_ -like $SheetNamePattern } | Select-Object -First 1
+    if (-not $matchedName) { return $null }
+    $rid = $sheetToRid[$matchedName]
+    $sheetXml = Read-Entry "xl/$($ridToTarget[$rid])"
+    if (-not $sheetXml) { return $null }
+    return ConvertTo-XlsxCellMap $sheetXml $sharedStrings
+}
+
+# Espelho de handleSnapshot() em api/bonds.js — aba "Controle Duration": Bonds=D, Isin=E,
+# Banco=F, Volume=G, Bid Yield=H, Cupom=I (fração), Duration=J, (K vazia), Spread Over
+# Treasury=L. Cada linha é uma entrada própria — não agrupa por ISIN (ver comentário em
+# api/bonds.js sobre papéis com bancos/dealers diferentes e mesmo ISIN).
+function Get-BondsSnapshot([string]$Path) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $cellMap = Get-XlsxSheetMap -Zip $zip -SheetNamePattern 'Controle Duration*'
+        if (-not $cellMap) { return @() }
+        $bonds = [System.Collections.Generic.List[object]]::new()
+        for ($r = 3; $r -le 186; $r++) {
+            $name = $cellMap["D$r"]
+            $isin = $cellMap["E$r"]
+            if (-not $name -or -not $isin) { continue }
+            $cupom = $cellMap["I$r"]
+            $bonds.Add([PSCustomObject]@{
+                name = $name; isin = $isin; banco = $cellMap["F$r"]
+                volumeUsd = $cellMap["G$r"]; bidYield = $cellMap["H$r"]
+                cupomPct = if ($null -ne $cupom) { [double]$cupom * 100.0 } else { $null }
+                duration = $cellMap["J$r"]; spreadOverTreasury = $cellMap["L$r"]
+            })
+        }
+        return $bonds
+    } finally {
+        $zip.Dispose()
+    }
+}
+
+# Espelho de BLOCK_SHEETS/findBlockSeries() em api/bonds.js — as três abas de histórico usam
+# o mesmo layout de blocos de 3 colunas (rótulo | valor | vazio) a partir da coluna A, rótulo
+# (nome do papel ou vencimento do treasury) na linha 1 alinhado com a coluna de valor — mas
+# "Preços" não tem a linha de status entre nome/ticker e sub-cabeçalho, então os dados lá
+# começam uma linha antes das outras duas abas.
+# SheetPattern usa só prefixo sem acento (ver comentário em Get-XlsxSheetMap) — "Preços" tem
+# "ç", por isso o padrão pra "price" é só "Pre*". DisplayName é o nome exibido em mensagens de
+# erro; como não dá pra confiar num literal acentuado neste arquivo, "price" usa um nome sem
+# acento em vez do nome real da aba.
+$BONDS_BLOCK_SHEETS = @{
+    yield    = @{ SheetPattern = 'Bid Yield*';         DataStartRow = 5; DisplayName = 'Bid Yield' }
+    price    = @{ SheetPattern = 'Pre*';                DataStartRow = 4; DisplayName = 'Precos (aba de preco)' }
+    treasury = @{ SheetPattern = 'Treasury*';           DataStartRow = 5; DisplayName = 'Treasury' }
+}
+
+function Get-BondsBlockSeries([string]$Path, [string]$Kind, [string]$Label) {
+    $cfg = $BONDS_BLOCK_SHEETS[$Kind]
+    if (-not $cfg) { return $null }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $cellMap = Get-XlsxSheetMap -Zip $zip -SheetNamePattern $cfg.SheetPattern
+        if (-not $cellMap) { return $null }
+        $target = $Label.Trim()
+        for ($block = 0; $block -lt 90; $block++) {
+            $tsCol = 1 + $block * 3
+            $valCol = $tsCol + 1
+            $tsLetter = ConvertTo-ColLetter $tsCol
+            $valLetter = ConvertTo-ColLetter $valCol
+            $headerLabel = $cellMap["${valLetter}1"]
+            if ($null -eq $headerLabel -or (([string]$headerLabel).Trim()) -ne $target) { continue }
+
+            $series = [System.Collections.Generic.List[object]]::new()
+            $lastRow = $cfg.DataStartRow + 1400
+            for ($r = $cfg.DataStartRow; $r -le $lastRow; $r++) {
+                $dateRaw = $cellMap["${tsLetter}$r"]
+                if ($null -eq $dateRaw) { break }
+                $val = $cellMap["${valLetter}$r"]
+                if ($null -eq $val) { continue }
+                $dateStr = if ($dateRaw -is [double]) {
+                    ([datetime]::new(1899, 12, 30)).AddDays($dateRaw).ToString('dd/MM/yyyy')
+                } else { [string]$dateRaw }
+                $series.Add([PSCustomObject]@{ date = $dateStr; value = [double]$val })
+            }
+            return $series
+        }
+        return $null
+    } finally {
+        $zip.Dispose()
+    }
+}
+
 function Get-XmlTag {
     param([string]$Block, [string]$Tag)
     $m = [regex]::Match($Block, "<$Tag[^>]*>([\s\S]*?)</$Tag>", 'IgnoreCase')
@@ -1579,6 +1761,55 @@ while ($listener.IsListening) {
             }
         } catch {
             $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$($_.Exception.Message)`"}")
+            $res.StatusCode = 500
+            $res.ContentType = 'application/json'
+            $res.ContentLength64 = $err.Length
+            $res.OutputStream.Write($err, 0, $err.Length)
+        }
+        $res.OutputStream.Close()
+        continue
+    }
+
+    # ── Proxy planilha Bonds Terminal.xlsx ──────────────────────────────────
+    # Espelho de api/bonds.js — sem ?history, devolve o snapshot da aba "Controle Duration";
+    # ?history=yield|price&name=... ou ?history=treasury&maturity=..., devolve a série da aba
+    # correspondente (ver $BONDS_BLOCK_SHEETS).
+    if ($path -eq '/api/bonds') {
+        try {
+            $xlsxPath = Join-Path (Join-Path $root 'Bonds Terminal') 'Bonds Terminal.xlsx'
+            $kind = $req.QueryString['history']
+            if ($kind -eq 'yield' -or $kind -eq 'price') {
+                $name = $req.QueryString['name']
+                if (-not $name) { throw 'parâmetro "name" obrigatório' }
+                $series = Get-BondsBlockSeries -Path $xlsxPath -Kind $kind -Label $name
+                if ($null -eq $series) {
+                    $result = @{ history = @(); warning = "nao encontrado na aba $($BONDS_BLOCK_SHEETS[$kind].DisplayName)" } | ConvertTo-Json -Depth 4
+                } else {
+                    $result = @{ history = @($series) } | ConvertTo-Json -Depth 4
+                }
+            } elseif ($kind -eq 'treasury') {
+                $maturity = $req.QueryString['maturity']
+                if (-not $maturity) { throw 'parâmetro "maturity" obrigatório' }
+                $series = Get-BondsBlockSeries -Path $xlsxPath -Kind 'treasury' -Label $maturity
+                if ($null -eq $series) {
+                    $result = @{ history = @(); warning = 'não encontrado na aba "Treasury"' } | ConvertTo-Json -Depth 4
+                } else {
+                    $result = @{ history = @($series) } | ConvertTo-Json -Depth 4
+                }
+            } elseif ($kind) {
+                throw 'history deve ser "yield", "price" ou "treasury"'
+            } else {
+                $bonds = Get-BondsSnapshot -Path $xlsxPath
+                $result = @{ bonds = @($bonds) } | ConvertTo-Json -Depth 4
+            }
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
+            $res.ContentType = 'application/json; charset=utf-8'
+            $res.Headers.Add('Access-Control-Allow-Origin', '*')
+            $res.ContentLength64 = $bytes.Length
+            $res.OutputStream.Write($bytes, 0, $bytes.Length)
+        } catch {
+            $errMsg = "Bonds Terminal.xlsx: $($_.Exception.Message)" -replace '\\', '\\\\' -replace '"', '\"'
+            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$errMsg`"}")
             $res.StatusCode = 500
             $res.ContentType = 'application/json'
             $res.ContentLength64 = $err.Length
