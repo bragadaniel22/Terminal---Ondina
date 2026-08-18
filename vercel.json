@@ -5,6 +5,6 @@
   ],
   "functions": {
     "api/ntnb.js": { "maxDuration": 15, "includeFiles": "Taxas Antigas NTNB.xlsx" },
-    "api/bonds.js": { "maxDuration": 15, "includeFiles": "Bonds Terminal/Bonds Terminal.xlsx" }
+    "api/bonds.js": { "maxDuration": 15, "includeFiles": "Bonds Terminal.xlsx" }
   }
 }
