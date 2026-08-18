@@ -1,4 +1,5 @@
-// Lê "Bonds Terminal/Bonds Terminal.xlsx" (raiz do repo) — quatro abas usadas hoje:
+// Lê "Bonds Terminal.xlsx" (raiz do repo, ao lado de index.html — mesmo padrão da NTN-B) —
+// quatro abas usadas hoje:
 // - "Controle Duration": foto do dia por papel (nome, ISIN, banco/dealer, volume, bid yield,
 //   cupom, duration, spread over treasury).
 // - "Bid Yield": histórico diário de bid yield por papel (~5 anos).
@@ -57,26 +58,40 @@ async function loadWorkbook() {
   const { fileURLToPath } = await import('node:url');
   const path = await import('node:path');
   const XLSX = await import('xlsx');
-  const filePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'Bonds Terminal', 'Bonds Terminal.xlsx');
+  const filePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'Bonds Terminal.xlsx');
   return XLSX.read(readFileSync(filePath), { type: 'buffer', cellDates: true });
 }
 
 // "Controle Duration": Bonds=D, Isin=E, Banco=F, Volume=G, Bid Yield=H, Cupom=I, Duration=J,
 // (K vazia), Spread Over Treasury=L. Cupom vem como fração (0,0503 = 5,03%); os demais campos
 // numéricos já vêm na unidade certa.
+//
+// A planilha já organiza os papéis por região/categoria com linhas divisórias (nome na coluna
+// D, ISIN vazio) — Brasil, Europa, US Consolidado, Preferred, África/Ásia/Latam, Fundos de
+// Bonds. Detecta por essa lista fixa (não por "tem nome sem ISIN": alguns papéis de verdade
+// também não têm ISIN preenchido, ex. "CLN Volkswagen" — esses continuam ignorados como antes,
+// só não viram seção por engano).
+const BONDS_SECTIONS = ['Brasil', 'Europa', 'US Consolidado', 'Preferred', 'África/Ásia/Latam', 'Fundos de Bonds'];
+
 function handleSnapshot(wb, res) {
   const ws = wb.Sheets['Controle Duration'];
   if (!ws) return res.status(500).json({ error: 'Bonds Terminal.xlsx: aba "Controle Duration" não encontrada' });
 
   const bonds = [];
+  let section = null;
   for (let r = 3; r <= 186; r++) {
     const name = ws[`D${r}`]?.v;
     const isin = ws[`E${r}`]?.v;
+    if (name != null && !isin && BONDS_SECTIONS.includes(String(name).trim())) {
+      section = String(name).trim();
+      continue;
+    }
     if (!name || !isin) continue;
     const num = (cellVal) => (typeof cellVal === 'number' ? cellVal : null);
     bonds.push({
       name: String(name).trim(),
       isin: String(isin).trim(),
+      section,
       banco: ws[`F${r}`]?.v ?? null,
       volumeUsd: num(ws[`G${r}`]?.v),
       bidYield: num(ws[`H${r}`]?.v),
