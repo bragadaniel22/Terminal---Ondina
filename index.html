@@ -116,6 +116,14 @@
  .close-refresh { font-family: var(--sans); font-size: 10.5px; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; white-space: nowrap; }
  .close-status, .close-err { padding: 22px 16px; font-family: var(--sans); font-size: 12px; color: var(--dim); }
  .close-note { padding: 10px 16px; font-family: var(--sans); font-size: 10px; color: var(--dim); border-top: 1px solid var(--border); }
+ .bonds-filters { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--page); }
+ .bonds-filter-group { display: flex; align-items: center; gap: 6px; }
+ .bonds-filter-label { font-family: var(--sans); font-size: 10px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: .3px; }
+ .bonds-filter-group input {
+ width: 54px; font-family: var(--mono); font-size: 11.5px; color: var(--ink); background: var(--card);
+ border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
+ }
+ .bonds-filter-group input:focus { outline: none; border-color: var(--accent); }
  .close-table { min-width: 620px; }
  .close-section-title {
  background: var(--ink); color: #fff; font-family: var(--sans); font-size: 11px; font-weight: 700;
@@ -1037,14 +1045,36 @@
  <h2>Bonds</h2>
  <span id="bonds-asof">carregando…</span>
  </div>
+ <div class="bonds-filters">
+ <div class="bonds-filter-group">
+ <span class="bonds-filter-label">Duration</span>
+ <input type="number" step="0.1" placeholder="mín" id="bf-duration-min" oninput="applyBondsFilters()">
+ <span class="dim2">–</span>
+ <input type="number" step="0.1" placeholder="máx" id="bf-duration-max" oninput="applyBondsFilters()">
+ </div>
+ <div class="bonds-filter-group">
+ <span class="bonds-filter-label">Cupom %</span>
+ <input type="number" step="0.1" placeholder="mín" id="bf-cupom-min" oninput="applyBondsFilters()">
+ <span class="dim2">–</span>
+ <input type="number" step="0.1" placeholder="máx" id="bf-cupom-max" oninput="applyBondsFilters()">
+ </div>
+ <div class="bonds-filter-group">
+ <span class="bonds-filter-label">Spread p.p.</span>
+ <input type="number" step="0.1" placeholder="mín" id="bf-spread-min" oninput="applyBondsFilters()">
+ <span class="dim2">–</span>
+ <input type="number" step="0.1" placeholder="máx" id="bf-spread-max" oninput="applyBondsFilters()">
+ </div>
+ <span class="close-refresh" onclick="clearBondsFilters()">limpar filtros</span>
+ </div>
  <div id="bonds-body">
  <div class="close-status">carregando…</div>
  </div>
  <div class="close-note">
  Fontes: planilha "Bonds Terminal.xlsx" (Refinitiv/Eikon), mantida manualmente. Clique num
- papel pra ver o histórico de Bid Yield. Alguns papéis aparecem 2x com bancos/dealers
- diferentes (mesmo ISIN) — mostrado como vem na planilha. Preço (PU) histórico e comparação
- com treasury de datas passadas ainda não estão disponíveis nessa versão.
+ papel pra ver o histórico (Bid Yield/Preço, com comparação opcional contra treasury). Alguns
+ papéis aparecem 2x com bancos/dealers diferentes (mesmo ISIN) — mostrado como vem na
+ planilha. Dentro de cada região os papéis vêm ordenados por duration crescente, exceto
+ "Fundos de Bonds" (mantém a ordem da planilha).
  </div>
  </div>
 </div>
@@ -2646,7 +2676,6 @@ async function loadBonds() {
  const d = await r.json();
  if (d.error) throw new Error(d.error);
  bondsCache = sortBondsWithinSections(d.bonds || []);
- asOf.textContent = `${bondsCache.length} papéis`;
  renderBondsTable();
  } catch (e) {
  body.innerHTML = `<div class="close-err">Não foi possível carregar (${e.message}).</div>`;
@@ -2654,14 +2683,43 @@ async function loadBonds() {
  }
 }
 
+// Filtros de faixa (mín/máx) por Duration, Cupom e Spread — os inputs ficam fora de
+// #bonds-body de propósito, pra não serem recriados (e perderem foco/valor) a cada render.
+function readBondsFilterInput(id) {
+ const v = document.getElementById(id).value;
+ return v === '' ? null : Number(v);
+}
+function applyBondsFilters() { renderBondsTable(); }
+function clearBondsFilters() {
+ ['bf-duration-min', 'bf-duration-max', 'bf-cupom-min', 'bf-cupom-max', 'bf-spread-min', 'bf-spread-max']
+ .forEach(id => document.getElementById(id).value = '');
+ renderBondsTable();
+}
+function bondPassesFilters(b) {
+ const durMin = readBondsFilterInput('bf-duration-min'), durMax = readBondsFilterInput('bf-duration-max');
+ const cupMin = readBondsFilterInput('bf-cupom-min'), cupMax = readBondsFilterInput('bf-cupom-max');
+ const sprMin = readBondsFilterInput('bf-spread-min'), sprMax = readBondsFilterInput('bf-spread-max');
+ if (durMin != null && (b.duration == null || b.duration < durMin)) return false;
+ if (durMax != null && (b.duration == null || b.duration > durMax)) return false;
+ if (cupMin != null && (b.cupomPct == null || b.cupomPct < cupMin)) return false;
+ if (cupMax != null && (b.cupomPct == null || b.cupomPct > cupMax)) return false;
+ if (sprMin != null && (b.spreadOverTreasury == null || b.spreadOverTreasury < sprMin)) return false;
+ if (sprMax != null && (b.spreadOverTreasury == null || b.spreadOverTreasury > sprMax)) return false;
+ return true;
+}
+
 function renderBondsTable() {
  const body = document.getElementById('bonds-body');
- if (!bondsCache.length) { body.innerHTML = '<div class="close-status">sem papéis</div>'; return; }
+ const asOf = document.getElementById('bonds-asof');
+ if (!bondsCache.length) { body.innerHTML = '<div class="close-status">sem papéis</div>'; asOf.textContent = '0 papéis'; return; }
+ const filtered = bondsCache.filter(bondPassesFilters);
+ asOf.textContent = filtered.length === bondsCache.length ? `${bondsCache.length} papéis` : `${filtered.length} de ${bondsCache.length} papéis`;
+ if (!filtered.length) { body.innerHTML = '<div class="close-status">nenhum papel bate com os filtros</div>'; return; }
  let html = '<div class="close-table">';
  const head = '<div class="close-row-head"><div>Papel</div><div>Cupom</div><div>Duration</div><div>Bid Yield</div><div>Spread / Treas.</div></div>';
  html += head;
  let curSection = null;
- for (const b of bondsCache) {
+ for (const b of filtered) {
  if (b.section !== curSection) {
  curSection = b.section;
  if (curSection) html += `<div class="close-region">${esc(curSection)}</div>`;
