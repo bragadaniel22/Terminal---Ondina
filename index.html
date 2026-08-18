@@ -2638,8 +2638,14 @@ function renderBondsTable() {
  const body = document.getElementById('bonds-body');
  if (!bondsCache.length) { body.innerHTML = '<div class="close-status">sem papéis</div>'; return; }
  let html = '<div class="close-table">';
- html += '<div class="close-row-head"><div>Papel</div><div>Cupom</div><div>Duration</div><div>Bid Yield</div><div>Spread / Treas.</div></div>';
+ const head = '<div class="close-row-head"><div>Papel</div><div>Cupom</div><div>Duration</div><div>Bid Yield</div><div>Spread / Treas.</div></div>';
+ html += head;
+ let curSection = null;
  for (const b of bondsCache) {
+ if (b.section !== curSection) {
+ curSection = b.section;
+ if (curSection) html += `<div class="close-region">${esc(curSection)}</div>`;
+ }
  const cupom = b.cupomPct != null ? num(b.cupomPct, 2) + '%' : '—';
  const dur = b.duration != null ? num(b.duration, 2) : '—';
  const yld = b.bidYield != null ? num(b.bidYield, 2) : '—';

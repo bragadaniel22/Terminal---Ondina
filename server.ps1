@@ -336,6 +336,19 @@ function Get-XlsxSheetMap([System.IO.Compression.ZipArchive]$Zip, [string]$Sheet
     return ConvertTo-XlsxCellMap $sheetXml $sharedStrings
 }
 
+# A planilha organiza os papéis por região/categoria com linhas divisórias (nome na coluna D,
+# ISIN vazio) — Brasil, Europa, US Consolidado, Preferred, África/Ásia/Latam, Fundos de Bonds.
+# Detecta por essa lista fixa, não por "tem nome sem ISIN" (alguns papéis de verdade também não
+# têm ISIN preenchido, ex. "CLN Volkswagen" — continuam ignorados, só não viram seção à toa).
+# "África/Ásia/Latam" tem acento — evita literal acentuado (mesmo motivo do comentário em
+# Get-XlsxSheetMap) casando só pelo sufixo seguro "*Latam" em vez do texto inteiro.
+function Test-BondsSectionDivider([string]$Name) {
+    if (-not $Name) { return $false }
+    $n = $Name.Trim()
+    if (@('Brasil', 'Europa', 'US Consolidado', 'Preferred', 'Fundos de Bonds') -contains $n) { return $true }
+    return $n -like '*Latam'
+}
+
 # Espelho de handleSnapshot() em api/bonds.js — aba "Controle Duration": Bonds=D, Isin=E,
 # Banco=F, Volume=G, Bid Yield=H, Cupom=I (fração), Duration=J, (K vazia), Spread Over
 # Treasury=L. Cada linha é uma entrada própria — não agrupa por ISIN (ver comentário em
@@ -347,13 +360,18 @@ function Get-BondsSnapshot([string]$Path) {
         $cellMap = Get-XlsxSheetMap -Zip $zip -SheetNamePattern 'Controle Duration*'
         if (-not $cellMap) { return @() }
         $bonds = [System.Collections.Generic.List[object]]::new()
+        $section = $null
         for ($r = 3; $r -le 186; $r++) {
             $name = $cellMap["D$r"]
             $isin = $cellMap["E$r"]
+            if ($name -and -not $isin -and (Test-BondsSectionDivider $name)) {
+                $section = ([string]$name).Trim()
+                continue
+            }
             if (-not $name -or -not $isin) { continue }
             $cupom = $cellMap["I$r"]
             $bonds.Add([PSCustomObject]@{
-                name = $name; isin = $isin; banco = $cellMap["F$r"]
+                name = $name; isin = $isin; section = $section; banco = $cellMap["F$r"]
                 volumeUsd = $cellMap["G$r"]; bidYield = $cellMap["H$r"]
                 cupomPct = if ($null -ne $cupom) { [double]$cupom * 100.0 } else { $null }
                 duration = $cellMap["J$r"]; spreadOverTreasury = $cellMap["L$r"]
@@ -1776,7 +1794,7 @@ while ($listener.IsListening) {
     # correspondente (ver $BONDS_BLOCK_SHEETS).
     if ($path -eq '/api/bonds') {
         try {
-            $xlsxPath = Join-Path (Join-Path $root 'Bonds Terminal') 'Bonds Terminal.xlsx'
+            $xlsxPath = Join-Path $root 'Bonds Terminal.xlsx'
             $kind = $req.QueryString['history']
             if ($kind -eq 'yield' -or $kind -eq 'price') {
                 $name = $req.QueryString['name']
