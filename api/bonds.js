@@ -45,12 +45,19 @@ function colLetter(n) {
   return s;
 }
 
-function excelDateToBr(v) {
-  if (v instanceof Date) {
-    return `${String(v.getUTCDate()).padStart(2, '0')}/${String(v.getUTCMonth() + 1).padStart(2, '0')}/${v.getUTCFullYear()}`;
-  }
-  if (v == null) return null;
-  return String(v).trim();
+// Bug real encontrado nessa sessão: com `cellDates: true` (usado antes aqui), a lib `xlsx`
+// decide se converte uma célula numérica pra Date com base no FORMATO da célula, não no valor —
+// e o bloco de preço de "JP Morgan 33" tinha uma célula com formato de data/hora aplicado por
+// engano (confirmado no Excel: o valor exibido lá é um preço normal, 102,0762, não uma data).
+// Resultado: a lib devolvia um objeto Date bizarro (ex. "1900-04-11T04:56:11") em vez do preço,
+// e a série toda parecia vazia (nenhum valor numérico encontrado). Corrigido lendo SEM
+// `cellDates` — toda célula numérica volta como número puro, independente do formato exibido —
+// e convertendo a coluna de Timestamp manualmente a partir do serial do Excel.
+function excelSerialToBr(serial) {
+  if (typeof serial !== 'number') return null;
+  // Excel epoch: 30/12/1899 (compensa o bug histórico do 29/02/1900 herdado do Lotus 1-2-3).
+  const d = new Date(Date.UTC(1899, 11, 30) + Math.round(serial * 86400000));
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
 }
 
 async function loadWorkbook() {
@@ -59,7 +66,7 @@ async function loadWorkbook() {
   const path = await import('node:path');
   const XLSX = await import('xlsx');
   const filePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'Bonds Terminal.xlsx');
-  return XLSX.read(readFileSync(filePath), { type: 'buffer', cellDates: true });
+  return XLSX.read(readFileSync(filePath), { type: 'buffer' });
 }
 
 // "Controle Duration": Bonds=D, Isin=E, Banco=F, Volume=G, Bid Yield=H, Cupom=I, Duration=J,
@@ -122,20 +129,30 @@ function findBlockSeries(wb, sheetKey, label) {
     const series = [];
     for (let r = cfg.dataStartRow; r <= cfg.dataStartRow + 1400; r++) {
       const dateCell = ws[`${colLetter(tsCol)}${r}`];
-      if (!dateCell?.v) break; // série é contígua — primeira linha vazia marca o fim
+      if (typeof dateCell?.v !== 'number') break; // série é contígua — primeiro timestamp ausente marca o fim
       const valCell = ws[`${colLetter(valCol)}${r}`];
       const val = typeof valCell?.v === 'number' ? valCell.v : null;
       if (val == null) continue;
-      series.push({ date: excelDateToBr(dateCell.v), [cfg.valueField]: val });
+      series.push({ date: excelSerialToBr(dateCell.v), [cfg.valueField]: val });
     }
     return series;
   }
   return null;
 }
 
+// Alguns papéis são o MESMO bond que outro, só cotado por dealer diferente (mesma linha em
+// "Controle Duration" duplicada, mesmo ISIN — ver comentário em handleSnapshot), mas não têm
+// bloco próprio nas abas de histórico. Curado manualmente pelo Daniel um a um (não é regra
+// automática por ISIN — nem toda duplicata de ISIN é isso): usa o histórico do papel
+// equivalente já existente em vez de "sem histórico".
+const HISTORY_NAME_ALIASES = {
+  'Rede Dor 30 2': 'Rede Dor 30',
+};
+
 function handleHistory(wb, kind, key, res) {
   if (!key) return res.status(400).json({ error: `parâmetro "${kind === 'treasury' ? 'maturity' : 'name'}" obrigatório` });
-  const series = findBlockSeries(wb, kind, key);
+  const resolvedKey = (kind === 'yield' || kind === 'price') ? (HISTORY_NAME_ALIASES[key] || key) : key;
+  const series = findBlockSeries(wb, kind, resolvedKey);
   if (series == null) {
     const sheet = BLOCK_SHEETS[kind].sheet;
     return res.json({ history: [], warning: `não encontrado na aba "${sheet}"` });
