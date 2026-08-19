@@ -237,12 +237,20 @@ function Get-NtnbStaticAnchors {
 
 # ── Espelho de api/bonds.js (Bonds Terminal.xlsx) ────────────────────────────
 # Converte número de coluna (1-based) pra letra de coluna do Excel (1->A, 27->AA, ...).
+#
+# Bug real encontrado nessa sessão: `[int]` em PowerShell, aplicado a um double, ARREDONDA pro
+# inteiro mais próximo (ex: `[int]4.538` dá 5), não trunca como `Math.floor()` do JS ou `int()`
+# do Python — diferente do que a linha original assumia. Como cada iteração usa `($N-1)/26`
+# (quase sempre fracionário), qualquer coluna cuja divisão intermediária caísse em fração ≥ 0,5
+# virava letra errada — silenciosamente, sem erro nenhum. Só não aparecia nos testes porque os
+# primeiros papéis testados estavam em colunas baixas o suficiente pra não bater nesse caso.
+# Corrigido usando `[math]::Floor()` explicitamente, que sempre trunca (arredonda pra baixo).
 function ConvertTo-ColLetter([int]$N) {
     $s = ''
     while ($N -gt 0) {
         $rem = ($N - 1) % 26
         $s = [char](65 + $rem) + $s
-        $N = [int](($N - 1) / 26)
+        $N = [int][math]::Floor(($N - 1) / 26)
     }
     return $s
 }
@@ -396,6 +404,13 @@ $BONDS_BLOCK_SHEETS = @{
     yield    = @{ SheetPattern = 'Bid Yield*';         DataStartRow = 5; DisplayName = 'Bid Yield' }
     price    = @{ SheetPattern = 'Pre*';                DataStartRow = 4; DisplayName = 'Precos (aba de preco)' }
     treasury = @{ SheetPattern = 'Treasury*';           DataStartRow = 5; DisplayName = 'Treasury' }
+}
+
+# Espelho de HISTORY_NAME_ALIASES em api/bonds.js — papéis que são o MESMO bond que outro, só
+# cotado por dealer diferente, sem bloco próprio nas abas de histórico. Curado manualmente pelo
+# Daniel um a um.
+$BONDS_HISTORY_ALIASES = @{
+    'Rede Dor 30 2' = 'Rede Dor 30'
 }
 
 function Get-BondsBlockSeries([string]$Path, [string]$Kind, [string]$Label) {
@@ -1799,7 +1814,8 @@ while ($listener.IsListening) {
             if ($kind -eq 'yield' -or $kind -eq 'price') {
                 $name = $req.QueryString['name']
                 if (-not $name) { throw 'parâmetro "name" obrigatório' }
-                $series = Get-BondsBlockSeries -Path $xlsxPath -Kind $kind -Label $name
+                $resolvedName = if ($BONDS_HISTORY_ALIASES.ContainsKey($name)) { $BONDS_HISTORY_ALIASES[$name] } else { $name }
+                $series = Get-BondsBlockSeries -Path $xlsxPath -Kind $kind -Label $resolvedName
                 if ($null -eq $series) {
                     $result = @{ history = @(); warning = "nao encontrado na aba $($BONDS_BLOCK_SHEETS[$kind].DisplayName)" } | ConvertTo-Json -Depth 4
                 } else {

@@ -2754,6 +2754,11 @@ function openBondHistory(name) {
  const treasurySelect = document.getElementById('bonds-treasury-select');
  treasurySelect.value = '';
  treasurySelect.disabled = false;
+ // Fundos de Bonds nunca vão ter preço (a pedido do Daniel) — some com a opção em vez de
+ // deixar um botão pra um modo que nunca vai carregar nada.
+ const bond = bondsCache.find(b => b.name === name);
+ const priceBtn = document.querySelector('#bonds-history-overlay [data-mode="price"]');
+ priceBtn.style.display = (bond?.section === 'Fundos de Bonds') ? 'none' : '';
  document.getElementById('bonds-history-title').textContent = name;
  document.getElementById('bonds-history-overlay').classList.add('active');
  loadBondsHistory(bondsHistoryDays);
