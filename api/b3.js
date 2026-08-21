@@ -17,7 +17,14 @@ async function fetchFromB3(symbol) {
   const data = await r.json();
   if (data.BizSts?.cd !== 'OK' || !data.Trad?.length) throw new Error('sem negócios');
   const qtn = data.Trad[0].scty.SctyQtn;
-  return { price: qtn.curPrc, open: qtn.opngPric, date: data.Msg?.dtTm ?? null, source: 'b3' };
+  // `prcFlcn` é a variação % da B3 já calculada contra o AJUSTE DO DIA ANTERIOR (confirmado
+  // ao vivo: dividir curPrc por (1+prcFlcn/100) devolve o mesmo valor de ajuste anterior em
+  // fetches sucessivos, enquanto curPrc muda) — diferente de `opngPric`, que é só o preço do
+  // primeiro negócio de HOJE. Usar opngPric como base do Δ (como antes) mostrava 0,00 pp
+  // sempre que ainda não tinha havido um segundo negócio no dia (contratos menos líquidos),
+  // mesmo com uma variação real e não-nula contra o ajuste anterior.
+  const prevClose = qtn.prcFlcn != null ? qtn.curPrc / (1 + qtn.prcFlcn / 100) : null;
+  return { price: qtn.curPrc, open: qtn.opngPric, prevClose, date: data.Msg?.dtTm ?? null, source: 'b3' };
 }
 
 // Fallback: a B3 às vezes fica fora do ar por completo (confirmado via HTTP 520 do Cloudflare
@@ -34,15 +41,18 @@ async function fetchFromTradingView(symbol) {
     headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
     body: JSON.stringify({
       symbols: { tickers: [`BMFBOVESPA:${tvSymbol}`], query: { types: ['futures'] } },
-      columns: ['close', 'open'],
+      columns: ['close', 'open', 'change_abs'],
     }),
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const json = await r.json();
   const row = json.data?.[0]?.d;
   if (!row || row[0] == null) throw new Error(`símbolo ${tvSymbol} não encontrado`);
-  const [close, open] = row;
-  return { price: close, open: open ?? null, date: null, source: 'tradingview' };
+  const [close, open, changeAbs] = row;
+  // `change_abs` já vem do TradingView como a diferença em pontos-percentuais contra o
+  // fechamento anterior — mesma correção aplicada ao lado B3 (ver fetchFromB3 acima).
+  const prevClose = changeAbs != null ? close - changeAbs : null;
+  return { price: close, open: open ?? null, prevClose, date: null, source: 'tradingview' };
 }
 
 async function fetchQuote(symbol, res) {
