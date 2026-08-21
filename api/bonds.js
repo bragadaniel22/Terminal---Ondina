@@ -84,6 +84,10 @@ function handleSnapshot(wb, res) {
   const ws = wb.Sheets['Controle Duration'];
   if (!ws) return res.status(500).json({ error: 'Bonds Terminal.xlsx: aba "Controle Duration" não encontrada' });
 
+  // D1 tem a data de referência do snapshot inteiro (serial do Excel, ex.: 46252 = 18/08/2026).
+  const asOfRaw = ws['D1']?.v;
+  const asOf = typeof asOfRaw === 'number' ? excelSerialToBr(asOfRaw) : null;
+
   const bonds = [];
   let section = null;
   for (let r = 3; r <= 186; r++) {
@@ -107,7 +111,7 @@ function handleSnapshot(wb, res) {
       spreadOverTreasury: num(ws[`L${r}`]?.v),
     });
   }
-  return res.json({ bonds });
+  return res.json({ asOf, bonds });
 }
 
 // Genérico pras três abas de histórico em bloco: blocos de 3 colunas (rótulo | valor | vazio)
