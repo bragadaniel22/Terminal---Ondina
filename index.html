@@ -1623,7 +1623,12 @@ async function fetchDI(symbol, pfx) {
 }
 
 function renderOneDI(d, fromCache, pfx, symbol) {
- const chgPp = (d.open != null && d.price != null) ? d.price - d.open : null;
+ // Δ contra o AJUSTE DO DIA ANTERIOR (d.prevClose), não contra a abertura de hoje (d.open) —
+ // com base na abertura, contratos menos líquidos mostravam 0,00 pp sempre que ainda não
+ // tinha rolado um segundo negócio no dia, mesmo com variação real desde o fechamento
+ // anterior. Fallback pra d.open só cobre uma resposta em cache de antes dessa correção.
+ const base = d.prevClose != null ? d.prevClose : d.open;
+ const chgPp = (base != null && d.price != null) ? d.price - base : null;
  setV(pfx+'-val', num(d.price)+'%', 'hl');
  if (chgPp !== null && chgPp !== 0) {
  setC(pfx+'-chg', (chgPp > 0 ? '+' : '') + num(chgPp, 2) + ' pp', '');
@@ -2667,14 +2672,16 @@ function sortBondsWithinSections(bonds) {
  return groups.flatMap(g => g.items);
 }
 
+let bondsAsOf = null; // data de referência do snapshot (célula D1 de "Controle Duration")
+
 async function loadBonds() {
  const body = document.getElementById('bonds-body');
- const asOf = document.getElementById('bonds-asof');
  body.innerHTML = '<div class="close-status">carregando…</div>';
  try {
  const r = await fetch('/api/bonds');
  const d = await r.json();
  if (d.error) throw new Error(d.error);
+ bondsAsOf = d.asOf || null;
  bondsCache = sortBondsWithinSections(d.bonds || []);
  renderBondsTable();
  } catch (e) {
@@ -2711,9 +2718,10 @@ function bondPassesFilters(b) {
 function renderBondsTable() {
  const body = document.getElementById('bonds-body');
  const asOf = document.getElementById('bonds-asof');
- if (!bondsCache.length) { body.innerHTML = '<div class="close-status">sem papéis</div>'; asOf.textContent = '0 papéis'; return; }
+ const dateTag = bondsAsOf ? `Dados de ${bondsAsOf} · ` : '';
+ if (!bondsCache.length) { body.innerHTML = '<div class="close-status">sem papéis</div>'; asOf.textContent = dateTag + '0 papéis'; return; }
  const filtered = bondsCache.filter(bondPassesFilters);
- asOf.textContent = filtered.length === bondsCache.length ? `${bondsCache.length} papéis` : `${filtered.length} de ${bondsCache.length} papéis`;
+ asOf.textContent = dateTag + (filtered.length === bondsCache.length ? `${bondsCache.length} papéis` : `${filtered.length} de ${bondsCache.length} papéis`);
  if (!filtered.length) { body.innerHTML = '<div class="close-status">nenhum papel bate com os filtros</div>'; return; }
  let html = '<div class="close-table">';
  const head = '<div class="close-row-head"><div>Papel</div><div>Cupom</div><div>Duration</div><div>Bid Yield</div><div>Spread / Treas.</div></div>';

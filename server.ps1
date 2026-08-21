@@ -255,6 +255,12 @@ function ConvertTo-ColLetter([int]$N) {
     return $s
 }
 
+# Espelho de excelSerialToBr() em api/bonds.js — converte serial de data do Excel (dias desde
+# 30/12/1899) pra "dd/MM/yyyy".
+function ConvertTo-BrDateFromSerial([double]$Serial) {
+    return ([datetime]::new(1899, 12, 30)).AddDays($Serial).ToString('dd/MM/yyyy')
+}
+
 # Monta um hashtable ref-de-célula -> valor pra aba inteira. A aba "Bid Yield" tem ~300 mil
 # células (233 colunas x ~1300 linhas) — buscar célula por célula com Regex.Match direto na
 # string XML inteira (como Get-NtnbStaticAnchors faz pra planilha pequena da NTN-B) ficaria
@@ -366,7 +372,10 @@ function Get-BondsSnapshot([string]$Path) {
     $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
     try {
         $cellMap = Get-XlsxSheetMap -Zip $zip -SheetNamePattern 'Controle Duration*'
-        if (-not $cellMap) { return @() }
+        if (-not $cellMap) { return [PSCustomObject]@{ asOf = $null; bonds = @() } }
+        # D1 tem a data de referência do snapshot inteiro (serial do Excel).
+        $asOfRaw = $cellMap['D1']
+        $asOf = if ($asOfRaw -is [double]) { ConvertTo-BrDateFromSerial $asOfRaw } else { $null }
         $bonds = [System.Collections.Generic.List[object]]::new()
         $section = $null
         for ($r = 3; $r -le 186; $r++) {
@@ -385,7 +394,7 @@ function Get-BondsSnapshot([string]$Path) {
                 duration = $cellMap["J$r"]; spreadOverTreasury = $cellMap["L$r"]
             })
         }
-        return $bonds
+        return [PSCustomObject]@{ asOf = $asOf; bonds = $bonds }
     } finally {
         $zip.Dispose()
     }
@@ -437,9 +446,7 @@ function Get-BondsBlockSeries([string]$Path, [string]$Kind, [string]$Label) {
                 if ($null -eq $dateRaw) { break }
                 $val = $cellMap["${valLetter}$r"]
                 if ($null -eq $val) { continue }
-                $dateStr = if ($dateRaw -is [double]) {
-                    ([datetime]::new(1899, 12, 30)).AddDays($dateRaw).ToString('dd/MM/yyyy')
-                } else { [string]$dateRaw }
+                $dateStr = if ($dateRaw -is [double]) { ConvertTo-BrDateFromSerial $dateRaw } else { [string]$dateRaw }
                 $series.Add([PSCustomObject]@{ date = $dateStr; value = [double]$val })
             }
             return $series
@@ -1434,7 +1441,10 @@ while ($listener.IsListening) {
             $data = $raw | ConvertFrom-Json
             if ($data.BizSts.cd -ne 'OK' -or -not $data.Trad) { throw "sem negócios" }
             $qtn = $data.Trad[0].scty.SctyQtn
-            $result = "{`"price`":$($qtn.curPrc),`"open`":$($qtn.opngPric),`"date`":`"$($data.Msg.dtTm)`",`"source`":`"b3`"}"
+            # prcFlcn é a variação % já calculada pela B3 contra o AJUSTE DO DIA ANTERIOR (não
+            # contra a abertura de hoje) — mesma correção do lado api/b3.js, ver comentário lá.
+            $prevCloseJson = if ($null -ne $qtn.prcFlcn) { [string]($qtn.curPrc / (1 + $qtn.prcFlcn / 100.0)) } else { 'null' }
+            $result = "{`"price`":$($qtn.curPrc),`"open`":$($qtn.opngPric),`"prevClose`":$prevCloseJson,`"date`":`"$($data.Msg.dtTm)`",`"source`":`"b3`"}"
         } catch {
             $b3ErrMsg = $_.Exception.Message
         }
@@ -1447,7 +1457,7 @@ while ($listener.IsListening) {
                 $tvSymbol = $symbol -replace '(\d{2})$', '20$1'
                 $tvBody = @{
                     symbols = @{ tickers = @("BMFBOVESPA:$tvSymbol"); query = @{ types = @('futures') } }
-                    columns = @('close', 'open')
+                    columns = @('close', 'open', 'change_abs')
                 } | ConvertTo-Json -Depth 5 -Compress
                 $wc2 = [System.Net.WebClient]::new()
                 $wc2.Headers.Add('Content-Type', 'application/json')
@@ -1459,7 +1469,11 @@ while ($listener.IsListening) {
                 if (-not $row -or $null -eq $row[0]) { throw "símbolo $tvSymbol não encontrado" }
                 $price = $row[0]
                 $open = if ($row.Count -gt 1 -and $null -ne $row[1]) { $row[1] } else { 'null' }
-                $result = "{`"price`":$price,`"open`":$open,`"date`":null,`"source`":`"tradingview`"}"
+                # change_abs já vem do TradingView como Δ em pontos-percentuais contra o
+                # fechamento anterior — mesma correção do lado B3 acima.
+                $changeAbs = if ($row.Count -gt 2) { $row[2] } else { $null }
+                $prevCloseJson = if ($null -ne $changeAbs) { [string]($price - $changeAbs) } else { 'null' }
+                $result = "{`"price`":$price,`"open`":$open,`"prevClose`":$prevCloseJson,`"date`":null,`"source`":`"tradingview`"}"
             } catch {
                 $tvErrMsg = $_.Exception.Message
                 $safeB3 = ($b3ErrMsg -replace '"', '\"') -replace "`n", ' '
@@ -1833,8 +1847,8 @@ while ($listener.IsListening) {
             } elseif ($kind) {
                 throw 'history deve ser "yield", "price" ou "treasury"'
             } else {
-                $bonds = Get-BondsSnapshot -Path $xlsxPath
-                $result = @{ bonds = @($bonds) } | ConvertTo-Json -Depth 4
+                $snapshot = Get-BondsSnapshot -Path $xlsxPath
+                $result = @{ asOf = $snapshot.asOf; bonds = @($snapshot.bonds) } | ConvertTo-Json -Depth 4
             }
             $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
             $res.ContentType = 'application/json; charset=utf-8'
