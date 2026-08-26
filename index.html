@@ -1594,9 +1594,9 @@ async function loadJuros() {
  })(),
  (async () => {
  // T-Note 2Y — Yahoo Finance não tem um ticker líquido pra esse yield (só um contrato
- // futuro com volume irrelevante, confirmado ao vivo) — usa TradingView via /api/b3?tv=.
+ // futuro com volume irrelevante, confirmado ao vivo) — usa TradingView via /api/treasury.
  try {
- const r = await fetch('/api/b3?tv=TVC:US02Y');
+ const r = await fetch('/api/treasury?symbol=TVC:US02Y');
  const d = await r.json();
  if (d.error) throw new Error(d.error);
  cachePut('tv_us02y', d);
@@ -3341,11 +3341,11 @@ async function closingDiSeries(symbol) {
  return d.history.map(h => ({ ts: h.date, p: h.value, key: dateKeyTZ(h.date * 1000, 'America/Sao_Paulo') }));
 }
 
-// Treasury 2 anos via TradingView (?tv=) — mesmo endpoint/protocolo do histórico do DI Futuro
-// acima, só que com o símbolo literal (ver comentário em CLOSE_REPORT_CONFIG). Fuso de Nova
-// York, igual às demais bolsas americanas do relatório.
+// Treasury 2 anos via /api/treasury — mesmo protocolo de histórico usado pro DI Futuro (ver
+// comentário em CLOSE_REPORT_CONFIG e em api/treasury.js), arquivo/rota própria porque não é
+// DI Futuro/B3. Fuso de Nova York, igual às demais bolsas americanas do relatório.
 async function closingTvYieldSeries(tvSymbol) {
- const r = await fetch(`/api/b3?tv=${encodeURIComponent(tvSymbol)}&history=1`);
+ const r = await fetch(`/api/treasury?symbol=${encodeURIComponent(tvSymbol)}&history=1`);
  const d = await r.json();
  if (d.error) throw new Error(d.error);
  if (!d.history?.length) throw new Error('sem histórico');
