@@ -2661,10 +2661,12 @@ async function loadNtnbHistory(days) {
  },
  scales: {
  x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
- // 2 casas decimais (não 1) — em horizontes curtos (5D/1M) a variação da taxa costuma
- // ser menor que 0,1pp, e com só 1 casa vários ticks do eixo arredondavam pro mesmo valor
- // (ex: "8,0%" repetido), tornando a escala confusa.
- y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, callback: v => v.toFixed(2) + '%' }, grid: { color: '#9aa1ac' } },
+ // `precision: 2` força o PRÓPRIO Chart.js a só gerar valores de tick múltiplos de 0,01 —
+ // só arredondar o texto exibido (`toFixed(2)`) não bastava: em horizontes curtos (5D/1M),
+ // com a taxa variando menos de 0,1pp, o algoritmo de "números redondos" do Chart.js às
+ // vezes escolhe um passo entre ticks que não é múltiplo de 0,01 (ex: 0,005), e dois ticks
+ // diferentes (tipo 8,095 e 8,10) arredondavam pro mesmo texto exibido mesmo com 2 casas.
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, precision: 2, callback: v => v.toFixed(2) + '%' }, grid: { color: '#9aa1ac' } },
  },
  },
  });
