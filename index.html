@@ -714,6 +714,11 @@
  <div class="rright"><div class="rval hl" id="bce-val">…</div><div class="rchg">% a.a.</div></div>
  </div>
 
+ <div class="row">
+ <div><div class="rname">T-NOTE 2 ANOS</div><div class="rsub" id="us02y-sub">TradingView · Tesouro EUA</div></div>
+ <div class="rright"><div class="rval" id="us02y-val">…</div><div class="rchg" id="us02y-chg">—</div></div>
+ </div>
+
  <div class="row row-click" onclick="openChart('^TNX','T-Note 10 Anos')">
  <div><div class="rname">T-NOTE 10 ANOS</div><div class="rsub" id="tnx-sub">^TNX · Tesouro EUA</div></div>
  <div class="rright"><div class="rval" id="tnx-val">…</div><div class="rchg" id="tnx-chg">—</div></div>
@@ -798,7 +803,7 @@
  </div>
  </div>
  <div id="close-body"><div class="close-status">clique em FECHAMENTO pra carregar…</div></div>
- <div class="close-note">Fontes: Yahoo Finance, B3/TradingView (DI Futuro), ANBIMA (NTN-B). Δ mês e Δ ano de NTN-B usam
+ <div class="close-note">Fontes: Yahoo Finance, B3/TradingView (DI Futuro), TradingView (Treasury 2 Anos), ANBIMA (NTN-B). Δ mês e Δ ano de NTN-B usam
  a planilha "Taxas Antigas NTNB.xlsx" (mantida manualmente, atualizada 1x/mês e 1x/ano) — a ANBIMA só retém ~5-6
  meses de arquivo diário, então essa base some da fonte ao vivo com o tempo. Se a planilha ficar desatualizada
  num mês, o Δ correspondente aparece como "n/d" em vez de um número calculado contra o período errado. Δ mês e
@@ -1226,7 +1231,7 @@
  </div>
  <div class="sources-section">
  <h3>Juros Globais</h3>
- <p><strong>Fed Funds Rate</strong>: proxy via T-Bill 3M (Yahoo Finance ^IRX). <strong>Taxa BCE</strong>: API oficial do Banco Central Europeu. <strong>T-Note 10 Anos</strong>: Yahoo Finance (^TNX).</p>
+ <p><strong>Fed Funds Rate</strong>: proxy via T-Bill 3M (Yahoo Finance ^IRX). <strong>Taxa BCE</strong>: API oficial do Banco Central Europeu. <strong>T-Note 2 Anos</strong>: TradingView (TVC:US02Y) — Yahoo Finance não tem um ticker líquido pra esse yield. <strong>T-Note 10 Anos</strong>: Yahoo Finance (^TNX).</p>
  </div>
  <div class="sources-section">
  <h3>Commodities &amp; Cripto</h3>
@@ -1588,6 +1593,21 @@ async function loadJuros() {
  }
  })(),
  (async () => {
+ // T-Note 2Y — Yahoo Finance não tem um ticker líquido pra esse yield (só um contrato
+ // futuro com volume irrelevante, confirmado ao vivo) — usa TradingView via /api/b3?tv=.
+ try {
+ const r = await fetch('/api/b3?tv=TVC:US02Y');
+ const d = await r.json();
+ if (d.error) throw new Error(d.error);
+ cachePut('tv_us02y', d);
+ renderTreasuryYield(d, false, 'us02y');
+ } catch (e) {
+ const c = cacheGet('tv_us02y');
+ if (c) renderTreasuryYield(c, true, 'us02y');
+ else { setV('us02y-val', 'ERRO', 'err'); console.error('US02Y', e); }
+ }
+ })(),
+ (async () => {
  // T-Note 10Y
  try {
  const data = await yahoo('^TNX');
@@ -1641,6 +1661,20 @@ function renderOneDI(d, fromCache, pfx, symbol) {
  }
  const src = !fromCache && d.source === 'tradingview' ? ' · via TradingView (B3 fora do ar)' : '';
  setSub(pfx+'-sub', `B3 · ${symbol}` + tag + src);
+}
+
+// Mesma convenção de Δ em pp (contra o fechamento anterior) do DI Futuro acima, mas pra
+// yields de treasury vindos direto do TradingView (sem fallback de B3, sem tag de data —
+// o endpoint ?tv= não devolve horário do último negócio).
+function renderTreasuryYield(d, fromCache, pfx) {
+ const chgPp = (d.prevClose != null && d.price != null) ? d.price - d.prevClose : null;
+ setV(pfx+'-val', num(d.price, 2)+'%', 'hl');
+ if (chgPp !== null && chgPp !== 0) {
+ setC(pfx+'-chg', (chgPp > 0 ? '+' : '') + num(chgPp, 2) + ' pp', '');
+ } else {
+ setC(pfx+'-chg', '% a.a.', '');
+ }
+ setSub(pfx+'-sub', 'TradingView · Tesouro EUA' + (fromCache ? ' · cache' : ''));
 }
 
 // ── DI Futuro · gráfico de histórico ─────────────────────────────────────────
@@ -2627,7 +2661,10 @@ async function loadNtnbHistory(days) {
  },
  scales: {
  x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
- y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, callback: v => v.toFixed(1) + '%' }, grid: { color: '#9aa1ac' } },
+ // 2 casas decimais (não 1) — em horizontes curtos (5D/1M) a variação da taxa costuma
+ // ser menor que 0,1pp, e com só 1 casa vários ticks do eixo arredondavam pro mesmo valor
+ // (ex: "8,0%" repetido), tornando a escala confusa.
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, callback: v => v.toFixed(2) + '%' }, grid: { color: '#9aa1ac' } },
  },
  },
  });
@@ -3158,6 +3195,12 @@ const CLOSE_REPORT_CONFIG = [
  { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F30', label: 'DI FUTURO JAN/30', unit: 'bps' },
  { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F35', label: 'DI FUTURO JAN/35', unit: 'bps' },
  ...NTNB_MATURITIES.map(m => ({ section: 'Renda fixa', region: 'Brasil', kind: 'ntnb', maturity: m.year, label: `NTN-B ${m.year}`, unit: 'bps' })),
+ // Treasury 2 anos: Yahoo Finance não tem um ticker líquido pra esse yield (só um contrato
+ // futuro com volume irrelevante, confirmado ao vivo) — usa TradingView (TVC:US02Y) via o
+ // mesmo endpoint/protocolo já usado pro histórico do DI Futuro. O de 10 anos (^TNX) já tem
+ // histórico bom no Yahoo, sem motivo pra trocar de fonte.
+ { section: 'Renda fixa', region: 'Estados Unidos', kind: 'tv-yield', tvSymbol: 'TVC:US02Y', label: 'TREASURY 2 ANOS', unit: 'bps' },
+ { section: 'Renda fixa', region: 'Estados Unidos', kind: 'yahoo-yield', ticker: '^TNX', label: 'TREASURY 10 ANOS', unit: 'bps' },
  { section: 'Bolsa', region: 'Brasil', kind: 'yahoo', ticker: '^BVSP', label: 'IBOVESPA', unit: 'pct', decimals: 0 },
  { section: 'Bolsa', region: 'Estados Unidos', kind: 'yahoo', ticker: '^GSPC', label: 'S&P 500', unit: 'pct', decimals: 2 },
  { section: 'Bolsa', region: 'Estados Unidos', kind: 'yahoo', ticker: '^IXIC', label: 'NASDAQ', unit: 'pct', decimals: 2 },
@@ -3296,6 +3339,17 @@ async function closingDiSeries(symbol) {
  return d.history.map(h => ({ ts: h.date, p: h.value, key: dateKeyTZ(h.date * 1000, 'America/Sao_Paulo') }));
 }
 
+// Treasury 2 anos via TradingView (?tv=) — mesmo endpoint/protocolo do histórico do DI Futuro
+// acima, só que com o símbolo literal (ver comentário em CLOSE_REPORT_CONFIG). Fuso de Nova
+// York, igual às demais bolsas americanas do relatório.
+async function closingTvYieldSeries(tvSymbol) {
+ const r = await fetch(`/api/b3?tv=${encodeURIComponent(tvSymbol)}&history=1`);
+ const d = await r.json();
+ if (d.error) throw new Error(d.error);
+ if (!d.history?.length) throw new Error('sem histórico');
+ return d.history.map(h => ({ ts: h.date, p: h.value, key: dateKeyTZ(h.date * 1000, 'America/New_York') }));
+}
+
 // NTN-B: um arquivo diário da ANBIMA traz as 6 taxas de uma vez (/api/ntnb), então resolve os
 // 6 vencimentos com só 2 requisições pra Δ dia (hoje + ontem). Δ mês e Δ ano vêm da planilha
 // estática "Taxas Antigas NTNB.xlsx" (Daniel mantém manualmente, 1x/mês e 1x/ano) — a ANBIMA só
@@ -3383,6 +3437,23 @@ async function computeCloseItem(item, refKey, ntnbBatchPromise) {
  if (!d) throw new Error('sem dados');
  return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey };
  }
+ // Treasury 10 anos — mesma busca de 'yahoo' acima (^TNX tem histórico bom no Yahoo), mas Δ em
+ // bps (pontos-percentuais * 100), igual DI/NTN-B — um yield precisa de Δ em pp, não de %
+ // relativo sobre o valor do próprio yield (mesmo raciocínio do bug corrigido no DI Futuro).
+ if (item.kind === 'yahoo-yield') {
+ const res = await fetchYahooChartRaw(item.ticker, '2y');
+ const series = closingSeriesFromChart(res);
+ const d = computeDeltas(series, refKey);
+ if (!d) throw new Error('sem dados');
+ return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey };
+ }
+ // Treasury 2 anos — via TradingView (ver closingTvYieldSeries), mesma lógica de Δ em bps.
+ if (item.kind === 'tv-yield') {
+ const series = await closingTvYieldSeries(item.tvSymbol);
+ const d = computeDeltas(series, refKey);
+ if (!d) throw new Error('sem dados');
+ return { ...item, value: d.value, dBps: d.dChg != null ? d.dChg * 100 : null, mBps: d.mChg != null ? d.mChg * 100 : null, yBps: d.yChg != null ? d.yChg * 100 : null, asOfKey: d.asOfKey };
+ }
  throw new Error('kind desconhecido: ' + item.kind);
 }
 
@@ -3390,7 +3461,7 @@ async function computeCloseItem(item, refKey, ntnbBatchPromise) {
 // (instrumento adicionado/removido, campo novo no payload, etc). Sem isso, quem já tinha o
 // relatório em cache no navegador continuaria vendo a versão antiga (mesmo refKey, payload
 // desatualizado) até a data de referência virar sozinha — já aconteceu na prática.
-const CLOSE_REPORT_CACHE_KEY = 'close_report_v4';
+const CLOSE_REPORT_CACHE_KEY = 'close_report_v5';
 
 async function loadClosingReport(force = false) {
  const refKey = computeRefKey();
