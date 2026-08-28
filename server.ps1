@@ -363,35 +363,39 @@ function Test-BondsSectionDivider([string]$Name) {
     return $n -like '*Latam'
 }
 
-# Espelho de handleSnapshot() em api/bonds.js — aba "Controle Duration": Bonds=D, Isin=E,
-# Banco=F, Volume=G, Bid Yield=H, Cupom=I (fração), Duration=J, (K vazia), Spread Over
-# Treasury=L. Cada linha é uma entrada própria — não agrupa por ISIN (ver comentário em
-# api/bonds.js sobre papéis com bancos/dealers diferentes e mesmo ISIN).
+# Espelho de handleSnapshot() em api/bonds.js — aba "Controle Duration 2": Bonds=A, Isin=B,
+# Banco=C, Volume=D, Bid Yield=E, Cupom=F (fração), Duration=G, Spread Over Treasury=H (sem
+# coluna vazia entre Duration e Spread — diferente da extinta "Controle Duration", que usava
+# D/E/F/G/H/I/J/L com um gap na K). Cada linha é uma entrada própria — não agrupa por ISIN (ver
+# comentário em api/bonds.js sobre papéis com bancos/dealers diferentes e mesmo ISIN).
 function Get-BondsSnapshot([string]$Path) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
     try {
-        $cellMap = Get-XlsxSheetMap -Zip $zip -SheetNamePattern 'Controle Duration*'
+        $cellMap = Get-XlsxSheetMap -Zip $zip -SheetNamePattern 'Controle Duration 2*'
         if (-not $cellMap) { return [PSCustomObject]@{ asOf = $null; bonds = @() } }
-        # D1 tem a data de referência do snapshot inteiro (serial do Excel).
-        $asOfRaw = $cellMap['D1']
+        # A1 tem a data de referência do snapshot inteiro (serial do Excel) — na aba antiga
+        # "Controle Duration" era D1; a "2" trocou de posição junto com as demais colunas (ver
+        # comentário em handleSnapshot de api/bonds.js: 3 posições pra esquerda, sem coluna vazia
+        # entre Duration e Spread).
+        $asOfRaw = $cellMap['A1']
         $asOf = if ($asOfRaw -is [double]) { ConvertTo-BrDateFromSerial $asOfRaw } else { $null }
         $bonds = [System.Collections.Generic.List[object]]::new()
         $section = $null
         for ($r = 3; $r -le 186; $r++) {
-            $name = $cellMap["D$r"]
-            $isin = $cellMap["E$r"]
+            $name = $cellMap["A$r"]
+            $isin = $cellMap["B$r"]
             if ($name -and -not $isin -and (Test-BondsSectionDivider $name)) {
                 $section = ([string]$name).Trim()
                 continue
             }
             if (-not $name -or -not $isin) { continue }
-            $cupom = $cellMap["I$r"]
+            $cupom = $cellMap["F$r"]
             $bonds.Add([PSCustomObject]@{
-                name = $name; isin = $isin; section = $section; banco = $cellMap["F$r"]
-                volumeUsd = $cellMap["G$r"]; bidYield = $cellMap["H$r"]
+                name = $name; isin = $isin; section = $section; banco = $cellMap["C$r"]
+                volumeUsd = $cellMap["D$r"]; bidYield = $cellMap["E$r"]
                 cupomPct = if ($null -ne $cupom) { [double]$cupom * 100.0 } else { $null }
-                duration = $cellMap["J$r"]; spreadOverTreasury = $cellMap["L$r"]
+                duration = $cellMap["G$r"]; spreadOverTreasury = $cellMap["H$r"]
             })
         }
         return [PSCustomObject]@{ asOf = $asOf; bonds = $bonds }
@@ -1580,6 +1584,160 @@ while ($listener.IsListening) {
         continue
     }
 
+    # ── Yields de treasury americano — CNBC primeiro, TradingView de fallback (espelho de
+    # api/treasury.js, ver comentário lá pro detalhamento e pro motivo de ser rota própria,
+    # separada de /api/b3). CNBC bloqueia com 403 (Akamai) sem User-Agent de navegador — não
+    # é bloqueio de IP de datacenter.
+    if ($path -eq '/api/treasury' -and -not $req.QueryString['history']) {
+        $tvSymbol = $req.QueryString['symbol']
+        if (-not $tvSymbol) {
+            $err = [System.Text.Encoding]::UTF8.GetBytes('{"error":"symbol obrigatório (ex: TVC:US02Y)"}')
+            $res.StatusCode = 400
+            $res.ContentType = 'application/json'
+            $res.ContentLength64 = $err.Length
+            $res.OutputStream.Write($err, 0, $err.Length)
+            $res.OutputStream.Close()
+            continue
+        }
+        # Símbolo do TradingView -> símbolo da CNBC (sem zero à esquerda pro yield de 2 anos).
+        $cnbcSymbols = @{ 'TVC:US02Y' = 'US2Y' }
+        $result = $null
+        $cnbcErrMsg = $null
+        if ($cnbcSymbols.ContainsKey($tvSymbol)) {
+            try {
+                $cnbcUrl = "https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol?symbols=$($cnbcSymbols[$tvSymbol])&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json&events=1"
+                $wc = [System.Net.WebClient]::new()
+                $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+                $wc.Headers.Add('Accept', 'application/json')
+                $raw = $wc.DownloadString($cnbcUrl)
+                $q = ($raw | ConvertFrom-Json).FormattedQuoteResult.FormattedQuote[0]
+                if (-not $q.last) { throw "resposta da CNBC sem cotação" }
+                $price = [double]($q.last -replace '%', '')
+                $prevCloseJson = if ($q.previous_day_closing) { [string]([double]($q.previous_day_closing -replace '%', '')) } else { 'null' }
+                $result = "{`"price`":$price,`"prevClose`":$prevCloseJson,`"date`":null,`"source`":`"cnbc`"}"
+            } catch {
+                $cnbcErrMsg = $_.Exception.Message
+            }
+        } else {
+            $cnbcErrMsg = "sem mapeamento CNBC pra $tvSymbol"
+        }
+        if (-not $result) {
+            try {
+                $tvBody = @{
+                    symbols = @{ tickers = @($tvSymbol); query = @{ types = @() } }
+                    columns = @('close', 'change_abs')
+                } | ConvertTo-Json -Depth 5 -Compress
+                $wc2 = [System.Net.WebClient]::new()
+                $wc2.Headers.Add('Content-Type', 'application/json')
+                $wc2.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+                $wc2.Encoding = [System.Text.Encoding]::UTF8
+                $raw2 = $wc2.UploadString('https://scanner.tradingview.com/global/scan', 'POST', $tvBody)
+                $tvData = $raw2 | ConvertFrom-Json
+                $row = $tvData.data[0].d
+                if (-not $row -or $null -eq $row[0]) { throw "símbolo $tvSymbol não encontrado" }
+                $price = $row[0]
+                # change_abs já vem do TradingView como Δ em pontos-percentuais contra o
+                # fechamento anterior — mesma convenção usada pro DI Futuro em /api/b3.
+                $changeAbs = if ($row.Count -gt 1) { $row[1] } else { $null }
+                $prevCloseJson = if ($null -ne $changeAbs) { [string]($price - $changeAbs) } else { 'null' }
+                $result = "{`"price`":$price,`"prevClose`":$prevCloseJson,`"date`":null,`"source`":`"tradingview`"}"
+            } catch {
+                $tvErrMsg = $_.Exception.Message
+                $safeCnbc = ($cnbcErrMsg -replace '"', '\"') -replace "`n", ' '
+                $safeTv = ($tvErrMsg -replace '"', '\"') -replace "`n", ' '
+                $result = "{`"error`":`"CNBC: $safeCnbc · TradingView: $safeTv`"}"
+            }
+        }
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
+        $res.ContentType = 'application/json; charset=utf-8'
+        $res.Headers.Add('Access-Control-Allow-Origin', '*')
+        $res.ContentLength64 = $bytes.Length
+        $res.OutputStream.Write($bytes, 0, $bytes.Length)
+        $res.OutputStream.Close()
+        continue
+    }
+
+    # ── Histórico de treasury americano via WebSocket do TradingView (espelho de api/treasury.js,
+    # mesmo protocolo do histórico do DI Futuro acima — ver comentário lá pro detalhamento) ──────
+    if ($path -eq '/api/treasury' -and $req.QueryString['history']) {
+        try {
+            $tvSymbol = $req.QueryString['symbol']
+            if (-not $tvSymbol) { throw "symbol obrigatório (ex: TVC:US02Y)" }
+
+            $client = [System.Net.WebSockets.ClientWebSocket]::new()
+            $client.Options.SetRequestHeader('Origin', 'https://www.tradingview.com')
+            $cts = [System.Threading.CancellationTokenSource]::new(8000)
+            $client.ConnectAsync([Uri]::new('wss://data.tradingview.com/socket.io/websocket'), $cts.Token).GetAwaiter().GetResult() | Out-Null
+
+            function Send-TvMsg($ws, $method, $paramsJson, $token) {
+                $payload = "{`"m`":`"$method`",`"p`":$paramsJson}"
+                $msg = "~m~$($payload.Length)~m~$payload"
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($msg)
+                $ws.SendAsync([System.ArraySegment[byte]]::new($bytes), [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $token).GetAwaiter().GetResult() | Out-Null
+            }
+
+            $chartSession = 'cs_' + [Guid]::NewGuid().ToString('N').Substring(0, 12)
+            Send-TvMsg $client 'set_auth_token' '["unauthorized_user_token"]' $cts.Token
+            Send-TvMsg $client 'chart_create_session' "[`"$chartSession`",`"`"]" $cts.Token
+            $symbolInit = "={`"symbol`":`"$tvSymbol`",`"adjustment`":`"splits`"}"
+            $symbolInitEscaped = $symbolInit -replace '"', '\"'
+            Send-TvMsg $client 'resolve_symbol' "[`"$chartSession`",`"symbol_1`",`"$symbolInitEscaped`"]" $cts.Token
+            Send-TvMsg $client 'create_series' "[`"$chartSession`",`"series_1`",`"s1`",`"symbol_1`",`"1D`",500]" $cts.Token
+
+            $history = $null
+            $buffer = New-Object byte[] 131072
+            $msgBuilder = [System.Text.StringBuilder]::new()
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            while ($sw.ElapsedMilliseconds -lt 8000 -and -not $history) {
+                $recvResult = $client.ReceiveAsync([System.ArraySegment[byte]]::new($buffer), $cts.Token).GetAwaiter().GetResult()
+                [void]$msgBuilder.Append([System.Text.Encoding]::UTF8.GetString($buffer, 0, $recvResult.Count))
+                if (-not $recvResult.EndOfMessage) { continue }
+                $raw = $msgBuilder.ToString()
+                [void]$msgBuilder.Clear()
+                $i = 0
+                while ($i -lt $raw.Length -and $raw.Substring($i).StartsWith('~m~')) {
+                    $sepIdx = $raw.IndexOf('~m~', $i + 3)
+                    if ($sepIdx -lt 0) { break }
+                    $len = [int]$raw.Substring($i + 3, $sepIdx - ($i + 3))
+                    $start = $sepIdx + 3
+                    if ($start + $len -gt $raw.Length) { break }
+                    $frame = $raw.Substring($start, $len)
+                    $i = $start + $len
+                    if ($frame.StartsWith('~h~')) {
+                        $echo = [System.Text.Encoding]::UTF8.GetBytes("~m~$($frame.Length)~m~$frame")
+                        $client.SendAsync([System.ArraySegment[byte]]::new($echo), [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $cts.Token).GetAwaiter().GetResult() | Out-Null
+                        continue
+                    }
+                    try { $obj = $frame | ConvertFrom-Json } catch { continue }
+                    if ($obj.m -eq 'timescale_update' -and $obj.p[1].series_1.s) {
+                        $history = $obj.p[1].series_1.s | ForEach-Object {
+                            [PSCustomObject]@{ date = [int64]$_.v[0]; value = $_.v[4] }
+                        }
+                    } elseif ($obj.m -in @('symbol_error', 'series_error', 'critical_error')) {
+                        throw "TradingView: $($obj.m)"
+                    }
+                }
+            }
+            $client.Dispose()
+            if (-not $history) { throw "timeout aguardando dados do TradingView" }
+            $result = @{ history = $history; source = 'tradingview' } | ConvertTo-Json -Depth 6
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
+            $res.ContentType = 'application/json; charset=utf-8'
+            $res.Headers.Add('Access-Control-Allow-Origin', '*')
+            $res.ContentLength64 = $bytes.Length
+            $res.OutputStream.Write($bytes, 0, $bytes.Length)
+        } catch {
+            $errMsg = ($_.Exception.Message -replace '"', '\"') -replace "`n", ' '
+            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$errMsg`"}")
+            $res.StatusCode = 500
+            $res.ContentType = 'application/json'
+            $res.ContentLength64 = $err.Length
+            $res.OutputStream.Write($err, 0, $err.Length)
+        }
+        $res.OutputStream.Close()
+        continue
+    }
+
     # ── Proxy planilha estática NTN-B (relatório de Fechamento, ?staticAnchors=) ────────────
     # Espelho de handleStaticAnchors em api/ntnb.js — precisa vir ANTES dos outros blocos de
     # /api/ntnb abaixo.
@@ -1818,7 +1976,7 @@ while ($listener.IsListening) {
     }
 
     # ── Proxy planilha Bonds Terminal.xlsx ──────────────────────────────────
-    # Espelho de api/bonds.js — sem ?history, devolve o snapshot da aba "Controle Duration";
+    # Espelho de api/bonds.js — sem ?history, devolve o snapshot da aba "Controle Duration 2";
     # ?history=yield|price&name=... ou ?history=treasury&maturity=..., devolve a série da aba
     # correspondente (ver $BONDS_BLOCK_SHEETS).
     if ($path -eq '/api/bonds') {
