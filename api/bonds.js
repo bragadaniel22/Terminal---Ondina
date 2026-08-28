@@ -1,6 +1,6 @@
 // Lê "Bonds Terminal.xlsx" (raiz do repo, ao lado de index.html — mesmo padrão da NTN-B) —
 // quatro abas usadas hoje:
-// - "Controle Duration": foto do dia por papel (nome, ISIN, banco/dealer, volume, bid yield,
+// - "Controle Duration 2": foto do dia por papel (nome, ISIN, banco/dealer, volume, bid yield,
 //   cupom, duration, spread over treasury).
 // - "Bid Yield": histórico diário de bid yield por papel (~5 anos).
 // - "Preços": histórico diário de preço (bid close) por papel — só ~58 dos papéis de
@@ -16,12 +16,12 @@
 // O Daniel atualiza essa planilha manualmente e sobe pelo fluxo normal de upload no GitHub —
 // nenhum código muda quando os números mudam.
 //
-// GET /api/bonds                              → snapshot (lista de papéis de "Controle Duration")
+// GET /api/bonds                              → snapshot (lista de papéis de "Controle Duration 2")
 // GET /api/bonds?history=yield&name=...       → histórico de Bid Yield ("Bid Yield")
 // GET /api/bonds?history=price&name=...       → histórico de preço/PU ("Preços")
 // GET /api/bonds?history=treasury&maturity=2Y → histórico de yield do treasury ("Treasury")
 //
-// Cada linha de "Controle Duration" é tratada como uma entrada própria — não agrupamos por
+// Cada linha de "Controle Duration 2" é tratada como uma entrada própria — não agrupamos por
 // ISIN. Alguns papéis aparecem 2x com bancos/dealers diferentes (ex: "Banco do Brasil 26"
 // banco C e "Banco do Brasil" banco B, mesmo ISIN) — parecem ser cotações de corretoras
 // diferentes pro mesmo papel; sem regra ainda de qual é "a" cotação oficial, então mostramos
@@ -69,30 +69,33 @@ async function loadWorkbook() {
   return XLSX.read(readFileSync(filePath), { type: 'buffer' });
 }
 
-// "Controle Duration": Bonds=D, Isin=E, Banco=F, Volume=G, Bid Yield=H, Cupom=I, Duration=J,
-// (K vazia), Spread Over Treasury=L. Cupom vem como fração (0,0503 = 5,03%); os demais campos
-// numéricos já vêm na unidade certa.
+// "Controle Duration 2": Bonds=A, Isin=B, Banco=C, Volume=D, Bid Yield=E, Cupom=F, Duration=G,
+// Spread Over Treasury=H (sem coluna vazia entre Duration e Spread — diferente da extinta aba
+// "Controle Duration", que tinha D/E/F/G/H/I/J/L com uma coluna K vazia no meio; a "2" trocou de
+// aba em 2026-08-26 a pedido do Daniel, com as colunas 3 posições pra esquerda e sem esse gap).
+// Cupom vem como fração (0,0503 = 5,03%); os demais campos numéricos já vêm na unidade certa.
 //
 // A planilha já organiza os papéis por região/categoria com linhas divisórias (nome na coluna
-// D, ISIN vazio) — Brasil, Europa, US Consolidado, Preferred, África/Ásia/Latam, Fundos de
+// A, ISIN vazio) — Brasil, Europa, US Consolidado, Preferred, África/Ásia/Latam, Fundos de
 // Bonds. Detecta por essa lista fixa (não por "tem nome sem ISIN": alguns papéis de verdade
 // também não têm ISIN preenchido, ex. "CLN Volkswagen" — esses continuam ignorados como antes,
 // só não viram seção por engano).
 const BONDS_SECTIONS = ['Brasil', 'Europa', 'US Consolidado', 'Preferred', 'África/Ásia/Latam', 'Fundos de Bonds'];
 
 function handleSnapshot(wb, res) {
-  const ws = wb.Sheets['Controle Duration'];
-  if (!ws) return res.status(500).json({ error: 'Bonds Terminal.xlsx: aba "Controle Duration" não encontrada' });
+  const ws = wb.Sheets['Controle Duration 2'];
+  if (!ws) return res.status(500).json({ error: 'Bonds Terminal.xlsx: aba "Controle Duration 2" não encontrada' });
 
-  // D1 tem a data de referência do snapshot inteiro (serial do Excel, ex.: 46252 = 18/08/2026).
-  const asOfRaw = ws['D1']?.v;
+  // A1 tem a data de referência do snapshot inteiro (serial do Excel, ex.: 46252 = 18/08/2026)
+  // — na aba antiga era D1; a "2" trocou de posição junto com as demais colunas.
+  const asOfRaw = ws['A1']?.v;
   const asOf = typeof asOfRaw === 'number' ? excelSerialToBr(asOfRaw) : null;
 
   const bonds = [];
   let section = null;
   for (let r = 3; r <= 186; r++) {
-    const name = ws[`D${r}`]?.v;
-    const isin = ws[`E${r}`]?.v;
+    const name = ws[`A${r}`]?.v;
+    const isin = ws[`B${r}`]?.v;
     if (name != null && !isin && BONDS_SECTIONS.includes(String(name).trim())) {
       section = String(name).trim();
       continue;
@@ -103,12 +106,12 @@ function handleSnapshot(wb, res) {
       name: String(name).trim(),
       isin: String(isin).trim(),
       section,
-      banco: ws[`F${r}`]?.v ?? null,
-      volumeUsd: num(ws[`G${r}`]?.v),
-      bidYield: num(ws[`H${r}`]?.v),
-      cupomPct: num(ws[`I${r}`]?.v) != null ? ws[`I${r}`].v * 100 : null,
-      duration: num(ws[`J${r}`]?.v),
-      spreadOverTreasury: num(ws[`L${r}`]?.v),
+      banco: ws[`C${r}`]?.v ?? null,
+      volumeUsd: num(ws[`D${r}`]?.v),
+      bidYield: num(ws[`E${r}`]?.v),
+      cupomPct: num(ws[`F${r}`]?.v) != null ? ws[`F${r}`].v * 100 : null,
+      duration: num(ws[`G${r}`]?.v),
+      spreadOverTreasury: num(ws[`H${r}`]?.v),
     });
   }
   return res.json({ asOf, bonds });
@@ -145,7 +148,7 @@ function findBlockSeries(wb, sheetKey, label) {
 }
 
 // Alguns papéis são o MESMO bond que outro, só cotado por dealer diferente (mesma linha em
-// "Controle Duration" duplicada, mesmo ISIN — ver comentário em handleSnapshot), mas não têm
+// "Controle Duration 2" duplicada, mesmo ISIN — ver comentário em handleSnapshot), mas não têm
 // bloco próprio nas abas de histórico. Curado manualmente pelo Daniel um a um (não é regra
 // automática por ISIN — nem toda duplicata de ISIN é isso): usa o histórico do papel
 // equivalente já existente em vez de "sem histórico".
