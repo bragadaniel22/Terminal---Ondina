@@ -1237,7 +1237,7 @@
  <div class="sources-body">
  <div class="sources-section">
  <h3>Brasil</h3>
- <p><strong>CDI 12M</strong> e <strong>Selic</strong>: Banco Central (BCB), séries 11 e 432, via API pública SGS. CDI 12M é acumulado das taxas diárias do último ano.</p>
+ <p><strong>CDI 12M</strong> e <strong>Selic</strong>: Banco Central (BCB), séries 11 e 432, via API pública SGS. CDI 12M é acumulado das taxas diárias do último ano. Se o BCB falhar, cai pra uma fonte alternativa (Selic via BrasilAPI; CDI 12M via brasilindicadores.com.br, mesma métrica mas atualizada por mês) antes de recorrer ao último valor salvo em cache.</p>
  <p><strong>Ibovespa</strong>: Yahoo Finance (^BVSP).</p>
  <p><strong>DI Futuro JAN/30 e JAN/35</strong>: cotação B3 (contratos DI1F30 e DI1F35).</p>
  <p><strong>ETTJ Pré, ETTJ IPCA e Inflação Implícita</strong>: ANBIMA, estrutura a termo de taxas de juros (252 dias úteis).</p>
@@ -1464,7 +1464,7 @@ async function yahoo(ticker) {
 }
 
 async function ecbRate() {
- const r = await fetch('/api/ecb');
+ const r = await fetch('/api/rates?source=ecb');
  if (!r.ok) throw new Error(`ECB proxy: ${r.status}`);
  const d = await r.json();
  if (d.error) throw new Error(d.error);
@@ -1496,8 +1496,13 @@ async function loadBrasil() {
  await Promise.allSettled([
  (async () => {
  // CDI 12M — compõe todas as taxas diárias do último ano. Chamada direta do browser pro
- // BCB, sem proxy/retry — igual à BCE em loadJuros(), cacheia o resultado e cai pro
- // último valor salvo numa falha passageira, em vez de mostrar ERRO na hora.
+ // BCB, sem proxy — API do BCB confirmada instável/com timeout esporádico (reproduzido ao
+ // vivo). Fallback de 2 camadas antes de aceitar mostrar algo desatualizado: (1) tenta a
+ // MESMA métrica (acumulado 12 meses) via scraping de brasilindicadores.com.br
+ // (/api/rates?source=cdi12m — granularidade mensal, não diária, mas é o número certo, não
+ // uma aproximação pela taxa do dia); (2) só cai pro último valor salvo em cache (não pro
+ // valor da fonte alternativa — esse nunca é colocado no mesmo cache do BCB, pra "· cache"
+ // continuar significando sempre "última leitura real do BCB") se a alternativa também falhar.
  try {
  const today = new Date();
  const yearAgo = new Date(today);
@@ -1510,29 +1515,46 @@ async function loadBrasil() {
  setV('cdi-val', num(cdi12m) + '%', 'hl');
  setSub('cdi-sub', `BCB · 12 meses · último: ${lastDate}`);
  } catch (e) {
+ try {
+ const r = await fetch('/api/rates?source=cdi12m');
+ const d = await r.json();
+ if (d.error) throw new Error(d.error);
+ setV('cdi-val', num(d.v) + '%', 'hl');
+ setSub('cdi-sub', `Brasil Indicadores · 12 meses até ${d.date} (BCB indisponível)`);
+ } catch (e2) {
  const c = cacheGet('cdi_12m');
  if (c) {
  setV('cdi-val', num(c.cdi12m) + '%', 'hl');
  setSub('cdi-sub', `BCB · 12 meses · último: ${c.lastDate} · cache`);
  } else {
- setV('cdi-val', 'ERRO', 'err'); console.error('CDI12M', e);
+ setV('cdi-val', 'ERRO', 'err'); console.error('CDI12M', e, e2);
+ }
  }
  }
  })(),
  (async () => {
- // Selic — série 432. Mesmo raciocínio de cache-fallback do CDI 12M acima.
+ // Selic — série 432. Mesmo fallback de 2 camadas do CDI 12M acima — aqui a fonte
+ // alternativa (BrasilAPI) é a mesma métrica exata (taxa atual), não uma aproximação.
  try {
  const { v, date } = await bcbLast(432);
  cachePut('selic_432', { v, date });
  setV('selic-val', num(v) + '%', 'hl');
  setSub('selic-sub', `BCB série 432 · ${date}`);
  } catch (e) {
+ try {
+ const r = await fetch('/api/rates?source=selic');
+ const d = await r.json();
+ if (d.error) throw new Error(d.error);
+ setV('selic-val', num(d.v) + '%', 'hl');
+ setSub('selic-sub', 'BrasilAPI (BCB indisponível)');
+ } catch (e2) {
  const c = cacheGet('selic_432');
  if (c) {
  setV('selic-val', num(c.v) + '%', 'hl');
  setSub('selic-sub', `BCB série 432 · ${c.date} · cache`);
  } else {
- setV('selic-val', 'ERRO', 'err'); setSub('selic-sub', 'BCB · falha ao buscar'); console.error('Selic', e);
+ setV('selic-val', 'ERRO', 'err'); setSub('selic-sub', 'BCB · falha ao buscar'); console.error('Selic', e, e2);
+ }
  }
  }
  })(),
