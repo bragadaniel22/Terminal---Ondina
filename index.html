@@ -1495,7 +1495,9 @@ function renderMkt(valId, chgId, subId, data, decimals, baseSub, suffix = '') {
 async function loadBrasil() {
  await Promise.allSettled([
  (async () => {
- // CDI 12M — compõe todas as taxas diárias do último ano
+ // CDI 12M — compõe todas as taxas diárias do último ano. Chamada direta do browser pro
+ // BCB, sem proxy/retry — igual à BCE em loadJuros(), cacheia o resultado e cai pro
+ // último valor salvo numa falha passageira, em vez de mostrar ERRO na hora.
  try {
  const today = new Date();
  const yearAgo = new Date(today);
@@ -1504,20 +1506,34 @@ async function loadBrasil() {
  const prod = rows.reduce((acc, row) => acc * (1 + parseFloat(row.valor.replace(',', '.')) / 100), 1.0);
  const cdi12m = (prod - 1) * 100;
  const lastDate = rows[rows.length - 1]?.data ?? '';
+ cachePut('cdi_12m', { cdi12m, lastDate });
  setV('cdi-val', num(cdi12m) + '%', 'hl');
  setSub('cdi-sub', `BCB · 12 meses · último: ${lastDate}`);
  } catch (e) {
+ const c = cacheGet('cdi_12m');
+ if (c) {
+ setV('cdi-val', num(c.cdi12m) + '%', 'hl');
+ setSub('cdi-sub', `BCB · 12 meses · último: ${c.lastDate} · cache`);
+ } else {
  setV('cdi-val', 'ERRO', 'err'); console.error('CDI12M', e);
+ }
  }
  })(),
  (async () => {
- // Selic — série 432
+ // Selic — série 432. Mesmo raciocínio de cache-fallback do CDI 12M acima.
  try {
  const { v, date } = await bcbLast(432);
+ cachePut('selic_432', { v, date });
  setV('selic-val', num(v) + '%', 'hl');
  setSub('selic-sub', `BCB série 432 · ${date}`);
  } catch (e) {
+ const c = cacheGet('selic_432');
+ if (c) {
+ setV('selic-val', num(c.v) + '%', 'hl');
+ setSub('selic-sub', `BCB série 432 · ${c.date} · cache`);
+ } else {
  setV('selic-val', 'ERRO', 'err'); setSub('selic-sub', 'BCB · falha ao buscar'); console.error('Selic', e);
+ }
  }
  })(),
  (async () => {
