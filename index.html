@@ -1213,6 +1213,32 @@
  </div>
 </div>
 
+<div class="modal-overlay" id="etf-history-overlay" onclick="if(event.target===this) closeEtfHistory()">
+ <div class="modal-box">
+ <button class="modal-close" onclick="closeEtfHistory()"></button>
+ <div class="modal-header">
+ <div class="modal-title" id="etf-history-title">—</div>
+ <div class="modal-sub">
+ <span class="modal-last" id="etf-history-last"></span>
+ <span class="modal-chg" id="etf-history-chg"></span>
+ <span class="dim2" style="font-size:10px">Índice ponderado · base 100</span>
+ </div>
+ </div>
+ <div class="modal-range">
+ <button class="range-btn" data-r="intraday" onclick="loadEtfHistoryChart('intraday')">INTRADIA</button>
+ <button class="range-btn active" data-r="3mo" onclick="loadEtfHistoryChart('3mo')">3M</button>
+ <button class="range-btn" data-r="6mo" onclick="loadEtfHistoryChart('6mo')">6M</button>
+ <button class="range-btn" data-r="ytd" onclick="loadEtfHistoryChart('ytd')">YTD</button>
+ <button class="range-btn" data-r="1y" onclick="loadEtfHistoryChart('1y')">1A</button>
+ <button class="range-btn" data-r="2y" onclick="loadEtfHistoryChart('2y')">2A</button>
+ </div>
+ <div class="modal-chart-box">
+ <div class="modal-status" id="etf-history-status"></div>
+ <canvas id="etf-history-chart"></canvas>
+ </div>
+ </div>
+</div>
+
 <div class="modal-overlay" id="sources-overlay" onclick="if(event.target===this) closeSources()">
  <div class="modal-box sources-box">
  <button class="modal-close" onclick="closeSources()"></button>
@@ -3904,12 +3930,24 @@ function renderEtfCards() {
  <div class="card">
  <div class="card-head"><h2>${etf.name}</h2><div class="etf-val" id="etf-${key}-val">…</div></div>
  <div id="etf-${key}-holdings"></div>
- <div class="pf-chart-box">
+ <div class="pf-chart-box row-click" data-etf-key="${key}">
  <div class="pf-chart-title" id="etf-${key}-chart-title">Índice Ponderado · base 100</div>
  <canvas id="etf-${key}-chart"></canvas>
  </div>
  </div>
  `).join('');
+ // O gráfico já usa arrastar-pra-medir (dragRange) — um onclick simples também dispararia
+ // ao SOLTAR o clique depois de arrastar (mousedown/mouseup no mesmo elemento = 'click' no
+ // DOM mesmo com movimento no meio). Por isso o clique-pra-abrir-modal só dispara se o
+ // ponteiro não se moveu mais que alguns pixels entre pointerdown e pointerup.
+ grid.querySelectorAll('.pf-chart-box[data-etf-key]').forEach(el => {
+ let downX = 0, downY = 0, dragged = false;
+ el.addEventListener('pointerdown', e => { downX = e.clientX; downY = e.clientY; dragged = false; });
+ el.addEventListener('pointermove', e => {
+ if (Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4) dragged = true;
+ });
+ el.addEventListener('pointerup', () => { if (!dragged) openEtfHistory(el.dataset.etfKey); });
+ });
 }
 
 // Alguns tickers aparecem em mais de um setor (ex: MU em Memória IA e AI Chips/Semis; AMZN em
@@ -3932,6 +3970,152 @@ async function loadEtfs(range) {
  return;
  }
  await Promise.all(Object.entries(ETFS).map(([key, etf]) => loadOneEtf(key, etf, range)));
+}
+
+// Calcula a série do índice ponderado (base 100) de um setor a partir do histórico diário já
+// buscado de cada holding — separado do fetch/render pra ser reaproveitado tanto no gráfico
+// pequeno do card (loadOneEtf) quanto no modal ampliado (loadEtfHistoryChart).
+function computeEtfIndexFromHistResults(etf, histResults) {
+ const validIdx = [], validSeries = [];
+ histResults.forEach((r, i) => { if (r.status === 'fulfilled' && r.value.length > 4) { validIdx.push(i); validSeries.push(r.value); } });
+ if (!validSeries.length) return null;
+
+ // Alinhamento por DIA CALENDÁRIO, não por timestamp exato — necessário porque ativos como a
+ // Samsung (Korea Exchange) fecham em horário completamente diferente dos americanos, então
+ // seus timestamps nunca coincidem exatamente com os dos outros. Cada ativo entra no índice a
+ // partir da sua própria primeira data disponível (histórico mais curto pra ativos recentes),
+ // redistribuindo o peso dos ainda ausentes entre os já listados naquele dia.
+ const dateKey = ts => new Date(ts * 1000).toISOString().slice(0, 10);
+ const maps = validSeries.map(s => {
+ const m = new Map();
+ s.forEach(d => { const k = dateKey(d.ts); if (!m.has(k)) m.set(k, d.p); });
+ return m;
+ });
+ const firstPrices = validSeries.map(s => s[0].p);
+ const allKeys = [...new Set(maps.flatMap(m => [...m.keys()]))].sort();
+ const wSum = validIdx.reduce((a, i) => a + etf.holdings[i].weight, 0);
+
+ const dates = [], indexSeries = [];
+ allKeys.forEach(k => {
+ let n = 0, den = 0;
+ maps.forEach((m, si) => {
+ const p = m.get(k);
+ if (p == null) return;
+ const w = etf.holdings[validIdx[si]].weight / wSum;
+ n += w * (p / firstPrices[si] * 100);
+ den += w;
+ });
+ if (den > 0) { dates.push(new Date(k + 'T00:00:00Z')); indexSeries.push(n / den); }
+ });
+ if (!indexSeries.length) return null;
+ const totalRet = (indexSeries[indexSeries.length - 1] - 100) / 100;
+ return { dates, indexSeries, totalRet };
+}
+
+// Mesma ideia, versão intraday (candles de 5min, alinhados por timestamp exato, "congelando"
+// o último preço conhecido de cada ativo depois que a bolsa dele fecha).
+function computeEtfIndexFromIntraResults(etf, intraResults) {
+ const valid = [];
+ intraResults.forEach((r, i) => {
+ if (r.status === 'fulfilled' && r.value.series.length && r.value.prevClose) {
+ valid.push({ weight: etf.holdings[i].weight, series: r.value.series, prevClose: r.value.prevClose });
+ }
+ });
+ if (!valid.length) return null;
+
+ const wSum = valid.reduce((a, v) => a + v.weight, 0);
+ const maps = valid.map(v => new Map(v.series.map(d => [d.ts, d.p])));
+ const firstTs = valid.map(v => v.series[0].ts);
+ const allTs = [...new Set(valid.flatMap(v => v.series.map(d => d.ts)))].sort((a, b) => a - b);
+ const lastKnown = valid.map(() => null);
+
+ const dates = [], indexSeries = [];
+ allTs.forEach(ts => {
+ let n = 0, den = 0;
+ maps.forEach((m, vi) => {
+ if (ts < firstTs[vi]) return;
+ const p = m.get(ts);
+ if (p != null) lastKnown[vi] = p;
+ const cur = lastKnown[vi];
+ if (cur == null) return;
+ const w = valid[vi].weight / wSum;
+ n += w * (cur / valid[vi].prevClose * 100);
+ den += w;
+ });
+ if (den > 0) { dates.push(new Date(ts * 1000)); indexSeries.push(n / den); }
+ });
+ if (!indexSeries.length) return null;
+ const totalRet = (indexSeries[indexSeries.length - 1] - 100) / 100;
+ return { dates, indexSeries, totalRet };
+}
+
+// ── Setores · gráfico de histórico ampliado (modal) ───────────────────────────
+// Mesmo padrão do DI Futuro/Treasury (openDiHistory/openTreasuryHistory): clicar no gráfico
+// pequeno do card abre um modal maior, com seus próprios botões de range, independente do
+// range selecionado pra aba inteira (loadEtfs).
+let etfHistoryChart = null;
+let etfHistoryKey = null;
+
+function openEtfHistory(key) {
+ etfHistoryKey = key;
+ document.getElementById('etf-history-title').textContent = `${ETFS[key].name} · Histórico`;
+ document.getElementById('etf-history-overlay').classList.add('active');
+ loadEtfHistoryChart('3mo');
+}
+
+function closeEtfHistory() {
+ document.getElementById('etf-history-overlay')?.classList.remove('active');
+}
+
+async function loadEtfHistoryChart(range) {
+ document.querySelectorAll('#etf-history-overlay .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === range));
+ const etf = ETFS[etfHistoryKey];
+ const statusEl = document.getElementById('etf-history-status');
+ const lastEl = document.getElementById('etf-history-last');
+ statusEl.textContent = 'carregando…';
+ lastEl.textContent = ''; setC('etf-history-chg', '', '');
+
+ try {
+ const idx = range === 'intraday'
+ ? computeEtfIndexFromIntraResults(etf, await Promise.allSettled(etf.holdings.map(h => etfDedupedFetch(`intraday:${h.ticker}`, () => yahooIntraday(h.ticker)))))
+ : computeEtfIndexFromHistResults(etf, await Promise.allSettled(etf.holdings.map(h => etfDedupedFetch(`hist:${h.ticker}:${range}`, () => yahooHistory(h.ticker, range)))));
+ if (!idx) throw new Error('sem dados');
+ statusEl.textContent = '';
+
+ const { dates, indexSeries, totalRet } = idx;
+ const labels = dates.map(range === 'intraday' ? fmtShortDateTime : fmtDate);
+ lastEl.textContent = num(indexSeries[indexSeries.length - 1], 2);
+ setC('etf-history-chg', `${totalRet >= 0 ? '+' : ''}${num(totalRet * 100, 2)}%`, totalRet >= 0 ? 'pos' : 'neg');
+
+ if (etfHistoryChart) etfHistoryChart.destroy();
+ const ctx = document.getElementById('etf-history-chart').getContext('2d');
+ etfHistoryChart = new Chart(ctx, {
+ type: 'line',
+ data: { labels, datasets: [{ data: indexSeries, borderColor: '#d9530f', backgroundColor: '#d9530f', borderWidth: 1.5, pointRadius: 0, tension: .05, fill: false }] },
+ options: {
+ responsive: true, animation: false, maintainAspectRatio: false,
+ interaction: { mode: 'index', intersect: false },
+ events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
+ plugins: {
+ dragRange: { enabled: true },
+ legend: { display: false },
+ tooltip: {
+ backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
+ titleColor: '#2b3140', bodyColor: '#2b3140',
+ titleFont: { family: 'JetBrains Mono', size: 9 }, bodyFont: { family: 'JetBrains Mono', size: 9 },
+ callbacks: { label: c => `Índice: ${num(c.parsed.y, 2)}` },
+ },
+ },
+ scales: {
+ x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
+ y: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, callback: v => v.toFixed(1) }, grid: { color: '#9aa1ac' } },
+ },
+ },
+ });
+ } catch (e) {
+ statusEl.textContent = 'erro ao carregar';
+ console.error('ETF histórico', etfHistoryKey, e);
+ }
 }
 
 // Busca o pregão intraday mais recente do ativo (1 dia, candles de 5min) — o Yahoo
@@ -3983,41 +4167,9 @@ async function loadOneEtfIntraday(key, etf) {
  }).join('')}
  `;
 
- const valid = [];
- intraResults.forEach((r, i) => {
- if (r.status === 'fulfilled' && r.value.series.length && r.value.prevClose) {
- valid.push({ weight: etf.holdings[i].weight, series: r.value.series, prevClose: r.value.prevClose });
- }
- });
- if (!valid.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
-
- const wSum = valid.reduce((a, v) => a + v.weight, 0);
- const maps = valid.map(v => new Map(v.series.map(d => [d.ts, d.p])));
- const firstTs = valid.map(v => v.series[0].ts);
- const allTs = [...new Set(valid.flatMap(v => v.series.map(d => d.ts)))].sort((a, b) => a - b);
- // "último preço conhecido" por ativo — permanece parado (congelado) depois que a bolsa
- // daquele ativo fecha, enquanto os outros ativos (de bolsas ainda abertas) continuam
- // atualizando o índice combinado normalmente.
- const lastKnown = valid.map(() => null);
-
- const dates = [], indexSeries = [];
- allTs.forEach(ts => {
- let num2 = 0, den = 0;
- maps.forEach((m, vi) => {
- if (ts < firstTs[vi]) return; // essa bolsa ainda não tinha aberto nesse instante
- const p = m.get(ts);
- if (p != null) lastKnown[vi] = p;
- const cur = lastKnown[vi];
- if (cur == null) return;
- const w = valid[vi].weight / wSum;
- num2 += w * (cur / valid[vi].prevClose * 100);
- den += w;
- });
- if (den > 0) { dates.push(new Date(ts * 1000)); indexSeries.push(num2 / den); }
- });
- if (!indexSeries.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
-
- const totalRet = (indexSeries[indexSeries.length - 1] - 100) / 100;
+ const idx = computeEtfIndexFromIntraResults(etf, intraResults);
+ if (!idx) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
+ const { dates, indexSeries, totalRet } = idx;
  valEl.innerHTML = `<span class="${totalRet >= 0 ? 'pos' : 'neg'}">${totalRet >= 0 ? '+' : ''}${num(totalRet * 100, 1)}%</span>`;
 
  const labels = dates.map(fmtShortDateTime);
@@ -4093,48 +4245,9 @@ async function loadOneEtf(key, etf, range) {
  }).join('')}
  `;
 
- const validIdx = [], validSeries = [];
- histResults.forEach((r, i) => { if (r.status === 'fulfilled' && r.value.length > 4) { validIdx.push(i); validSeries.push(r.value); } });
- if (!validSeries.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
-
- // Alinhamento por DIA CALENDÁRIO, não por timestamp exato — necessário porque a
- // Samsung (005930.KS, pregão da Korea Exchange) fecha em horário completamente
- // diferente dos ativos americanos, então seus timestamps nunca coincidem
- // exatamente com os dos outros. Usar ts bruto fazia a Samsung "entrar e sair" do
- // índice a cada dia, criando um serrilhado artificial no gráfico (mesmo problema
- // mesmo tipo de problema que ocorre ao misturar ativos de bolsas com fusos diferentes).
- //
- // Além disso, ativos recém-listados (ex: SK Hynix ADR desde 10/07/2026) têm
- // histórico mais curto que os demais. Em vez de exigir interseção exata de datas
- // entre todos os ativos (o que colapsaria o índice inteiro para a janela do ativo
- // mais novo), cada ativo entra no índice a partir da sua própria primeira data
- // disponível, e o peso dos ativos ainda ausentes naquele dia é redistribuído
- // entre os já listados.
- const dateKey = ts => new Date(ts * 1000).toISOString().slice(0, 10);
- const maps = validSeries.map(s => {
- const m = new Map();
- s.forEach(d => { const k = dateKey(d.ts); if (!m.has(k)) m.set(k, d.p); });
- return m;
- });
- const firstPrices = validSeries.map(s => s[0].p);
- const allKeys = [...new Set(maps.flatMap(m => [...m.keys()]))].sort();
- const wSum = validIdx.reduce((a, i) => a + etf.holdings[i].weight, 0);
-
- const dates = [], indexSeries = [];
- allKeys.forEach(k => {
- let num = 0, den = 0;
- maps.forEach((m, si) => {
- const p = m.get(k);
- if (p == null) return;
- const w = etf.holdings[validIdx[si]].weight / wSum;
- num += w * (p / firstPrices[si] * 100);
- den += w;
- });
- if (den > 0) { dates.push(new Date(k + 'T00:00:00Z')); indexSeries.push(num / den); }
- });
- if (!indexSeries.length) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
-
- const totalRet = (indexSeries[indexSeries.length - 1] - 100) / 100;
+ const idx = computeEtfIndexFromHistResults(etf, histResults);
+ if (!idx) { valEl.innerHTML = '<span class="err">sem dados</span>'; return; }
+ const { dates, indexSeries, totalRet } = idx;
  valEl.innerHTML = `<span class="${totalRet >= 0 ? 'pos' : 'neg'}">${totalRet >= 0 ? '+' : ''}${num(totalRet * 100, 1)}%</span>`;
 
  const labels = dates.map(fmtDate);
