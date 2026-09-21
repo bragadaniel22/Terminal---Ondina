@@ -224,7 +224,7 @@
  .pf-card:hover { background: var(--page); }
  .pf-card.pf-hidden { opacity: 0.28; }
  .etf-disclaimer { font-family: var(--sans); font-size: 11.5px; font-weight: 500; line-height: 1.6; color: var(--dim); padding: 12px 16px; border-top: 1px solid var(--border); }
- .etf-grid { grid-template-columns: repeat(2, 1fr); }
+ .etf-grid { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
  .etf-val { font-family: var(--mono); font-size: 21px; font-weight: 700; color: var(--bright); }
  .etf-val .pos { color: var(--green); }
  .etf-val .neg { color: var(--red); }
@@ -532,7 +532,7 @@
  <button class="tab-btn active" data-tab="indices" onclick="switchTab(this)">ÍNDICES</button>
  <button class="tab-btn" data-tab="single-names" onclick="switchTab(this)">SINGLE NAMES</button>
  <button class="tab-btn" data-tab="portfolio" onclick="switchTab(this)">PORTFÓLIO</button>
- <button class="tab-btn" data-tab="etfs" onclick="switchTab(this)">ETFS INTERNOS</button>
+ <button class="tab-btn" data-tab="etfs" onclick="switchTab(this)">SETORES</button>
  <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
  <button class="tab-btn" data-tab="ainews" onclick="switchTab(this)">NOTÍCIAS</button>
  <button class="tab-btn" data-tab="bonds" onclick="switchTab(this)">BONDS</button>
@@ -955,7 +955,7 @@
 <div id="tab-etfs" class="tab-panel">
  <div class="card card-wide">
  <div class="card-head">
- <h2>ETFs Internos · Setores de IA</h2>
+ <h2>Setores</h2>
  <div class="pf-range">
  <button class="range-btn" data-r="intraday" onclick="loadEtfs('intraday')">INTRADIA</button>
  <button class="range-btn active" data-r="3mo" onclick="loadEtfs('3mo')">3M</button>
@@ -968,25 +968,10 @@
  <div class="etf-disclaimer">ETFs próprios, montados internamente — não são produtos negociáveis. Índice ponderado calculado a partir do retorno % (base 100) das ações listadas abaixo. Sempre que disponível, usamos o papel original na bolsa de origem em vez do ADR (mais liquidez e track record) — moeda de cotação não afeta o índice, só o retorno percentual entra no cálculo. No modo <b>INTRADIA</b>, cada ativo entra com o pregão mais recente da sua própria bolsa — se uma bolsa já fechou (ex: Ásia, de madrugada no horário de Brasília), seu último preço fica "congelado" no índice até reabrir, enquanto as bolsas ainda abertas continuam se movendo.</div>
  </div>
 
- <div class="grid etf-grid">
- <div class="card">
- <div class="card-head"><h2>Equipamento IA ETF</h2><div class="etf-val" id="etf-equip-val">…</div></div>
- <div id="etf-equip-holdings"></div>
- <div class="pf-chart-box">
- <div class="pf-chart-title" id="etf-equip-chart-title">Índice Ponderado · base 100</div>
- <canvas id="etf-equip-chart"></canvas>
- </div>
- </div>
-
- <div class="card">
- <div class="card-head"><h2>Memória IA ETF</h2><div class="etf-val" id="etf-memoria-val">…</div></div>
- <div id="etf-memoria-holdings"></div>
- <div class="pf-chart-box">
- <div class="pf-chart-title" id="etf-memoria-chart-title">Índice Ponderado · base 100</div>
- <canvas id="etf-memoria-chart"></canvas>
- </div>
- </div>
- </div>
+ <!-- Cards gerados via JS (renderEtfCards(), chamada em switchTab) a partir de Object.entries(ETFS)
+ — eram 2 blocos escritos à mão aqui (um por ETF); virou um container vazio pra suportar N
+ setores sem duplicar HTML por setor novo. -->
+ <div class="grid etf-grid" id="etf-cards-grid"></div>
 </div><!-- /tab-etfs -->
 
 <div id="tab-heatmap" class="tab-panel">
@@ -2367,7 +2352,7 @@ function switchTab(btn) {
  document.getElementById('tab-' + name).classList.add('active');
  if (name === 'single-names' && !snLoaded) { snLoaded = true; loadSingleNames(); }
  if (name === 'portfolio' && !pfLoaded) { pfLoaded = true; loadPortfolio('3mo'); }
- if (name === 'etfs' && !etfLoaded) { etfLoaded = true; loadEtfs('3mo'); }
+ if (name === 'etfs' && !etfLoaded) { etfLoaded = true; renderEtfCards(); loadEtfs('3mo'); }
  if (name === 'heatmap' && !heatmapLoaded) { heatmapLoaded = true; loadHeatmap(); }
  if (name === 'ainews' && !aiNewsLoaded) { aiNewsLoaded = true; loadAiNews(); }
  if (name === 'bonds' && !bondsLoaded) { bondsLoaded = true; loadBonds(); }
@@ -3811,7 +3796,7 @@ async function downloadClosingReportImage() {
  }, 'image/png');
 }
 
-// ── ETFs Internos ─────────────────────────────────────────────────────────────
+// ── Setores (ex-"ETFs Internos", renomeada em 2026-09 — mesma lógica, mais grupos) ───────────
 const ETFS = {
  equip: {
  name: 'Equipamento IA ETF',
@@ -3833,11 +3818,115 @@ const ETFS = {
  { ticker: 'SNDK', label: 'SanDisk Corporation', weight: 0.06 },
  ],
  },
+ // Setores adicionados em 2026-09 — pesos derivados do market cap aproximado de cada
+ // empresa (top 5 do setor) na época em que foram montados, normalizado por setor. Igual
+ // aos dois de cima: não se atualiza sozinho, precisa reajustar os pesos manualmente se
+ // quiser refletir o market cap atual mais pra frente.
+ hyperscalers: {
+ name: 'Hyperscalers / AI Platforms ETF',
+ holdings: [
+ { ticker: 'GOOGL', label: 'Alphabet', weight: 0.3298 },
+ { ticker: 'MSFT', label: 'Microsoft', weight: 0.2876 },
+ { ticker: 'AMZN', label: 'Amazon', weight: 0.2146 },
+ { ticker: 'META', label: 'Meta Platforms', weight: 0.1332 },
+ { ticker: 'ORCL', label: 'Oracle', weight: 0.0349 },
+ ],
+ },
+ aichips: {
+ name: 'AI Chips / Semis ETF',
+ holdings: [
+ { ticker: 'NVDA', label: 'NVIDIA', weight: 0.4715 },
+ { ticker: 'TSM', label: 'TSMC', weight: 0.1976 },
+ { ticker: 'AVGO', label: 'Broadcom', weight: 0.1501 },
+ { ticker: 'MU', label: 'Micron Technology', weight: 0.1010 },
+ { ticker: 'AMD', label: 'AMD', weight: 0.0799 },
+ ],
+ },
+ discretionary: {
+ name: 'Consumer Discretionary ETF',
+ holdings: [
+ { ticker: 'AMZN', label: 'Amazon', weight: 0.5502 },
+ { ticker: 'TSLA', label: 'Tesla', weight: 0.2853 },
+ { ticker: 'HD', label: 'Home Depot', weight: 0.0609 },
+ { ticker: 'BABA', label: 'Alibaba', weight: 0.0575 },
+ { ticker: 'TM', label: 'Toyota Motor', weight: 0.0463 },
+ ],
+ },
+ healthcare: {
+ name: 'Healthcare ETF',
+ holdings: [
+ { ticker: 'LLY', label: 'Eli Lilly', weight: 0.3770 },
+ { ticker: 'JNJ', label: 'Johnson & Johnson', weight: 0.2232 },
+ { ticker: 'ABBV', label: 'AbbVie', weight: 0.1598 },
+ { ticker: 'MRK', label: 'Merck', weight: 0.1241 },
+ { ticker: 'UNH', label: 'UnitedHealth', weight: 0.1159 },
+ ],
+ },
+ staples: {
+ name: 'Consumer Staples ETF',
+ holdings: [
+ { ticker: 'WMT', label: 'Walmart', weight: 0.3751 },
+ { ticker: 'COST', label: 'Costco', weight: 0.1758 },
+ { ticker: 'KO', label: 'Coca-Cola', weight: 0.1683 },
+ { ticker: 'PG', label: 'Procter & Gamble', weight: 0.1506 },
+ { ticker: 'PM', label: 'Philip Morris', weight: 0.1302 },
+ ],
+ },
+ financials: {
+ name: 'Financials · Bancos EUA ETF',
+ holdings: [
+ { ticker: 'JPM', label: 'JPMorgan Chase', weight: 0.4254 },
+ { ticker: 'BAC', label: 'Bank of America', weight: 0.1848 },
+ { ticker: 'MS', label: 'Morgan Stanley', weight: 0.1455 },
+ { ticker: 'GS', label: 'Goldman Sachs', weight: 0.1253 },
+ { ticker: 'WFC', label: 'Wells Fargo', weight: 0.1189 },
+ ],
+ },
+ utilities: {
+ name: 'Utilities / Power ETF',
+ holdings: [
+ { ticker: 'NEE', label: 'NextEra Energy', weight: 0.2754 },
+ { ticker: 'IBDRY', label: 'Iberdrola', weight: 0.2492 },
+ { ticker: 'ENLAY', label: 'Enel', weight: 0.1639 },
+ { ticker: 'SO', label: 'Southern Company', weight: 0.1607 },
+ { ticker: 'DUK', label: 'Duke Energy', weight: 0.1508 },
+ ],
+ },
 };
 let etfCharts = {};
 
+// Gera os cards da aba a partir de Object.entries(ETFS) — chamada uma vez (ver switchTab)
+// antes do primeiro loadEtfs(). Sem isso, os elementos #etf-{key}-val/-holdings/-chart que
+// loadOneEtf/loadOneEtfIntraday esperam encontrar no DOM não existiriam pra setores novos.
+function renderEtfCards() {
+ const grid = document.getElementById('etf-cards-grid');
+ grid.innerHTML = Object.entries(ETFS).map(([key, etf]) => `
+ <div class="card">
+ <div class="card-head"><h2>${etf.name}</h2><div class="etf-val" id="etf-${key}-val">…</div></div>
+ <div id="etf-${key}-holdings"></div>
+ <div class="pf-chart-box">
+ <div class="pf-chart-title" id="etf-${key}-chart-title">Índice Ponderado · base 100</div>
+ <canvas id="etf-${key}-chart"></canvas>
+ </div>
+ </div>
+ `).join('');
+}
+
+// Alguns tickers aparecem em mais de um setor (ex: MU em Memória IA e AI Chips/Semis; AMZN em
+// Hyperscalers e Consumer Discretionary) — sem isso, cada clique buscaria o mesmo ticker 2x
+// (uma vez por setor que o usa), gastando invocação de função à toa no Vercel. Resetado a cada
+// loadEtfs() (não entre cliques diferentes — cada clique ainda busca dado fresco), só evita
+// duplicar dentro da MESMA leva de carregamento.
+let etfFetchCache = null;
+function etfDedupedFetch(cacheKey, fetchFn) {
+ if (!etfFetchCache) etfFetchCache = new Map(); // defensivo — não depende só de loadEtfs() já ter rodado
+ if (!etfFetchCache.has(cacheKey)) etfFetchCache.set(cacheKey, fetchFn());
+ return etfFetchCache.get(cacheKey);
+}
+
 async function loadEtfs(range) {
  document.querySelectorAll('#tab-etfs .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === range));
+ etfFetchCache = new Map();
  if (range === 'intraday') {
  await Promise.all(Object.entries(ETFS).map(([key, etf]) => loadOneEtfIntraday(key, etf)));
  return;
@@ -3872,8 +3961,8 @@ async function loadOneEtfIntraday(key, etf) {
  if (titleEl) titleEl.textContent = 'Índice Ponderado · intraday (variação % do dia)';
 
  const [intraResults, quoteResults] = await Promise.all([
- Promise.allSettled(etf.holdings.map(h => yahooIntraday(h.ticker))),
- Promise.allSettled(etf.holdings.map(h => yahoo(h.ticker))),
+ Promise.allSettled(etf.holdings.map(h => etfDedupedFetch(`intraday:${h.ticker}`, () => yahooIntraday(h.ticker)))),
+ Promise.allSettled(etf.holdings.map(h => etfDedupedFetch(`quote:${h.ticker}`, () => yahoo(h.ticker)))),
  ]);
 
  holdEl.innerHTML = `
@@ -3974,8 +4063,8 @@ async function loadOneEtf(key, etf, range) {
  const totalW = etf.holdings.reduce((a, h) => a + h.weight, 0);
 
  const [histResults, quoteResults] = await Promise.all([
- Promise.allSettled(etf.holdings.map(h => yahooHistory(h.ticker, range))),
- Promise.allSettled(etf.holdings.map(h => yahoo(h.ticker))),
+ Promise.allSettled(etf.holdings.map(h => etfDedupedFetch(`hist:${h.ticker}:${range}`, () => yahooHistory(h.ticker, range)))),
+ Promise.allSettled(etf.holdings.map(h => etfDedupedFetch(`quote:${h.ticker}`, () => yahoo(h.ticker)))),
  ]);
 
  const rangeLabel = { '3mo': '3M', '6mo': '6M', ytd: 'YTD', '1y': '1A', '2y': '2A' }[range] || range;
