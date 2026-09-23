@@ -14,14 +14,19 @@
 // limitada, e essa janela é bem mais curta do que parecia: confirmado ao vivo em 2026-09-23 que
 // o arquivo mais antigo ainda disponível é de 11/09/2026 (~9 dias úteis) — semanas antes disso
 // já testamos e o "mais antigo" era 23/02/2026, ou seja essa "janela" ROLA junto com a data
-// atual, não é um corte fixo. Isso quebra qualquer plano de "buscar histórico direto da ANBIMA
-// dia a dia" pra janelas de 1M+ — ver fetchTesouroDiretoHistory abaixo pra como isso é resolvido
-// pra 4 dos 6 vencimentos. A base de Δ ano (31/dez do ano anterior) some da fonte ao vivo bem
-// antes de completar o ano seguinte. O Daniel mantém a planilha manualmente com o dado real da
-// ANBIMA capturado enquanto ainda estava disponível — mas essa captura manual TEM UM BURACO REAL
-// de 6 meses (20/02/2026 a 31/08/2026, confirmado lendo a planilha: a tarefa agendada
-// "SalvarNtnbMensal" aparentemente não rodou nesse intervalo) que não tem como ser recuperado
-// retroativamente (a ANBIMA não guarda mais esses dias).
+// atual, não é um corte fixo. A base de Δ ano (31/dez do ano anterior) some da fonte ao vivo bem
+// antes de completar o ano seguinte. O Daniel mantém a planilha manualmente/via automação (ver
+// "Atualizar NTNB Mensal/") com o dado real da ANBIMA capturado enquanto ainda estava
+// disponível. Essa captura TINHA UM BURACO REAL de 6 meses (20/02/2026 a 31/08/2026 — a
+// automação nem existia ainda nesse período, criada só em 2026-09) que a ANBIMA não deixa mais
+// recuperar ao vivo — o Daniel preencheu manualmente em 2026-09-23 com pontos a cada ~2 semanas
+// nesse intervalo, e a automação (agora semanal, tarefa `SalvarNtnbSemanal`) evita que isso se
+// repita. Já tentamos complementar com o Tesouro Direto (série diária pública, sem janela de
+// retenção) — decisão do Daniel (2026-09-23) foi reverter: em produção (Vercel) o download do
+// CSV falhava silenciosamente (provavelmente bloqueio de IP de cloud provider no
+// tesourotransparente.gov.br — funcionava do meu ambiente de teste mas não do Vercel), piorando
+// o resultado (mais lento E sem dado nenhum). Mantido só ANBIMA (ao vivo, janela curta) +
+// planilha manual (todos os 6 vencimentos) pra qualquer coisa mais antiga.
 const TARGETS = ['20280815', '20290515', '20300815', '20320815', '20350515', '20450515'];
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
@@ -29,52 +34,6 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 // só gera 404 em massa e mais chance de a ANBIMA derrubar/atrasar conexões concorrentes. Uma
 // folga de ~15 cobre variação de feriados sem desperdiçar requisições.
 const ANBIMA_LIVE_WINDOW_DAYS = 15;
-
-// A ANBIMA só guarda o arquivo diário por poucos dias (ver acima), então pra qualquer range
-// maior que ~2-3 semanas o histórico "ao vivo" precisa de outra fonte. O Tesouro Direto publica
-// uma série histórica DIÁRIA completa (desde 2004, sem janela de retenção) com preço/taxa de
-// TODOS os títulos que já ofereceu — inclui 4 dos 6 vencimentos de NTN-B que a ANBIMA cobre no
-// mercado secundário (não tem 2028 nem 2030 — não são ofertados a pessoa física atualmente).
-// A taxa do Tesouro Direto (compra/venda de varejo) não é idêntica à taxa indicativa da ANBIMA
-// (mercado secundário institucional), mas as duas seguem a mesma curva de perto — é a melhor
-// fonte gratuita com retenção real de histórico que existe pra isso. Usamos a MÉDIA entre
-// compra e venda como aproximação de "taxa de mercado".
-const TESOURO_MATURITY_MAP = { '2029': '15/05/2029', '2032': '15/08/2032', '2035': '15/05/2035', '2045': '15/05/2045' };
-const TESOURO_CSV_URL = 'https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/precotaxatesourodireto.csv';
-
-// Cache em memória do processo — só ajuda quando o Vercel reaproveita uma instância "quente"
-// entre requisições (não garantido, mas gratuito quando acontece); cada cold start baixa de
-// novo. O arquivo é ~14MB, mas é UMA requisição só (bem mais confiável que dezenas de requisições
-// concorrentes pra ANBIMA, uma por dia).
-let tesouroCsvCache = null;
-
-async function fetchTesouroDiretoHistory() {
-  if (tesouroCsvCache) return tesouroCsvCache;
-  const r = await fetch(TESOURO_CSV_URL, { signal: AbortSignal.timeout(8000) });
-  if (!r.ok) throw new Error(`Tesouro Direto CSV: ${r.status}`);
-  const text = await r.text();
-  const maturityToYear = Object.fromEntries(Object.entries(TESOURO_MATURITY_MAP).map(([y, m]) => [m, y]));
-  // Map<"DD/MM/AAAA", {year: rate}> — igual ao formato de `history` já usado pro resto do
-  // arquivo, só que indexado por data pra merge O(1) em vez de O(n) mais adiante.
-  const byDate = new Map();
-  const lines = text.split('\n');
-  for (let i = 1; i < lines.length; i++) { // i=1 pula o cabeçalho
-    const line = lines[i];
-    if (!line) continue;
-    const cols = line.split(';');
-    if (cols.length < 5 || cols[0] !== 'Tesouro IPCA+') continue; // só o zero-coupon "puro" — mesma família das NTN-B da ANBIMA, não a variante "com Juros Semestrais"
-    const year = maturityToYear[cols[1]];
-    if (!year) continue;
-    const compra = parseFloat(cols[3].replace(',', '.'));
-    const venda = parseFloat(cols[4].replace(',', '.'));
-    if (isNaN(compra) || isNaN(venda)) continue;
-    const dt = cols[2];
-    if (!byDate.has(dt)) byDate.set(dt, {});
-    byDate.get(dt)[year] = Math.round((compra + venda) / 2 * 10000) / 10000;
-  }
-  tesouroCsvCache = byDate;
-  return byDate;
-}
 
 function businessDaysBackFrom(startDate, n) {
   const days = [];
@@ -185,7 +144,9 @@ function parseYearSheet(ws) {
     while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
     return s;
   };
-  const MAX_COLS = 150; // folga generosa sobre o nº de blocos real de qualquer ano
+  // Captura agora é DIÁRIA (era mensal — ver comentário no topo do arquivo), então uma aba de
+  // ano pode chegar a ~252 blocos (1 por dia útil), 2 colunas cada — 150 não bastaria mais.
+  const MAX_COLS = 600;
   for (let c = 1; c <= MAX_COLS; c++) {
     const col = colLetter(c);
     for (let r = 1; r <= 4; r++) {
@@ -272,18 +233,6 @@ async function handleSnapshot(res) {
   return res.status(500).json({ error: 'NTN-B: sem dados disponíveis' });
 }
 
-// Restringe um objeto de taxas só às chaves pedidas — usado pra planilha manual só preencher
-// 2028/2030 (os 2 vencimentos que o Tesouro Direto não cobre), nunca sobrescrevendo os outros 4
-// que já vieram do Tesouro Direto (metodologia diferente — não dá pra misturar as duas fontes
-// pro MESMO vencimento sem criar um "dente" artificial na série).
-function pickRates(rates, years) {
-  const out = {};
-  for (const y of years) if (rates[y] != null) out[y] = rates[y];
-  return out;
-}
-
-const SPREADSHEET_ONLY_YEARS = ['2028', '2030']; // não cobertos pelo Tesouro Direto
-
 // Detecta, por vencimento, trechos sem NENHUM dado por mais de `maxGapDays` dias corridos — o
 // Chart.js já corta a linha sozinho no front (spanGaps numérico), isso aqui é só pra montar o
 // aviso textual ("sem dados de X a Y") em vez de deixar o buraco silencioso. `rangeStart` cobre
@@ -314,7 +263,7 @@ async function handleHistory(daysParam, res) {
 
   // Só busca na ANBIMA os dias com chance real de existir (ver ANBIMA_LIVE_WINDOW_DAYS acima)
   // — pedir mais do que isso é só 404 em massa (e mais risco de a ANBIMA derrubar conexão sob
-  // concorrência). O resto do range (Tesouro Direto + planilha) é buscado só se sobrar buraco.
+  // concorrência). O resto do range (planilha manual) é buscado só se sobrar buraco.
   const liveDays = allBizDays.slice(0, Math.min(allBizDays.length, ANBIMA_LIVE_WINDOW_DAYS));
 
   const results = await Promise.allSettled(liveDays.map(async (dt) => {
@@ -330,23 +279,11 @@ async function handleHistory(daysParam, res) {
   const liveDates = [...byDate.keys()].sort((a, b) => toDate(a) - toDate(b));
   const oldestLive = liveDates.length ? toDate(liveDates[0]) : null;
 
-  // Pra tudo antes do que a ANBIMA ainda tem ao vivo: Tesouro Direto (série diária completa,
-  // sem janela de retenção — ver nota grande no topo do arquivo) pros 4 vencimentos que ele
-  // oferece, e a planilha manual (pontos esparsos) só pros 2 que sobram. Cada fonte tem seu
-  // próprio try/catch — uma falhar (rede fora do ar, planilha ausente) nunca derruba o
-  // endpoint, só fica sem aquele complemento específico.
+  // Pra tudo antes do que a ANBIMA ainda tem ao vivo: só a planilha manual (pontos esparsos,
+  // todos os 6 vencimentos — ver nota grande no topo do arquivo pro porquê de não usar mais o
+  // Tesouro Direto aqui). Nunca derruba o endpoint se a planilha estiver ausente/corrompida —
+  // só fica sem o complemento, segue com o que a ANBIMA já trouxe ao vivo.
   if (!oldestLive || oldestLive > oldestRequested) {
-    try {
-      const tesouro = await fetchTesouroDiretoHistory();
-      for (const [dt, rates] of tesouro) {
-        const d = toDate(dt);
-        if (d >= oldestRequested && (!oldestLive || d < oldestLive)) {
-          const existing = byDate.get(dt) || {};
-          byDate.set(dt, { ...rates, ...existing }); // dado ao vivo, se por acaso já existir nessa data, sempre prevalece
-        }
-      }
-    } catch (e) { /* sem Tesouro Direto — segue só com o que tiver */ }
-
     try {
       const wb = await loadTaxasAntigasWorkbook();
       const spreadsheetHistory = getSpreadsheetHistory(wb).filter((s) => {
@@ -354,10 +291,8 @@ async function handleHistory(daysParam, res) {
         return d >= oldestRequested && (!oldestLive || d < oldestLive);
       });
       for (const s of spreadsheetHistory) {
-        const only2028e2030 = pickRates(s.rates, SPREADSHEET_ONLY_YEARS);
-        if (!Object.keys(only2028e2030).length) continue;
         const existing = byDate.get(s.date) || {};
-        byDate.set(s.date, { ...only2028e2030, ...existing });
+        byDate.set(s.date, { ...s.rates, ...existing }); // dado ao vivo, se por acaso já existir nessa data, sempre prevalece
       }
     } catch (e) { /* planilha ausente/corrompida — segue só com o que tiver */ }
   }
@@ -368,7 +303,7 @@ async function handleHistory(daysParam, res) {
 
   if (!history.length) return res.status(500).json({ error: 'NTN-B: sem dados disponíveis no período' });
 
-  const gaps = computeGaps(history, [...Object.keys(TESOURO_MATURITY_MAP), ...SPREADSHEET_ONLY_YEARS], oldestRequested);
+  const gaps = computeGaps(history, TARGETS.map((t) => t.slice(0, 4)), oldestRequested);
   return res.json({ history, gaps });
 }
 
