@@ -2877,6 +2877,11 @@ async function loadNtnbHistory(days) {
  // data no próprio callback de tick/tooltip.
  x: {
  type: 'linear',
+ // `bounds: 'data'` (em vez do padrão 'ticks') faz o eixo começar/terminar EXATAMENTE no
+ // primeiro/último ponto real — sem isso, o Chart.js arredonda os limites do eixo pros
+ // "números redondos" de tick mais próximos por fora, sobrando uma margem vazia antes do
+ // primeiro ponto (pedido do Daniel: o gráfico deve iniciar já no primeiro dado disponível).
+ bounds: 'data',
  ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8, callback: v => ntnbDayIdxToLabel(v) },
  grid: { color: '#9aa1ac' },
  },
