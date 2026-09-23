@@ -233,20 +233,17 @@ async function handleSnapshot(res) {
   return res.status(500).json({ error: 'NTN-B: sem dados disponíveis' });
 }
 
-// Detecta, por vencimento, trechos sem NENHUM dado por mais de `maxGapDays` dias corridos — o
-// Chart.js já corta a linha sozinho no front (spanGaps numérico), isso aqui é só pra montar o
-// aviso textual ("sem dados de X a Y") em vez de deixar o buraco silencioso. `rangeStart` cobre
-// o caso da BORDA do período pedido: se o primeiro ponto de um vencimento já nasce bem depois do
-// início do range (ex: 2028/2030 só têm dado nos últimos ~15 dias úteis, então numa janela de
-// 3M o "buraco" está inteiro ANTES do primeiro ponto, sem nenhum par de pontos consecutivos pra
-// comparar) — sem isso esse caso específico passava batido, sem aviso nenhum.
-function computeGaps(history, years, rangeStart, maxGapDays = 20) {
+// Detecta, por vencimento, trechos sem NENHUM dado por mais de `maxGapDays` dias corridos ENTRE
+// DOIS PONTOS REAIS — o Chart.js já corta a linha sozinho no front (spanGaps numérico), isso
+// aqui é só pra montar o aviso textual ("sem dados de X a Y") em vez de deixar o buraco
+// silencioso. Não avisa sobre a BORDA do período pedido (ex: o arquivo simplesmente não tem
+// nada antes de 12/11/2025) — decisão do Daniel (2026-09-24): "a ideia é começar mesmo em
+// 12/11/2025", ou seja o início real do histórico não é um "buraco", é só onde os dados
+// começam — só avisa quando há um vazio real ENTRE dois pontos que a gente sabe que existem.
+function computeGaps(history, years, maxGapDays = 20) {
   const gaps = [];
   for (const year of years) {
     const points = history.filter((h) => h.rates?.[year] != null).map((h) => ({ date: h.date, d: toDate(h.date) }));
-    if (points.length && (points[0].d - rangeStart) / 86400000 > maxGapDays) {
-      gaps.push({ year, from: `${String(rangeStart.getDate()).padStart(2, '0')}/${String(rangeStart.getMonth() + 1).padStart(2, '0')}/${rangeStart.getFullYear()}`, to: points[0].date });
-    }
     for (let i = 1; i < points.length; i++) {
       const diffDays = (points[i].d - points[i - 1].d) / 86400000;
       if (diffDays > maxGapDays) gaps.push({ year, from: points[i - 1].date, to: points[i].date });
@@ -303,7 +300,7 @@ async function handleHistory(daysParam, res) {
 
   if (!history.length) return res.status(500).json({ error: 'NTN-B: sem dados disponíveis no período' });
 
-  const gaps = computeGaps(history, TARGETS.map((t) => t.slice(0, 4)), oldestRequested);
+  const gaps = computeGaps(history, TARGETS.map((t) => t.slice(0, 4)));
   return res.json({ history, gaps });
 }
 
