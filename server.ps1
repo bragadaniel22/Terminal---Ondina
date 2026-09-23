@@ -120,44 +120,13 @@ function Get-NtnbDayFile {
 # A ANBIMA só retém o arquivo diário por poucos dias úteis (janela ROLANTE — ver comentário
 # grande no topo de api/ntnb.js: confirmado ao vivo em 2026-09 que o mais antigo disponível já
 # foi 23/02/2026 e depois 11/09/2026, semanas depois, ou seja a janela anda junto com "hoje").
-# Só ~9 dias úteis reais de folga — 15 cobre feriados sem gastar requisição à toa.
+# Só ~9 dias úteis reais de folga — 15 cobre feriados sem gastar requisição à toa. Pra qualquer
+# coisa mais antiga que essa janela, a única fonte é a planilha manual "Taxas Antigas NTNB.xlsx"
+# (esparsa, mas real) — chegamos a complementar com o Tesouro Direto (série pública diária), mas
+# revertido a pedido do Daniel (2026-09-23): o download do CSV falhava silenciosamente em
+# produção (Vercel), piorando o resultado (mais lento E sem dado nenhum) — ver nota grande no
+# topo de api/ntnb.js.
 $script:AnbimaLiveWindowDays = 15
-
-# Espelho de fetchTesouroDiretoHistory em api/ntnb.js — pra qualquer range maior que a janela
-# viva da ANBIMA, usa a série histórica DIÁRIA completa (desde 2004, sem janela de retenção) que
-# o Tesouro Direto publica publicamente. Cobre 4 dos 6 vencimentos de NTN-B (não tem 2028 nem
-# 2030 — não ofertados a pessoa física atualmente). Taxa = média entre compra e venda de varejo,
-# uma aproximação da taxa indicativa da ANBIMA (metodologias diferentes, mas seguem a mesma
-# curva de perto — é a melhor fonte gratuita com retenção real de histórico que existe pra isso).
-$script:TesouroCsvCache = $null
-function Get-TesouroDiretoHistory {
-    if ($script:TesouroCsvCache) { return $script:TesouroCsvCache }
-    $url = 'https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/precotaxatesourodireto.csv'
-    $wc = [System.Net.WebClient]::new()
-    $csvText = $wc.DownloadString($url)
-    $maturityMap = @{ '15/05/2029' = '2029'; '15/08/2032' = '2032'; '15/05/2035' = '2035'; '15/05/2045' = '2045' }
-    $byDate = @{}
-    $lines = $csvText -split "`n"
-    $ic = [System.Globalization.CultureInfo]::InvariantCulture
-    $numStyle = [System.Globalization.NumberStyles]::Float
-    for ($i = 1; $i -lt $lines.Count; $i++) {
-        $line = $lines[$i]
-        if (-not $line) { continue }
-        $cols = $line -split ';'
-        if ($cols.Count -lt 5) { continue }
-        if ($cols[0] -ne 'Tesouro IPCA+') { continue } # só o zero-coupon "puro" — não a variante "com Juros Semestrais"
-        $year = $maturityMap[$cols[1]]
-        if (-not $year) { continue }
-        $compra = 0.0; $venda = 0.0
-        if (-not [double]::TryParse($cols[3].Replace(',', '.'), $numStyle, $ic, [ref]$compra)) { continue }
-        if (-not [double]::TryParse($cols[4].Replace(',', '.'), $numStyle, $ic, [ref]$venda)) { continue }
-        $dt = $cols[2]
-        if (-not $byDate.ContainsKey($dt)) { $byDate[$dt] = @{} }
-        $byDate[$dt][$year] = [Math]::Round((($compra + $venda) / 2), 4)
-    }
-    $script:TesouroCsvCache = $byDate
-    return $byDate
-}
 
 # Espelho de computeGaps em api/ntnb.js — detecta, por vencimento, trechos sem NENHUM dado por
 # mais de `MaxGapDays` dias corridos (inclusive na BORDA do range pedido — ver comentário na
@@ -309,7 +278,9 @@ function Get-NtnbYearSheetSnapshots([PSCustomObject]$Ctx, [string]$SheetName) {
     $snapshots = [System.Collections.Generic.List[object]]::new()
     $sheetXml = $Ctx.SheetXmlByName[$SheetName]
     if (-not $sheetXml) { return $snapshots }
-    for ($c = 1; $c -le 150; $c++) {
+    # Captura agora é DIÁRIA (era mensal), então uma aba de ano pode chegar a ~252 blocos — 150
+    # não bastaria mais.
+    for ($c = 1; $c -le 600; $c++) {
         $col = ConvertTo-ColLetter $c
         for ($r = 1; $r -le 4; $r++) {
             $val = Get-NtnbXlsxCellValue $sheetXml $Ctx.SharedStrings "$col$r"
@@ -2058,8 +2029,8 @@ while ($listener.IsListening) {
     # do porquê): a ANBIMA só retém o arquivo diário por uma janela rolante de poucos dias úteis
     # (não os "6 meses" que a gente supunha antes — confirmado ao vivo em 2026-09 que o mais
     # antigo pulou de 23/02/2026 pra 11/09/2026 em poucas semanas). Pra qualquer coisa além disso
-    # usa o Tesouro Direto (série diária completa, 4 dos 6 vencimentos) + a planilha manual
-    # (pontos esparsos, só os 2 vencimentos que sobram: 2028/2030).
+    # usa só a planilha manual (pontos esparsos, todos os 6 vencimentos) — chegou a usar o
+    # Tesouro Direto também, revertido a pedido do Daniel (ver nota em api/ntnb.js).
     if ($path -eq '/api/ntnb' -and $req.QueryString['days']) {
         try {
             $ic = [System.Globalization.CultureInfo]::InvariantCulture
@@ -2085,35 +2056,21 @@ while ($listener.IsListening) {
             $liveDateKeys = @($byDate.Keys | Sort-Object { [datetime]::ParseExact($_, 'dd/MM/yyyy', $ic) })
             $oldestLive = if ($liveDateKeys.Count -gt 0) { [datetime]::ParseExact($liveDateKeys[0], 'dd/MM/yyyy', $ic) } else { $null }
 
-            # Cada fonte tem seu próprio try/catch — uma falhar (rede fora do ar, planilha
-            # ausente) nunca derruba o endpoint inteiro, só fica sem aquele complemento.
+            # Só a planilha manual pra qualquer coisa além da janela viva da ANBIMA — nunca
+            # derruba o endpoint inteiro se ela estiver ausente/corrompida, só fica sem o
+            # complemento (segue com o que a ANBIMA já trouxe ao vivo).
             if (-not $oldestLive -or $oldestLive -gt $oldestRequested) {
-                try {
-                    $tesouro = Get-TesouroDiretoHistory
-                    foreach ($dtKey in $tesouro.Keys) {
-                        $dv = [datetime]::ParseExact($dtKey, 'dd/MM/yyyy', $ic)
-                        if ($dv -ge $oldestRequested -and (-not $oldestLive -or $dv -lt $oldestLive)) {
-                            $merged = $tesouro[$dtKey].Clone()
-                            if ($byDate.ContainsKey($dtKey)) { foreach ($k in $byDate[$dtKey].Keys) { $merged[$k] = $byDate[$dtKey][$k] } }
-                            $byDate[$dtKey] = $merged
-                        }
-                    }
-                } catch {}
-
                 try {
                     $xlsxPath = Join-Path $root 'Taxas Antigas NTNB.xlsx'
                     $ctx = New-NtnbTaxasAntigasContext $xlsxPath
-                    $sheetOnlyYears = @('2028', '2030') # não cobertos pelo Tesouro Direto
                     $extra = Get-NtnbSpreadsheetHistoryAll -Ctx $ctx | Where-Object {
                         $dd = [datetime]::ParseExact($_.date, 'dd/MM/yyyy', $ic)
                         $dd -ge $oldestRequested -and (-not $oldestLive -or $dd -lt $oldestLive)
                     }
                     foreach ($s in $extra) {
-                        $picked = @{}
-                        foreach ($y in $sheetOnlyYears) { if ($s.rates.ContainsKey($y)) { $picked[$y] = $s.rates[$y] } }
-                        if ($picked.Count -eq 0) { continue }
-                        if ($byDate.ContainsKey($s.date)) { foreach ($k in $byDate[$s.date].Keys) { $picked[$k] = $byDate[$s.date][$k] } }
-                        $byDate[$s.date] = $picked
+                        $merged = $s.rates.Clone()
+                        if ($byDate.ContainsKey($s.date)) { foreach ($k in $byDate[$s.date].Keys) { $merged[$k] = $byDate[$s.date][$k] } }
+                        $byDate[$s.date] = $merged
                     }
                 } catch {}
             }
@@ -2122,7 +2079,7 @@ while ($listener.IsListening) {
                 Sort-Object { [datetime]::ParseExact($_.date, 'dd/MM/yyyy', $ic) })
 
             if ($history.Count -gt 0) {
-                $gapYears = @('2029', '2032', '2035', '2045', '2028', '2030')
+                $gapYears = @('2028', '2029', '2030', '2032', '2035', '2045')
                 $gaps = Get-NtnbHistoryGaps -History $history -Years $gapYears -RangeStart $oldestRequested
                 $historyJson = ($history | ForEach-Object { ConvertTo-NtnbAnchorJson $_ }) -join ','
                 $gapsJson = ($gaps | ForEach-Object { "{`"year`":`"$($_.year)`",`"from`":`"$($_.from)`",`"to`":`"$($_.to)`"}" }) -join ','
