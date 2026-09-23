@@ -2849,6 +2849,16 @@ async function loadNtnbHistory(days) {
  }).join('<br>');
  }
 
+ // Min/max real dos dados, pra fixar os limites do eixo sem sobra de margem — usar
+ // `bounds: 'data'` em vez disso PARECE equivalente, mas tem um efeito colateral feio: o
+ // Chart.js força um tick extra bem em cima do valor exato de borda, além do último tick
+ // "redondo" já gerado pelo algoritmo normal, e os dois ficam grudados/sobrepostos perto da
+ // borda direita (bug real visto no gráfico). Fixar `min`/`max` direto evita isso — o
+ // algoritmo de tick "bonito" já respeita esses limites sem precisar forçar um tick extra.
+ const allX = datasets.flatMap(ds => ds.data.map(p => p.x));
+ const xMin = allX.length ? Math.min(...allX) : undefined;
+ const xMax = allX.length ? Math.max(...allX) : undefined;
+
  if (ntnbHistoryChart) ntnbHistoryChart.destroy();
  const ctx = document.getElementById('ntnb-history-chart').getContext('2d');
  ntnbHistoryChart = new Chart(ctx, {
@@ -2877,11 +2887,10 @@ async function loadNtnbHistory(days) {
  // data no próprio callback de tick/tooltip.
  x: {
  type: 'linear',
- // `bounds: 'data'` (em vez do padrão 'ticks') faz o eixo começar/terminar EXATAMENTE no
- // primeiro/último ponto real — sem isso, o Chart.js arredonda os limites do eixo pros
- // "números redondos" de tick mais próximos por fora, sobrando uma margem vazia antes do
- // primeiro ponto (pedido do Daniel: o gráfico deve iniciar já no primeiro dado disponível).
- bounds: 'data',
+ // `min`/`max` fixos no valor real dos dados fazem o eixo começar/terminar exatamente no
+ // primeiro/último ponto (pedido do Daniel) sem o efeito colateral de tick duplicado/
+ // grudado na borda que `bounds: 'data'` causava (ver comentário acima de `xMin`/`xMax`).
+ min: xMin, max: xMax,
  ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8, callback: v => ntnbDayIdxToLabel(v) },
  grid: { color: '#9aa1ac' },
  },
