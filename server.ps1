@@ -117,6 +117,72 @@ function Get-NtnbDayFile {
     }
 }
 
+# A ANBIMA só retém o arquivo diário por poucos dias úteis (janela ROLANTE — ver comentário
+# grande no topo de api/ntnb.js: confirmado ao vivo em 2026-09 que o mais antigo disponível já
+# foi 23/02/2026 e depois 11/09/2026, semanas depois, ou seja a janela anda junto com "hoje").
+# Só ~9 dias úteis reais de folga — 15 cobre feriados sem gastar requisição à toa.
+$script:AnbimaLiveWindowDays = 15
+
+# Espelho de fetchTesouroDiretoHistory em api/ntnb.js — pra qualquer range maior que a janela
+# viva da ANBIMA, usa a série histórica DIÁRIA completa (desde 2004, sem janela de retenção) que
+# o Tesouro Direto publica publicamente. Cobre 4 dos 6 vencimentos de NTN-B (não tem 2028 nem
+# 2030 — não ofertados a pessoa física atualmente). Taxa = média entre compra e venda de varejo,
+# uma aproximação da taxa indicativa da ANBIMA (metodologias diferentes, mas seguem a mesma
+# curva de perto — é a melhor fonte gratuita com retenção real de histórico que existe pra isso).
+$script:TesouroCsvCache = $null
+function Get-TesouroDiretoHistory {
+    if ($script:TesouroCsvCache) { return $script:TesouroCsvCache }
+    $url = 'https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/precotaxatesourodireto.csv'
+    $wc = [System.Net.WebClient]::new()
+    $csvText = $wc.DownloadString($url)
+    $maturityMap = @{ '15/05/2029' = '2029'; '15/08/2032' = '2032'; '15/05/2035' = '2035'; '15/05/2045' = '2045' }
+    $byDate = @{}
+    $lines = $csvText -split "`n"
+    $ic = [System.Globalization.CultureInfo]::InvariantCulture
+    $numStyle = [System.Globalization.NumberStyles]::Float
+    for ($i = 1; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        if (-not $line) { continue }
+        $cols = $line -split ';'
+        if ($cols.Count -lt 5) { continue }
+        if ($cols[0] -ne 'Tesouro IPCA+') { continue } # só o zero-coupon "puro" — não a variante "com Juros Semestrais"
+        $year = $maturityMap[$cols[1]]
+        if (-not $year) { continue }
+        $compra = 0.0; $venda = 0.0
+        if (-not [double]::TryParse($cols[3].Replace(',', '.'), $numStyle, $ic, [ref]$compra)) { continue }
+        if (-not [double]::TryParse($cols[4].Replace(',', '.'), $numStyle, $ic, [ref]$venda)) { continue }
+        $dt = $cols[2]
+        if (-not $byDate.ContainsKey($dt)) { $byDate[$dt] = @{} }
+        $byDate[$dt][$year] = [Math]::Round((($compra + $venda) / 2), 4)
+    }
+    $script:TesouroCsvCache = $byDate
+    return $byDate
+}
+
+# Espelho de computeGaps em api/ntnb.js — detecta, por vencimento, trechos sem NENHUM dado por
+# mais de `MaxGapDays` dias corridos (inclusive na BORDA do range pedido — ver comentário na
+# versão JS pra por que isso importa). Usado só pro aviso textual no front; o corte visual da
+# linha no gráfico é feito pelo Chart.js (`spanGaps` numérico).
+function Get-NtnbHistoryGaps {
+    param([object[]]$History, [string[]]$Years, [datetime]$RangeStart, [int]$MaxGapDays = 20)
+    $gaps = [System.Collections.Generic.List[object]]::new()
+    $ic = [System.Globalization.CultureInfo]::InvariantCulture
+    foreach ($year in $Years) {
+        $points = @($History | Where-Object { $_.rates.ContainsKey($year) } | ForEach-Object {
+            [PSCustomObject]@{ date = $_.date; d = [datetime]::ParseExact($_.date, 'dd/MM/yyyy', $ic) }
+        } | Sort-Object d)
+        if ($points.Count -gt 0 -and ($points[0].d - $RangeStart).TotalDays -gt $MaxGapDays) {
+            $gaps.Add([PSCustomObject]@{ year = $year; from = $RangeStart.ToString('dd/MM/yyyy'); to = $points[0].date })
+        }
+        for ($i = 1; $i -lt $points.Count; $i++) {
+            if (($points[$i].d - $points[$i - 1].d).TotalDays -gt $MaxGapDays) {
+                $gaps.Add([PSCustomObject]@{ year = $year; from = $points[$i - 1].date; to = $points[$i].date })
+            }
+        }
+    }
+    return $gaps
+}
+
 # Espelho de fetchNtnbNear em api/ntnb.js — usado pelo relatório de Fechamento (?dates=) pra
 # resolver as taxas NTN-B em datas de referência específicas, tolerando feriado.
 function Get-NtnbNear {
@@ -131,105 +197,179 @@ function Get-NtnbNear {
     return $null
 }
 
-# Espelho de handleStaticAnchors em api/ntnb.js — lê "Taxas Antigas NTNB.xlsx" (raiz do repo)
-# direto do .xlsx (é um zip de XML por baixo do capô), sem depender de nenhuma lib de Excel:
-# workbook.xml resolve nome-da-aba -> r:id, workbook.xml.rels resolve r:id -> arquivo da aba,
-# sharedStrings.xml resolve os índices de texto, e a aba em si (sheetN.xml) tem os valores.
-# Estrutura fixa da planilha: data de referência em C2, vencimentos em C5:C10, taxas em D5:D10.
+# Espelho de handleStaticAnchors/parseYearSheet/getSpreadsheetHistory em api/ntnb.js — lê
+# "Taxas Antigas NTNB.xlsx" (raiz do repo) direto do .xlsx (é um zip de XML por baixo do capô),
+# sem depender de nenhuma lib de Excel: workbook.xml resolve nome-da-aba -> r:id,
+# workbook.xml.rels resolve r:id -> arquivo da aba, sharedStrings.xml resolve os índices de
+# texto, e a aba em si (sheetN.xml) tem os valores.
 function ConvertTo-NtnbAnchorJson([PSCustomObject]$Anchor) {
     if (-not $Anchor) { return 'null' }
     $ratesJson = ($Anchor.rates.GetEnumerator() | ForEach-Object { "`"$($_.Key)`":$($_.Value)" }) -join ','
     return "{`"date`":`"$($Anchor.date)`",`"rates`":{$ratesJson}}"
 }
 
+# Encoding UTF-8 explícito é obrigatório aqui — sem isso, nomes de aba com acento (ex: "Mês
+# Anterior") saem corrompidos do StreamReader e a busca por nome falha silenciosamente (mesma
+# classe de bug já documentada pro WebClient — seção 3 da METODOLOGIA — só que aqui é o
+# StreamReader).
+function Read-XlsxZipEntryText([System.IO.Compression.ZipArchive]$Zip, [string]$EntryName) {
+    $entry = $Zip.Entries | Where-Object { $_.FullName -eq $EntryName }
+    if (-not $entry) { return $null }
+    $sr = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
+    try { return $sr.ReadToEnd() } finally { $sr.Dispose() }
+}
+
+# Abre a planilha uma vez e devolve um "contexto" reutilizável (sharedStrings + mapa de
+# aba -> XML), pra ler várias abas (Mês Anterior + N abas de ano) sem reabrir o zip/relesolver
+# sharedStrings de novo a cada uma.
+function New-NtnbTaxasAntigasContext([string]$Path) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $sharedStringsXml = Read-XlsxZipEntryText $zip 'xl/sharedStrings.xml'
+        $sharedStrings = @()
+        if ($sharedStringsXml) {
+            $sharedStrings = [regex]::Matches($sharedStringsXml, '<si>(.*?)</si>', 'Singleline') | ForEach-Object {
+                $_.Groups[1].Value -replace '<[^>]+>', ''
+            }
+        }
+        $wbXml = Read-XlsxZipEntryText $zip 'xl/workbook.xml'
+        $sheetToRid = @{}
+        foreach ($m in [regex]::Matches($wbXml, '<sheet[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"')) {
+            $sheetToRid[$m.Groups[1].Value] = $m.Groups[2].Value
+        }
+        $relsXml = Read-XlsxZipEntryText $zip 'xl/_rels/workbook.xml.rels'
+        $ridToTarget = @{}
+        foreach ($m in [regex]::Matches($relsXml, '<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"')) {
+            $ridToTarget[$m.Groups[1].Value] = $m.Groups[2].Value
+        }
+        $sheetXmlByName = @{}
+        foreach ($name in $sheetToRid.Keys) {
+            $rid = $sheetToRid[$name]
+            $target = $ridToTarget[$rid]
+            if ($target) { $sheetXmlByName[$name] = Read-XlsxZipEntryText $zip "xl/$target" }
+        }
+        return [PSCustomObject]@{ SheetNames = @($sheetToRid.Keys); SheetXmlByName = $sheetXmlByName; SharedStrings = $sharedStrings }
+    } finally {
+        $zip.Dispose()
+    }
+}
+
+function Get-NtnbXlsxCellValue([string]$SheetXml, [string[]]$SharedStrings, [string]$Ref) {
+    $m = [regex]::Match($SheetXml, "<c r=`"$Ref`"[^>]*/>|<c r=`"$Ref`"[^>]*>.*?</c>", 'Singleline')
+    if (-not $m.Success) { return $null }
+    $block = $m.Value
+    # t="s" = índice pra sharedStrings.xml (Excel de verdade tende a gerar assim); t="str" =
+    # texto inline direto no <v> (o SheetJS, ao regravar via api/rates.js/o script de
+    # atualização mensal, usa esse formato — nem sempre gera sharedStrings.xml). Sem esse
+    # segundo caso, `[double]"NTNB 2028"` lançaria exceção pra qualquer célula de texto de um
+    # arquivo regravado pelo SheetJS.
+    if ($block -match 't="s"') {
+        $vMatch = [regex]::Match($block, '<v>([^<]*)</v>')
+        if (-not $vMatch.Success) { return $null }
+        return $SharedStrings[[int]$vMatch.Groups[1].Value]
+    }
+    if ($block -match 't="str"') {
+        $vMatch = [regex]::Match($block, '<v>([^<]*)</v>')
+        if (-not $vMatch.Success) { return $null }
+        return $vMatch.Groups[1].Value
+    }
+    $vMatch = [regex]::Match($block, '<v>([^<]*)</v>')
+    if (-not $vMatch.Success) { return $null }
+    return [double]$vMatch.Groups[1].Value
+}
+
+# "Mês Anterior" continua sendo uma aba de ponto único — data em C2, vencimentos em C5:C10,
+# taxas em D5:D10 (inalterado desde sempre).
+function Get-NtnbMonthAnchor([PSCustomObject]$Ctx, [string]$SheetName) {
+    $sheetXml = $Ctx.SheetXmlByName[$SheetName]
+    if (-not $sheetXml) { return $null }
+    $dateSerial = Get-NtnbXlsxCellValue $sheetXml $Ctx.SharedStrings 'C2'
+    if ($null -eq $dateSerial) { return $null }
+    $rates = @{}
+    foreach ($row in 5..10) {
+        $label = Get-NtnbXlsxCellValue $sheetXml $Ctx.SharedStrings "C$row"
+        $val = Get-NtnbXlsxCellValue $sheetXml $Ctx.SharedStrings "D$row"
+        if ($label -and $null -ne $val) {
+            $year = ($label -replace '\D', '')
+            $rates[$year] = [double]$val * 100.0
+        }
+    }
+    if ($rates.Count -eq 0) { return $null }
+    return [PSCustomObject]@{ date = (ConvertTo-BrDateFromSerial $dateSerial); rates = $rates }
+}
+
+# Espelho de parseYearSheet em api/ntnb.js — uma aba de ano (nome com 4 dígitos, ex "2025") tem
+# vários blocos de 2 colunas (rótulo "NTNB 20XX" | "Taxa Atual") lado a lado, cada bloco
+# antecedido numa das 4 primeiras linhas por uma data (serial do Excel). Descoberta de blocos é
+# DINÂMICA (varre coluna por coluna procurando um valor numérico plausível de data) — a
+# distância entre blocos não é fixa (confirmado na planilha real: um bloco da aba "2025" tem 5
+# colunas de distância do resto, que tem 4).
+function Get-NtnbYearSheetSnapshots([PSCustomObject]$Ctx, [string]$SheetName) {
+    $snapshots = [System.Collections.Generic.List[object]]::new()
+    $sheetXml = $Ctx.SheetXmlByName[$SheetName]
+    if (-not $sheetXml) { return $snapshots }
+    for ($c = 1; $c -le 150; $c++) {
+        $col = ConvertTo-ColLetter $c
+        for ($r = 1; $r -le 4; $r++) {
+            $val = Get-NtnbXlsxCellValue $sheetXml $Ctx.SharedStrings "$col$r"
+            if ($val -isnot [double] -or $val -le 40000 -or $val -ge 60000) { continue }
+            $dateStr = ConvertTo-BrDateFromSerial $val
+            $rates = @{}
+            $colNext = ConvertTo-ColLetter ($c + 1)
+            for ($rr = $r + 1; $rr -le $r + 8; $rr++) {
+                $label = Get-NtnbXlsxCellValue $sheetXml $Ctx.SharedStrings "$col$rr"
+                $v = Get-NtnbXlsxCellValue $sheetXml $Ctx.SharedStrings "$colNext$rr"
+                if ($label -and $v -is [double]) {
+                    $year = ($label -replace '\D', '')
+                    if ($year.Length -eq 4) { $rates[$year] = [math]::Round([double]$v * 100.0, 4) }
+                }
+            }
+            if ($rates.Count -gt 0) { $snapshots.Add([PSCustomObject]@{ date = $dateStr; rates = $rates }) }
+            break # achou a data desse bloco — não olha as outras linhas 1-4 dessa mesma coluna
+        }
+    }
+    return $snapshots
+}
+
+# Todas as abas de ano combinadas, ordenadas do mais antigo pro mais recente — usado pra
+# completar o histórico ao vivo da ANBIMA quando ela não tem mais o arquivo diário (ver bloco
+# ?days= mais abaixo). Novas abas de ano futuras (ex "2027") entram automaticamente.
+function Get-NtnbSpreadsheetHistoryAll([PSCustomObject]$Ctx) {
+    $all = [System.Collections.Generic.List[object]]::new()
+    foreach ($name in ($Ctx.SheetNames | Where-Object { $_ -match '^\d{4}$' })) {
+        foreach ($snap in (Get-NtnbYearSheetSnapshots -Ctx $Ctx -SheetName $name)) { $all.Add($snap) }
+    }
+    return @($all | Sort-Object { [datetime]::ParseExact($_.date, 'dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) })
+}
+
+# "Ano Anterior" não existe mais desde que o Daniel reestruturou a planilha (2026-09) pra
+# guardar vários snapshots por ano em vez de só um ponto fixo — a base de Δ ano agora vem do
+# ÚLTIMO snapshot disponível na aba do ano anterior ao atual (ex: em 2026, usa o último
+# snapshot da aba "2025").
 function Get-NtnbStaticAnchors {
     param([string]$Path)
     try {
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
-        try {
-            # Encoding UTF-8 explícito é obrigatório aqui — sem isso, nomes de aba com acento
-            # (ex: "Mês Anterior") saem corrompidos do StreamReader e a busca por nome falha
-            # silenciosamente (mesma classe de bug já documentada pro WebClient — seção 3 da
-            # METODOLOGIA — só que aqui é o StreamReader).
-            function Read-ZipEntryText([string]$EntryName) {
-                $entry = $zip.Entries | Where-Object { $_.FullName -eq $EntryName }
-                if (-not $entry) { return $null }
-                $sr = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
-                try { return $sr.ReadToEnd() } finally { $sr.Dispose() }
-            }
+        $ctx = New-NtnbTaxasAntigasContext $Path
+        # Evita comparar contra o literal acentuado "Mês Anterior" diretamente: o Windows
+        # PowerShell 5.1 lê arquivo .ps1 sem BOM usando o codepage do sistema, não UTF-8 — o
+        # literal viraria "MÃªs Anterior" em tempo de execução e nunca bateria com o nome
+        # correto extraído do .xlsx (que esse contexto já leu como UTF-8 de verdade). Identifica
+        # a aba pelo padrão do nome em vez do texto exato.
+        $monthSheetName = $ctx.SheetNames | Where-Object { $_ -notlike 'Ano*' -and $_ -like '*Anterior' } | Select-Object -First 1
+        $month = if ($monthSheetName) { Get-NtnbMonthAnchor -Ctx $ctx -SheetName $monthSheetName } else { $null }
 
-            $sharedStringsXml = Read-ZipEntryText 'xl/sharedStrings.xml'
-            $sharedStrings = @()
-            if ($sharedStringsXml) {
-                $sharedStrings = [regex]::Matches($sharedStringsXml, '<si>(.*?)</si>', 'Singleline') | ForEach-Object {
-                    $_.Groups[1].Value -replace '<[^>]+>', ''
-                }
-            }
+        $prevYearName = [string]((Get-Date).Year - 1)
+        # A ordem de descoberta de Get-NtnbYearSheetSnapshots é a ordem das COLUNAS na planilha,
+        # não a ordem cronológica (confirmado ao vivo: na aba "2025" a coluna mais à esquerda
+        # tem a data 30/12/2025, com datas de novembro em colunas mais à direita) — sem ordenar
+        # por data antes de pegar "o último", pegaria o último bloco DESCOBERTO, não o mais
+        # recente de verdade.
+        $prevYearSnapshots = @(Get-NtnbYearSheetSnapshots -Ctx $ctx -SheetName $prevYearName | Sort-Object { [datetime]::ParseExact($_.date, 'dd/MM/yyyy', [System.Globalization.CultureInfo]::InvariantCulture) })
+        $year = if ($prevYearSnapshots.Count -gt 0) { $prevYearSnapshots[$prevYearSnapshots.Count - 1] } else { $null }
 
-            $wbXml = Read-ZipEntryText 'xl/workbook.xml'
-            $sheetToRid = @{}
-            foreach ($m in [regex]::Matches($wbXml, '<sheet[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"')) {
-                $sheetToRid[$m.Groups[1].Value] = $m.Groups[2].Value
-            }
-            $relsXml = Read-ZipEntryText 'xl/_rels/workbook.xml.rels'
-            $ridToTarget = @{}
-            foreach ($m in [regex]::Matches($relsXml, '<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"')) {
-                $ridToTarget[$m.Groups[1].Value] = $m.Groups[2].Value
-            }
-
-            function Get-CellValue([string]$SheetXml, [string]$Ref) {
-                $m = [regex]::Match($SheetXml, "<c r=`"$Ref`"[^>]*/>|<c r=`"$Ref`"[^>]*>.*?</c>", 'Singleline')
-                if (-not $m.Success) { return $null }
-                $block = $m.Value
-                $vMatch = [regex]::Match($block, '<v>([^<]*)</v>')
-                if (-not $vMatch.Success) { return $null }
-                $raw = $vMatch.Groups[1].Value
-                if ($block -match 't="s"') { return $sharedStrings[[int]$raw] }
-                return [double]$raw
-            }
-
-            function Read-StaticSheet([string]$SheetName) {
-                $rid = $sheetToRid[$SheetName]
-                if (-not $rid) { return $null }
-                $target = $ridToTarget[$rid]
-                $sheetXml = Read-ZipEntryText "xl/$target"
-                if (-not $sheetXml) { return $null }
-
-                $dateSerial = Get-CellValue $sheetXml 'C2'
-                if ($null -eq $dateSerial) { return $null }
-                # serial de data do Excel: dias desde 30/12/1899 (base 1900, já compensando o
-                # bug histórico do "29/02/1900" que o Excel herdou do Lotus 1-2-3)
-                $date = ([datetime]::new(1899, 12, 30)).AddDays([double]$dateSerial)
-
-                $rates = @{}
-                foreach ($row in 5..10) {
-                    $label = Get-CellValue $sheetXml "C$row"
-                    $val = Get-CellValue $sheetXml "D$row"
-                    if ($label -and $null -ne $val) {
-                        $year = ($label -replace '\D', '')
-                        $rates[$year] = [double]$val * 100.0
-                    }
-                }
-                if ($rates.Count -eq 0) { return $null }
-                return [PSCustomObject]@{ date = $date.ToString('dd/MM/yyyy'); rates = $rates }
-            }
-
-            # Evita comparar contra o literal acentuado "Mês Anterior" diretamente: o Windows
-            # PowerShell 5.1 lê arquivo .ps1 sem BOM usando o codepage do sistema, não UTF-8 — o
-            # literal viraria "MÃªs Anterior" em tempo de execução e nunca bateria com o nome
-            # correto extraído do .xlsx (que esse mesmo bloco já lê como UTF-8 de verdade via
-            # Read-ZipEntryText). Identifica as abas pela ordem/padrão do nome em vez do texto
-            # exato, o que também sobrevive se o Daniel renomear os acentos de outro jeito.
-            $monthSheetName = $sheetToRid.Keys | Where-Object { $_ -notlike 'Ano*' -and $_ -like '*Anterior' } | Select-Object -First 1
-            $yearSheetName = $sheetToRid.Keys | Where-Object { $_ -like 'Ano*' } | Select-Object -First 1
-            $month = if ($monthSheetName) { Read-StaticSheet $monthSheetName } else { $null }
-            $year = if ($yearSheetName) { Read-StaticSheet $yearSheetName } else { $null }
-            if (-not $month -and -not $year) { return $null }
-            return [PSCustomObject]@{ month = $month; year = $year }
-        } finally {
-            $zip.Dispose()
-        }
+        if (-not $month -and -not $year) { return $null }
+        return [PSCustomObject]@{ month = $month; year = $year }
     } catch {
         return $null
     }
@@ -1017,28 +1157,72 @@ while ($listener.IsListening) {
 
     $path = $req.Url.LocalPath
 
-    # ── Proxy ECB rate ──────────────────────────────────────────────────────
-    if ($path -eq '/api/ecb') {
-        $ecbUrl = "https://data-api.ecb.europa.eu/service/data/FM/B.U2.EUR.4F.KR.MRR_FR.LEV?format=jsondata&lastNObservations=1"
+    # ── Proxy de taxas oficiais de referência (espelho de api/rates.js, era /api/ecb) ─────────
+    # ?source=ecb (padrão) = Taxa do BCE; ?source=selic = Selic via BrasilAPI (fallback do card
+    # Selic); ?source=cdi12m = CDI acumulado 12 meses via scraping de brasilindicadores.com.br
+    # (fallback do card CDI 12M). Ver comentário completo no topo de api/rates.js.
+    if ($path -eq '/api/rates') {
+        $source = if ($req.QueryString['source']) { $req.QueryString['source'] } else { 'ecb' }
+        $result = $null
         try {
-            $wc = [System.Net.WebClient]::new()
-            $wc.Headers.Add('Accept', 'application/json')
-            $raw = $wc.DownloadString($ecbUrl)
-            $data = $raw | ConvertFrom-Json
-            $seriesMap = $data.dataSets[0].series
-            $sid = ($seriesMap | Get-Member -MemberType NoteProperty | Select-Object -First 1).Name
-            $obs = $seriesMap.$sid.observations
-            $key = ($obs | Get-Member -MemberType NoteProperty | Select-Object -First 1).Name
-            $v = $obs.$key[0]
-            $date = $data.structure.dimensions.observation[0].values[$key].id
-            $result = "{`"v`":$v,`"date`":`"$date`"}"
+            if ($source -eq 'ecb') {
+                $ecbUrl = "https://data-api.ecb.europa.eu/service/data/FM/B.U2.EUR.4F.KR.MRR_FR.LEV?format=jsondata&lastNObservations=1"
+                $wc = [System.Net.WebClient]::new()
+                $wc.Headers.Add('Accept', 'application/json')
+                $raw = $wc.DownloadString($ecbUrl)
+                $data = $raw | ConvertFrom-Json
+                $seriesMap = $data.dataSets[0].series
+                $sid = ($seriesMap | Get-Member -MemberType NoteProperty | Select-Object -First 1).Name
+                $obs = $seriesMap.$sid.observations
+                $key = ($obs | Get-Member -MemberType NoteProperty | Select-Object -First 1).Name
+                $v = $obs.$key[0]
+                $date = $data.structure.dimensions.observation[0].values[$key].id
+                $result = "{`"v`":$v,`"date`":`"$date`"}"
+            } elseif ($source -eq 'selic') {
+                $wc = [System.Net.WebClient]::new()
+                $wc.Headers.Add('Accept', 'application/json')
+                $raw = $wc.DownloadString('https://brasilapi.com.br/api/taxas/v1/selic')
+                $data = $raw | ConvertFrom-Json
+                if ($null -eq $data.valor) { throw "BrasilAPI: sem valor" }
+                $result = "{`"v`":$($data.valor),`"date`":null,`"source`":`"brasilapi`"}"
+            } elseif ($source -eq 'cdi12m') {
+                $wc = [System.Net.WebClient]::new()
+                $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+                $wc.Headers.Add('Accept', 'text/html')
+                $html = $wc.DownloadString('https://brasilindicadores.com.br/cdi')
+                # A página lista o ano corrente numa tabela mensal e o ano anterior noutra,
+                # ambas recomeçando em "janeiro" — corta no segundo "janeiro" (início da tabela
+                # do ano anterior) pra não pegar dezembro do ano passado por engano (testado
+                # ao vivo: a tabela de 2025 vem depois da de 2026 no HTML). Ver comentário
+                # completo (parseCdi12mHtml) em api/rates.js.
+                $rowMatches = [regex]::Matches($html, '<tr>\s*<td>([^<]+)</td>\s*<td>([^<]+)</td>\s*<td>([^<]+)</td>\s*<td>([^<]+)</td>\s*</tr>')
+                $cut = $rowMatches.Count
+                $sawJaneiro = $false
+                for ($i = 0; $i -lt $rowMatches.Count; $i++) {
+                    $mes = $rowMatches[$i].Groups[1].Value.Trim().ToLower()
+                    if ($mes.StartsWith('janeiro')) {
+                        if ($sawJaneiro) { $cut = $i; break }
+                        $sawJaneiro = $true
+                    }
+                }
+                if ($cut -eq 0) { throw "brasilindicadores: não achei a tabela/valor" }
+                $lastRow = $rowMatches[$cut - 1]
+                $mesRef = $lastRow.Groups[1].Value.Trim()
+                $acumuladoStr = $lastRow.Groups[3].Value.Trim() -replace '%', '' -replace ',', '.'
+                $acumulado = [double]$acumuladoStr
+                $mesRefEscaped = ($mesRef -replace '"', '\"')
+                $result = "{`"v`":$acumulado,`"date`":`"$mesRefEscaped`",`"source`":`"brasilindicadores`"}"
+            } else {
+                throw "source inválido (esperado ecb, selic ou cdi12m)"
+            }
             $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
-            $res.ContentType = 'application/json'
+            $res.ContentType = 'application/json; charset=utf-8'
             $res.Headers.Add('Access-Control-Allow-Origin', '*')
             $res.ContentLength64 = $bytes.Length
             $res.OutputStream.Write($bytes, 0, $bytes.Length)
         } catch {
-            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$($_.Exception.Message)`"}")
+            $errMsg = ($_.Exception.Message -replace '"', '\"') -replace "`n", ' '
+            $err = [System.Text.Encoding]::UTF8.GetBytes("{`"error`":`"$errMsg`"}")
             $res.StatusCode = 500
             $res.ContentType = 'application/json'
             $res.ContentLength64 = $err.Length
@@ -1870,9 +2054,15 @@ while ($listener.IsListening) {
     }
 
     # ── Proxy ANBIMA NTN-B · histórico (fundido em /api/ntnb — ?days=N aciona esse ramo) ──
+    # Espelho de handleHistory em api/ntnb.js (ver o comentário grande lá pro histórico completo
+    # do porquê): a ANBIMA só retém o arquivo diário por uma janela rolante de poucos dias úteis
+    # (não os "6 meses" que a gente supunha antes — confirmado ao vivo em 2026-09 que o mais
+    # antigo pulou de 23/02/2026 pra 11/09/2026 em poucas semanas). Pra qualquer coisa além disso
+    # usa o Tesouro Direto (série diária completa, 4 dos 6 vencimentos) + a planilha manual
+    # (pontos esparsos, só os 2 vencimentos que sobram: 2028/2030).
     if ($path -eq '/api/ntnb' -and $req.QueryString['days']) {
         try {
-            $targets = @('20280815', '20290515', '20300815', '20320815', '20350515', '20450515')
+            $ic = [System.Globalization.CultureInfo]::InvariantCulture
             $reqDays = [int]($req.QueryString['days'])
             if ($reqDays -le 0) { $reqDays = 65 }
             if ($reqDays -gt 260) { $reqDays = 260 }
@@ -1882,40 +2072,61 @@ while ($listener.IsListening) {
                 if ($d.DayOfWeek -ne 'Saturday' -and $d.DayOfWeek -ne 'Sunday') { $allBizDays += $d }
                 $d = $d.AddDays(-1)
             }
-            # amostra 1 em cada N dias pra janelas grandes (6M/1A), limitando o total de
-            # requisições à ANBIMA a ~90 no pior caso (mesma lógica do api/ntnb-history.js)
-            $stride = [Math]::Max(1, [Math]::Ceiling($reqDays / 90.0))
-            $dates = @()
-            for ($i = 0; $i -lt $allBizDays.Count; $i += $stride) { $dates += $allBizDays[$i] }
-            $history = @()
-            foreach ($dt in $dates) {
-                $yy = $dt.ToString('yy'); $mm = $dt.ToString('MM'); $dd = $dt.ToString('dd')
-                $ntnbUrl = "https://www.anbima.com.br/informacoes/merc-sec/arqs/ms$yy$mm$dd.txt"
+
+            # Só busca na ANBIMA os dias com chance real de existir — pedir mais é só 404 em massa.
+            $liveDays = $allBizDays[0..([Math]::Min($allBizDays.Count, $script:AnbimaLiveWindowDays) - 1)]
+            $byDate = @{}
+            foreach ($dt in $liveDays) {
+                $rates = Get-NtnbDayFile -Dt $dt
+                if ($rates) { $byDate[$dt.ToString('dd/MM/yyyy')] = $rates }
+            }
+
+            $oldestRequested = $allBizDays[$allBizDays.Count - 1]
+            $liveDateKeys = @($byDate.Keys | Sort-Object { [datetime]::ParseExact($_, 'dd/MM/yyyy', $ic) })
+            $oldestLive = if ($liveDateKeys.Count -gt 0) { [datetime]::ParseExact($liveDateKeys[0], 'dd/MM/yyyy', $ic) } else { $null }
+
+            # Cada fonte tem seu próprio try/catch — uma falhar (rede fora do ar, planilha
+            # ausente) nunca derruba o endpoint inteiro, só fica sem aquele complemento.
+            if (-not $oldestLive -or $oldestLive -gt $oldestRequested) {
                 try {
-                    $wc = [System.Net.WebClient]::new()
-                    $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-                    $csvText = $wc.DownloadString($ntnbUrl)
-                    $rates = @{}
-                    foreach ($line in ($csvText -split "`n")) {
-                        $cols = $line.Trim() -split '@'
-                        if ($cols.Count -lt 8) { continue }
-                        if ($cols[0].Trim() -ne 'NTN-B') { continue }
-                        $mat = $cols[4].Trim()
-                        if ($targets -contains $mat) {
-                            $rate = [double]($cols[7].Trim().Replace(',','.'))
-                            $rates[$mat.Substring(0,4)] = $rate
+                    $tesouro = Get-TesouroDiretoHistory
+                    foreach ($dtKey in $tesouro.Keys) {
+                        $dv = [datetime]::ParseExact($dtKey, 'dd/MM/yyyy', $ic)
+                        if ($dv -ge $oldestRequested -and (-not $oldestLive -or $dv -lt $oldestLive)) {
+                            $merged = $tesouro[$dtKey].Clone()
+                            if ($byDate.ContainsKey($dtKey)) { foreach ($k in $byDate[$dtKey].Keys) { $merged[$k] = $byDate[$dtKey][$k] } }
+                            $byDate[$dtKey] = $merged
                         }
                     }
-                    if ($rates.Count -gt 0) {
-                        $dtStr = $dt.ToString('dd/MM/yyyy')
-                        $ratesJson = ($rates.GetEnumerator() | ForEach-Object { "`"$($_.Key)`":$($_.Value)" }) -join ','
-                        $history += "{`"date`":`"$dtStr`",`"rates`":{$ratesJson}}"
+                } catch {}
+
+                try {
+                    $xlsxPath = Join-Path $root 'Taxas Antigas NTNB.xlsx'
+                    $ctx = New-NtnbTaxasAntigasContext $xlsxPath
+                    $sheetOnlyYears = @('2028', '2030') # não cobertos pelo Tesouro Direto
+                    $extra = Get-NtnbSpreadsheetHistoryAll -Ctx $ctx | Where-Object {
+                        $dd = [datetime]::ParseExact($_.date, 'dd/MM/yyyy', $ic)
+                        $dd -ge $oldestRequested -and (-not $oldestLive -or $dd -lt $oldestLive)
+                    }
+                    foreach ($s in $extra) {
+                        $picked = @{}
+                        foreach ($y in $sheetOnlyYears) { if ($s.rates.ContainsKey($y)) { $picked[$y] = $s.rates[$y] } }
+                        if ($picked.Count -eq 0) { continue }
+                        if ($byDate.ContainsKey($s.date)) { foreach ($k in $byDate[$s.date].Keys) { $picked[$k] = $byDate[$s.date][$k] } }
+                        $byDate[$s.date] = $picked
                     }
                 } catch {}
             }
+
+            $history = @($byDate.Keys | ForEach-Object { [PSCustomObject]@{ date = $_; rates = $byDate[$_] } } |
+                Sort-Object { [datetime]::ParseExact($_.date, 'dd/MM/yyyy', $ic) })
+
             if ($history.Count -gt 0) {
-                [array]::Reverse($history)
-                $result = "{`"history`":[$($history -join ',')]}"
+                $gapYears = @('2029', '2032', '2035', '2045', '2028', '2030')
+                $gaps = Get-NtnbHistoryGaps -History $history -Years $gapYears -RangeStart $oldestRequested
+                $historyJson = ($history | ForEach-Object { ConvertTo-NtnbAnchorJson $_ }) -join ','
+                $gapsJson = ($gaps | ForEach-Object { "{`"year`":`"$($_.year)`",`"from`":`"$($_.from)`",`"to`":`"$($_.to)`"}" }) -join ','
+                $result = "{`"history`":[$historyJson],`"gaps`":[$gapsJson]}"
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($result)
                 $res.ContentType = 'application/json'
                 $res.Headers.Add('Access-Control-Allow-Origin', '*')

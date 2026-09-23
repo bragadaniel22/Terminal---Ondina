@@ -1117,6 +1117,7 @@
  <div class="modal-status" id="ntnb-history-status"></div>
  <canvas id="ntnb-history-chart"></canvas>
  </div>
+ <div class="dim2" id="ntnb-history-gaps" style="font-size:10.5px; margin-top:8px; line-height:1.5;"></div>
  </div>
 </div>
 
@@ -2564,11 +2565,18 @@ const dragRangePlugin = {
  const area = chart.chartArea;
  if (!area) return;
  const state = chart.$dragRange;
- const n = (chart.data.labels || []).length;
- if (!n) return;
+ // Gráficos "normais" usam eixo X categórico (`labels`) + dados como número puro — aí
+ // `startIdx/endIdx` são ÍNDICES no array. O de histórico NTN-B usa eixo X numérico (dia real,
+ // ver loadNtnbHistory) porque cada vencimento tem seu próprio conjunto de pontos (fontes com
+ // cobertura diferente) — aí não existe um "índice compartilhado" só, então tratamos
+ // startIdx/endIdx como o VALOR real do eixo X (dia-índice) em vez de posição no array.
+ const valueMode = chart.scales.x?.type === 'linear';
+ const n = valueMode ? null : (chart.data.labels || []).length;
+ if (!valueMode && !n) return;
 
  const idxAt = (x) => {
  const raw = chart.scales.x.getValueForPixel(Math.max(area.left, Math.min(area.right, x)));
+ if (valueMode) return raw;
  return Math.max(0, Math.min(n - 1, Math.round(raw)));
  };
 
@@ -2595,6 +2603,7 @@ const dragRangePlugin = {
  if (!opts?.enabled) return;
  const state = chart.$dragRange;
  if (state.startIdx == null || state.endIdx == null || state.startIdx === state.endIdx) return;
+ const valueMode = chart.scales.x?.type === 'linear';
 
  const lo = Math.min(state.startIdx, state.endIdx);
  const hi = Math.max(state.startIdx, state.endIdx);
@@ -2609,9 +2618,21 @@ const dragRangePlugin = {
  .filter(i => chart.isDatasetVisible(i));
  if (!dsIdx.length) return;
 
+ // Em valueMode, cada dataset pode ter seu próprio conjunto de pontos x (ex: vencimentos de
+ // NTN-B com cobertura de datas diferente entre si) — lo/hi são um VALOR real (dia-índice), não
+ // uma posição de array, então achamos o ponto mais próximo de cada borda em vez de indexar direto.
+ const nearestPoint = (data, val) => data.reduce((best, p) => (Math.abs(p.x - val) < Math.abs(best.x - val) ? p : best), data[0]);
+
  const lines = dsIdx.map(di => {
  const ds = chart.data.datasets[di];
- const v0 = ds.data[lo], v1 = ds.data[hi];
+ let v0, v1;
+ if (valueMode) {
+ if (!ds.data.length) return null;
+ v0 = nearestPoint(ds.data, lo)?.y;
+ v1 = nearestPoint(ds.data, hi)?.y;
+ } else {
+ v0 = ds.data[lo]; v1 = ds.data[hi];
+ }
  if (v0 == null || v1 == null) return null;
  const delta = v1 - v0;
  const pctv = v0 !== 0 ? (delta / v0) * 100 : 0;
@@ -2753,13 +2774,27 @@ function closeNtnbHistory() {
  document.getElementById('ntnb-history-overlay')?.classList.remove('active');
 }
 
+// Dia-índice (dias desde a época Unix) a partir de "DD/MM/AAAA" — usado como valor real do
+// eixo X (em vez de posição categórica) pra que o espaçamento entre pontos seja PROPORCIONAL ao
+// tempo real. Sem isso, um buraco de 6 meses (ver api/ntnb.js) ficava visualmente idêntico a um
+// intervalo de 3 dias — os dois eram só "o próximo ponto da lista" — dando a falsa impressão de
+// um salto brusco de taxa em vez de dado faltante.
+function ntnbDayIdx(brDate) { return Math.round(brDateToTs(brDate) / 86400000); }
+function ntnbDayIdxToLabel(dayIdx, fullYear = false) {
+ const d = new Date(dayIdx * 86400000);
+ const yr = fullYear ? d.getUTCFullYear() : String(d.getUTCFullYear()).slice(2);
+ return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${yr}`;
+}
+
 async function loadNtnbHistory(days) {
  ntnbHistoryDays = days;
  document.querySelectorAll('#ntnb-history-overlay .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === String(days)));
  const statusEl = document.getElementById('ntnb-history-status');
  const lastEl = document.getElementById('ntnb-history-last');
  const chgEl = document.getElementById('ntnb-history-chg');
+ const gapsEl = document.getElementById('ntnb-history-gaps');
  statusEl.textContent = 'carregando…';
+ gapsEl.textContent = '';
 
  try {
  const r = await fetch(`/api/ntnb?days=${days}`);
@@ -2774,18 +2809,25 @@ async function loadNtnbHistory(days) {
  ? NTNB_MATURITIES.filter(m => m.year === ntnbHistoryFocus)
  : NTNB_MATURITIES;
 
- const labels = history.map(h => h.date.slice(0, 5)); // DD/MM
+ // Cada vencimento tem sua PRÓPRIA lista de pontos {x: dia-índice, y: taxa} — não um array
+ // paralelo a um `labels` compartilhado — porque a cobertura de datas difere entre eles (ver
+ // api/ntnb.js: só 4 dos 6 vencimentos têm histórico via Tesouro Direto, os outros 2 dependem
+ // de pontos esparsos da planilha manual).
  const datasets = maturities.map(m => ({
  label: `NTN-B ${m.label}`,
- data: history.map(h => h.rates?.[m.year] ?? null),
+ data: history.filter(h => h.rates?.[m.year] != null).map(h => ({ x: ntnbDayIdx(h.date), y: h.rates[m.year] })),
  borderColor: m.color, backgroundColor: m.color, borderWidth: ntnbHistoryFocus ? 2 : 1.5,
- pointRadius: 0, tension: .05, fill: false, spanGaps: true,
+ pointRadius: 0, tension: .05, fill: false,
+ // Numérico (não `true`/`false`) — só liga os pontos se o buraco real entre eles for de até
+ // 20 dias corridos (folga sobre feriados prolongados); acima disso, quebra a linha em vez
+ // de desenhar uma reta enganosa atravessando um período sem dado nenhum.
+ spanGaps: 20,
  }));
 
  if (ntnbHistoryFocus) {
- const series = datasets[0].data.filter(v => v != null);
+ const series = datasets[0].data;
  if (series.length >= 2) {
- const first = series[0], last = series[series.length - 1];
+ const first = series[0].y, last = series[series.length - 1].y;
  const chg = last - first;
  lastEl.textContent = `${num(last, 2)}%`;
  setC('ntnb-history-chg', `${chg >= 0 ? '+' : ''}${num(chg, 2)} p.p.`, chg >= 0 ? 'pos' : 'neg');
@@ -2796,11 +2838,22 @@ async function loadNtnbHistory(days) {
  lastEl.textContent = ''; chgEl.textContent = ''; chgEl.className = 'modal-chg';
  }
 
+ // Avisa explicitamente quando falta dado (a pedido do Daniel — nunca deixar o gráfico
+ // simplesmente "sumir" um trecho sem dizer por quê). `d.gaps` já vem filtrado só pros
+ // vencimentos exibidos nesta view (focada ou as 6 juntas).
+ const relevantGaps = (d.gaps || []).filter(g => maturities.some(m => m.year === g.year));
+ if (relevantGaps.length) {
+ gapsEl.innerHTML = relevantGaps.map(g => {
+ const m = NTNB_MATURITIES.find(x => x.year === g.year);
+ return `⚠ sem dado de NTN-B ${m ? m.label : g.year} entre ${g.from} e ${g.to}`;
+ }).join('<br>');
+ }
+
  if (ntnbHistoryChart) ntnbHistoryChart.destroy();
  const ctx = document.getElementById('ntnb-history-chart').getContext('2d');
  ntnbHistoryChart = new Chart(ctx, {
  type: 'line',
- data: { labels, datasets },
+ data: { datasets },
  options: {
  responsive: true, animation: false, maintainAspectRatio: false,
  interaction: { mode: 'index', intersect: false },
@@ -2812,11 +2865,21 @@ async function loadNtnbHistory(days) {
  backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
  titleColor: '#2b3140', bodyColor: '#2b3140',
  titleFont: { family: 'JetBrains Mono', size: 9 }, bodyFont: { family: 'JetBrains Mono', size: 9 },
- callbacks: { label: c => `${c.dataset.label}: ${num(c.parsed.y, 2)}%` },
+ callbacks: {
+ title: items => items.length ? ntnbDayIdxToLabel(items[0].parsed.x, true) : '',
+ label: c => `${c.dataset.label}: ${num(c.parsed.y, 2)}%`,
+ },
  },
  },
  scales: {
- x: { ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8 }, grid: { color: '#9aa1ac' } },
+ // Eixo X NUMÉRICO (dia-índice), não categórico — ver comentário de ntnbDayIdx acima.
+ // Não precisa de adapter de datas (moment/luxon): já formatamos o número de volta pra
+ // data no próprio callback de tick/tooltip.
+ x: {
+ type: 'linear',
+ ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8, callback: v => ntnbDayIdxToLabel(v) },
+ grid: { color: '#9aa1ac' },
+ },
  // `precision: 2` força o PRÓPRIO Chart.js a só gerar valores de tick múltiplos de 0,01 —
  // só arredondar o texto exibido (`toFixed(2)`) não bastava: em horizontes curtos (5D/1M),
  // com a taxa variando menos de 0,1pp, o algoritmo de "números redondos" do Chart.js às
