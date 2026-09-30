@@ -607,6 +607,11 @@
  <div class="rright"><div class="rval" id="spew-val">…</div><div class="rchg" id="spew-chg">—</div></div>
  </div>
 
+ <div class="row row-click" onclick="openChart('SPMO','Invesco S&amp;P 500 Momentum (SPMO)')">
+ <div><div class="rname">S&amp;P MOMENTUM (SPMO)<span class="lock" id="spmo-lock"></span></div><div class="rsub" id="spmo-sub">SPMO · USD</div></div>
+ <div class="rright"><div class="rval" id="spmo-val">…</div><div class="rchg" id="spmo-chg">—</div></div>
+ </div>
+
  <div class="row row-click" onclick="openChart('^DJI','Dow Jones')">
  <div><div class="rname">DOW JONES<span class="lock" id="dow-lock"></span></div><div class="rsub" id="dow-sub">^DJI · EUA</div></div>
  <div class="rright"><div class="rval" id="dow-val">…</div><div class="rchg" id="dow-chg">—</div></div>
@@ -1256,7 +1261,7 @@
  </div>
  <div class="sources-section">
  <h3>Bolsa US</h3>
- <p>Yahoo Finance: S&amp;P 500 (^GSPC), S&amp;P Equal Weight (^SPXEW), Dow Jones (^DJI), Nasdaq (^IXIC) e futuros (Dow, S&amp;P, Nasdaq).</p>
+ <p>Yahoo Finance: S&amp;P 500 (^GSPC), S&amp;P Equal Weight (^SPXEW), Invesco S&amp;P 500 Momentum ETF (SPMO), Dow Jones (^DJI), Nasdaq (^IXIC) e futuros (Dow, S&amp;P, Nasdaq).</p>
  </div>
  <div class="sources-section">
  <h3>Europa + Emerging Markets + Câmbio</h3>
@@ -1586,6 +1591,7 @@ async function loadAmericas() {
  const list = [
  { t: '^GSPC', val: 'sp-val', chg: 'sp-chg', sub: 'sp-sub', base: '^GSPC · EUA', d: 2 },
  { t: '^SPXEW', val: 'spew-val', chg: 'spew-chg', sub: 'spew-sub', base: '^SPXEW · EUA', d: 2 },
+ { t: 'SPMO', val: 'spmo-val', chg: 'spmo-chg', sub: 'spmo-sub', base: 'SPMO · USD', d: 2 },
  { t: '^DJI', val: 'dow-val', chg: 'dow-chg', sub: 'dow-sub', base: '^DJI · EUA', d: 2 },
  { t: '^IXIC', val: 'nasdaq-val', chg: 'nasdaq-chg', sub: 'nasdaq-sub', base: '^IXIC · EUA', d: 2 },
  ];
