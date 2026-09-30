@@ -1080,12 +1080,6 @@
  <div class="card card-wide">
  <div class="card-head">
  <h2>Eleições · Presidencial Brasil 2026</h2>
- <div class="pf-range">
- <button class="range-btn" data-r="1mo" onclick="loadElectionsChart('1mo')">1M</button>
- <button class="range-btn active" data-r="3mo" onclick="loadElectionsChart('3mo')">3M</button>
- <button class="range-btn" data-r="6mo" onclick="loadElectionsChart('6mo')">6M</button>
- <button class="range-btn" data-r="max" onclick="loadElectionsChart('max')">MÁX</button>
- </div>
  </div>
  <div class="etf-disclaimer">Mercado de previsão <a href="https://polymarket.com/event/brazil-presidential-election" target="_blank" rel="noopener">Polymarket · brazil-presidential-election</a> — preço de cada candidato reflete a probabilidade implícita atribuída pelos traders (ex: 60¢ = 60% de chance de vitória), não é pesquisa eleitoral. Mostra os <span id="elections-max-candidates">6</span> candidatos com maior probabilidade atual; os demais (várias dezenas) ficam perto de 0% e são omitidos.</div>
  <div id="elections-status" class="close-status"></div>
@@ -2416,7 +2410,7 @@ function switchTab(btn) {
  if (name === 'heatmap' && !heatmapLoaded) { heatmapLoaded = true; loadHeatmap(); }
  if (name === 'ainews' && !aiNewsLoaded) { aiNewsLoaded = true; loadAiNews(); }
  if (name === 'bonds' && !bondsLoaded) { bondsLoaded = true; loadBonds(); }
- if (name === 'elections' && !electionsLoaded) { electionsLoaded = true; loadElectionsChart('3mo'); }
+ if (name === 'elections' && !electionsLoaded) { electionsLoaded = true; loadElectionsChart(); }
 }
 
 let closeReportLoaded = false;
@@ -4683,8 +4677,7 @@ async function fetchElectionsHistory(tokenId) {
  return series;
 }
 
-async function loadElectionsChart(range) {
- document.querySelectorAll('#tab-elections .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === range));
+async function loadElectionsChart() {
  const statusEl = document.getElementById('elections-status');
  statusEl.textContent = 'carregando…';
 
@@ -4694,18 +4687,18 @@ async function loadElectionsChart(range) {
  const histories = await Promise.all(candidates.map(c => fetchElectionsHistory(c.tokenId)));
  statusEl.textContent = '';
 
- const cutoffDays = { '1mo': 30, '3mo': 92, '6mo': 183, max: Infinity }[range] ?? 92;
- const cutoff = Date.now() / 86400000 - cutoffDays;
- const seriesPerCandidate = histories.map(h => h.filter(p => p.x >= cutoff));
+ // Sem seletor de horizonte aqui de propósito (pedido do Daniel — "não faz sentido as
+ // opções de horizonte" pra um mercado com data de resolução fixa e próxima): o gráfico
+ // sempre mostra a história completa desde a criação do mercado. O Δ de cada card usa uma
+ // janela fixa de 30 dias só pra dar um sinal de momentum recente.
+ const recentCutoff = Date.now() / 86400000 - 30;
 
  const cardsEl = document.getElementById('elections-cards');
  cardsEl.innerHTML = candidates.map((c, i) => {
- const series = seriesPerCandidate[i];
- const first = series[0]?.y;
- const last = series[series.length - 1]?.y ?? c.price * 100;
- const chg = first != null ? last - first : null;
+ const recentStart = histories[i].find(p => p.x >= recentCutoff);
+ const chg = recentStart != null ? (c.price * 100) - recentStart.y : null;
  const chgHtml = chg != null
- ? `<div class="rchg ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '+' : ''}${num(chg, 1)} p.p.</div>`
+ ? `<div class="rchg ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '+' : ''}${num(chg, 1)} p.p. · 30d</div>`
  : '';
  return `<div class="row">
  <div><div class="rname"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c.color};margin-right:6px;vertical-align:middle"></span>${esc(c.name)}</div><div class="rsub">Polymarket · Yes ${num(c.price * 100, 1)}¢</div></div>
@@ -4714,7 +4707,7 @@ async function loadElectionsChart(range) {
  }).join('');
 
  const datasets = candidates.map((c, i) => ({
- label: c.name, data: seriesPerCandidate[i],
+ label: c.name, data: histories[i],
  borderColor: c.color, backgroundColor: c.color, borderWidth: 1.5, fill: false,
  pointRadius: 0, tension: .05, spanGaps: 20,
  }));
