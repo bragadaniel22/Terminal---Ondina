@@ -2837,13 +2837,16 @@ async function loadNtnbHistory(days) {
  ? NTNB_MATURITIES.filter(m => m.year === ntnbHistoryFocus)
  : NTNB_MATURITIES;
 
- // Cada vencimento tem sua PRÓPRIA lista de pontos {x: dia-índice, y: taxa} — não um array
- // paralelo a um `labels` compartilhado — porque a cobertura de datas difere entre eles (ver
- // api/ntnb.js: só 4 dos 6 vencimentos têm histórico via Tesouro Direto, os outros 2 dependem
- // de pontos esparsos da planilha manual).
+ // Todos os vencimentos usam o MESMO array `history` como grade de datas (só trocando o `y`
+ // por `null` quando aquele vencimento não tem taxa naquele dia) — bug real encontrado pelo
+ // Daniel: filtrar cada vencimento pra sua PRÓPRIA lista (sem os dias que faltam) desalinhava
+ // os índices entre vencimentos diferentes, e o tooltip (`mode: 'index'`) misturava datas
+ // diferentes por vencimento. Com todos comparilhando a mesma grade, índice N sempre é o
+ // mesmo dia em qualquer vencimento — `mode: 'index'` volta a funcionar direito, e não sobra
+ // brecha pra Chart.js casar mais de um ponto do mesmo vencimento no mesmo tooltip.
  const datasets = maturities.map(m => ({
  label: `NTN-B ${m.label}`,
- data: history.filter(h => h.rates?.[m.year] != null).map(h => ({ x: ntnbDayIdx(h.date), y: h.rates[m.year] })),
+ data: history.map(h => ({ x: ntnbDayIdx(h.date), y: h.rates?.[m.year] ?? null })),
  borderColor: m.color, backgroundColor: m.color, borderWidth: ntnbHistoryFocus ? 2 : 1.5,
  pointRadius: 0, tension: .05, fill: false,
  // Numérico (não `true`/`false`) — só liga os pontos se o buraco real entre eles for de até
@@ -2853,7 +2856,7 @@ async function loadNtnbHistory(days) {
  }));
 
  if (ntnbHistoryFocus) {
- const series = datasets[0].data;
+ const series = datasets[0].data.filter(p => p.y != null);
  if (series.length >= 2) {
  const first = series[0].y, last = series[series.length - 1].y;
  const chg = last - first;
@@ -2894,12 +2897,15 @@ async function loadNtnbHistory(days) {
  data: { datasets },
  options: {
  responsive: true, animation: false, maintainAspectRatio: false,
- // `mode: 'x'` (não 'index') — cada vencimento tem sua PRÓPRIA lista de pontos {x,y}, com
- // datas/índices de array diferentes entre si (nem toda fonte cobre os 6 vencimentos nos
- // mesmos dias — ver api/ntnb.js). 'index' pega "a posição N de cada array", o que aqui
- // mistura datas completamente diferentes por vencimento; 'x' busca pelo VALOR de X mais
- // próximo em cada série, que é o certo pra eixo numérico com séries não alinhadas.
- interaction: { mode: 'x', intersect: false },
+ // Voltou a ser 'index' — agora seguro porque todos os vencimentos compartilham a MESMA
+ // grade de datas (ver comentário acima de `datasets`), então índice N é sempre o mesmo dia
+ // em qualquer vencimento. Chegamos a usar 'x' (busca por valor, não por índice) numa
+ // tentativa anterior de corrigir tooltips com datas erradas, mas 'x' tem seu próprio
+ // problema quando os pontos são mais densos que os pixels disponíveis: pode casar MAIS DE UM
+ // ponto da MESMA série no mesmo tooltip (bug real visto pelo Daniel — cada candidato/
+ // vencimento aparecendo duplicado no tooltip da aba Eleições). Alinhar os dados de verdade
+ // (aqui) resolve os dois problemas de uma vez, sem esse efeito colateral.
+ interaction: { mode: 'index', intersect: false },
  events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
  plugins: {
  dragRange: { enabled: true },
@@ -4643,9 +4649,9 @@ const ELECTIONS_MAX_CANDIDATES = 6; // o evento tem ~19 candidatos ativos; a mai
 const ELECTIONS_COLORS = ['#1f5fd1', '#0a9b58', '#c98f00', '#c9368f', '#0f9aa4', '#d9530f'];
 
 let electionsChart = null;
-// Cache do histórico "max" de cada token (Map tokenId -> [{x,y}]) — buscado 1x por candidato
-// nessa sessão; trocar de range só refiltra localmente, sem bater na API de novo (mesmo
-// raciocínio do diHistoryCache já usado no DI Futuro/histórico de bonds).
+// Cache do histórico "max" de cada token (Map tokenId -> Map<diaInteiro, preço>) — buscado 1x
+// por candidato nessa sessão; trocar de range só refiltra localmente, sem bater na API de novo
+// (mesmo raciocínio do diHistoryCache já usado no DI Futuro/histórico de bonds).
 const electionsHistoryCache = new Map();
 
 async function fetchElectionsCandidates() {
@@ -4674,12 +4680,17 @@ async function fetchElectionsHistory(tokenId) {
  const r = await fetch(`https://clob.polymarket.com/prices-history?market=${tokenId}&interval=max&fidelity=1440`);
  if (!r.ok) throw new Error(`Polymarket histórico: ${r.status}`);
  const d = await r.json();
- // `t` já vem em segundos desde a época Unix — dividir por 86400 dá direto o dia-índice usado
- // pelo gráfico da NTN-B (mesma convenção, reaproveita ntnbDayIdxToLabel pro eixo/tooltip e o
- // modo "valor" do plugin dragRange, sem precisar duplicar nada disso aqui).
- const series = (d.history || []).map(h => ({ x: h.t / 86400, y: h.p * 100 }));
- electionsHistoryCache.set(tokenId, series);
- return series;
+ // `t` já vem em segundos desde a época Unix — dividir por 86400 dá o dia-índice usado pelo
+ // gráfico da NTN-B (mesma convenção, reaproveita ntnbDayIdxToLabel pro eixo/tooltip). Chave
+ // por DIA INTEIRO (`Math.floor`), não pelo valor exato — a Polymarket às vezes manda mais de
+ // um snapshot no mesmo dia (jitter no horário de captura), e `history` já vem em ordem
+ // crescente de tempo, então isso fica com o mais recente de cada dia (bug real visto pelo
+ // Daniel: sem isso, dois pontos do MESMO candidato no MESMO pixel apareciam duplicados no
+ // tooltip).
+ const byDay = new Map();
+ for (const h of d.history || []) byDay.set(Math.floor(h.t / 86400), h.p * 100);
+ electionsHistoryCache.set(tokenId, byDay);
+ return byDay;
 }
 
 async function loadElectionsChart() {
@@ -4689,19 +4700,28 @@ async function loadElectionsChart() {
  try {
  const candidates = await fetchElectionsCandidates();
  document.getElementById('elections-max-candidates').textContent = String(candidates.length);
- const histories = await Promise.all(candidates.map(c => fetchElectionsHistory(c.tokenId)));
+ const histories = await Promise.all(candidates.map(c => fetchElectionsHistory(c.tokenId))); // Map<dia, preço> por candidato
  statusEl.textContent = '';
 
  // Sem seletor de horizonte aqui de propósito (pedido do Daniel — "não faz sentido as
  // opções de horizonte" pra um mercado com data de resolução fixa e próxima): o gráfico
  // sempre mostra a história completa desde a criação do mercado. O Δ de cada card usa uma
  // janela fixa de 30 dias só pra dar um sinal de momentum recente.
- const recentCutoff = Date.now() / 86400000 - 30;
+ const recentCutoffDay = Math.floor(Date.now() / 86400000) - 30;
+
+ // Todos os candidatos usam a MESMA grade de dias (união de todas as datas que QUALQUER
+ // candidato tem) — bug real encontrado pelo Daniel: cada candidato tinha sua própria lista
+ // independente de pontos (a Polymarket não sincroniza os horários de snapshot entre
+ // mercados diferentes), e isso fazia o tooltip casar mais de um ponto do MESMO candidato no
+ // mesmo pixel (dado mais denso que a resolução de pixels do gráfico). Com a grade
+ // compartilhada, índice N é sempre o mesmo dia em qualquer candidato — mesma lógica já usada
+ // no gráfico da NTN-B (ver comentário lá).
+ const allDays = [...new Set(histories.flatMap(h => [...h.keys()]))].sort((a, b) => a - b);
 
  const cardsEl = document.getElementById('elections-cards');
  cardsEl.innerHTML = candidates.map((c, i) => {
- const recentStart = histories[i].find(p => p.x >= recentCutoff);
- const chg = recentStart != null ? (c.price * 100) - recentStart.y : null;
+ const recentDay = allDays.find(day => day >= recentCutoffDay && histories[i].has(day));
+ const chg = recentDay != null ? (c.price * 100) - histories[i].get(recentDay) : null;
  const chgHtml = chg != null
  ? `<div class="rchg ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '+' : ''}${num(chg, 1)} p.p. · 30d</div>`
  : '';
@@ -4711,11 +4731,24 @@ async function loadElectionsChart() {
  </div>`;
  }).join('');
 
- const datasets = candidates.map((c, i) => ({
- label: c.name, data: histories[i],
+ // "Carrega pra frente" o último preço conhecido de cada candidato nos dias em que ele não
+ // tem exatamente aquele dia (jitter de horário entre candidatos diferentes — a Polymarket
+ // não sincroniza os horários de snapshot entre mercados — faz a maioria dos dias NÃO baterem
+ // exatos entre candidatos mesmo com a grade compartilhada). Isso é correto, não só
+ // conveniente: o preço de um mercado sem negociação nova É o último preço negociado, não
+ // "sem dado". Preserva o buraco de verdade ANTES do primeiro preço conhecido (fica `null`).
+ const datasets = candidates.map((c, i) => {
+ let lastKnown = null;
+ const data = allDays.map(day => {
+ if (histories[i].has(day)) lastKnown = histories[i].get(day);
+ return { x: day, y: lastKnown };
+ });
+ return {
+ label: c.name, data,
  borderColor: c.color, backgroundColor: c.color, borderWidth: 1.5, fill: false,
  pointRadius: 0, tension: .05, spanGaps: 20,
- }));
+ };
+ });
 
  const allX = datasets.flatMap(ds => ds.data.map(p => p.x));
  const xMin = allX.length ? Math.min(...allX) : undefined;
@@ -4728,13 +4761,14 @@ async function loadElectionsChart() {
  data: { datasets },
  options: {
  responsive: true, animation: false, maintainAspectRatio: false,
- // `mode: 'x'` (não 'index') — cada candidato tem sua PRÓPRIA lista de pontos {x,y}, com
- // timestamps diferentes entre si (a Polymarket não atualiza todos os candidatos exatamente
- // nos mesmos instantes). 'index' pega "a posição N de cada array", misturando datas
- // completamente diferentes por candidato no tooltip (bug real visto pelo Daniel: tooltip
- // de "30/09" mostrando valores que não batiam com o gráfico); 'x' busca pelo VALOR de X
- // mais próximo em cada série, que é o certo pra eixo numérico com séries não alinhadas.
- interaction: { mode: 'x', intersect: false },
+ // 'index' é seguro aqui porque todos os candidatos compartilham a MESMA grade de dias
+ // (`allDays`, ver acima) — índice N é sempre o mesmo dia em qualquer candidato. Chegamos a
+ // usar 'x' (busca por valor) numa tentativa anterior de corrigir tooltip com datas erradas
+ // entre candidatos, mas 'x' tem seu próprio problema quando os pontos são mais densos que os
+ // pixels disponíveis: casava MAIS DE UM ponto do MESMO candidato no mesmo tooltip (bug real
+ // visto pelo Daniel — cada candidato aparecendo duplicado). Alinhar os dados numa grade
+ // comum (aqui) resolve os dois problemas de uma vez, sem esse efeito colateral.
+ interaction: { mode: 'index', intersect: false },
  events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
  plugins: {
  dragRange: { enabled: true },
