@@ -2894,7 +2894,12 @@ async function loadNtnbHistory(days) {
  data: { datasets },
  options: {
  responsive: true, animation: false, maintainAspectRatio: false,
- interaction: { mode: 'index', intersect: false },
+ // `mode: 'x'` (não 'index') — cada vencimento tem sua PRÓPRIA lista de pontos {x,y}, com
+ // datas/índices de array diferentes entre si (nem toda fonte cobre os 6 vencimentos nos
+ // mesmos dias — ver api/ntnb.js). 'index' pega "a posição N de cada array", o que aqui
+ // mistura datas completamente diferentes por vencimento; 'x' busca pelo VALOR de X mais
+ // próximo em cada série, que é o certo pra eixo numérico com séries não alinhadas.
+ interaction: { mode: 'x', intersect: false },
  events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
  plugins: {
  dragRange: { enabled: true },
@@ -4723,7 +4728,13 @@ async function loadElectionsChart() {
  data: { datasets },
  options: {
  responsive: true, animation: false, maintainAspectRatio: false,
- interaction: { mode: 'index', intersect: false },
+ // `mode: 'x'` (não 'index') — cada candidato tem sua PRÓPRIA lista de pontos {x,y}, com
+ // timestamps diferentes entre si (a Polymarket não atualiza todos os candidatos exatamente
+ // nos mesmos instantes). 'index' pega "a posição N de cada array", misturando datas
+ // completamente diferentes por candidato no tooltip (bug real visto pelo Daniel: tooltip
+ // de "30/09" mostrando valores que não batiam com o gráfico); 'x' busca pelo VALOR de X
+ // mais próximo em cada série, que é o certo pra eixo numérico com séries não alinhadas.
+ interaction: { mode: 'x', intersect: false },
  events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
  plugins: {
  dragRange: { enabled: true },
