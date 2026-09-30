@@ -536,6 +536,7 @@
  <button class="tab-btn" data-tab="heatmap" onclick="switchTab(this)">HEATMAP</button>
  <button class="tab-btn" data-tab="ainews" onclick="switchTab(this)">NOTÍCIAS</button>
  <button class="tab-btn" data-tab="bonds" onclick="switchTab(this)">BONDS</button>
+ <button class="tab-btn" data-tab="elections" onclick="switchTab(this)">ELEIÇÕES</button>
 </nav>
 
 <div id="tab-indices" class="tab-panel active">
@@ -1075,6 +1076,27 @@
 </div>
 </div><!-- /tab-bonds -->
 
+<div id="tab-elections" class="tab-panel">
+ <div class="card card-wide">
+ <div class="card-head">
+ <h2>Eleições · Presidencial Brasil 2026</h2>
+ <div class="pf-range">
+ <button class="range-btn" data-r="1mo" onclick="loadElectionsChart('1mo')">1M</button>
+ <button class="range-btn active" data-r="3mo" onclick="loadElectionsChart('3mo')">3M</button>
+ <button class="range-btn" data-r="6mo" onclick="loadElectionsChart('6mo')">6M</button>
+ <button class="range-btn" data-r="max" onclick="loadElectionsChart('max')">MÁX</button>
+ </div>
+ </div>
+ <div class="etf-disclaimer">Mercado de previsão <a href="https://polymarket.com/event/brazil-presidential-election" target="_blank" rel="noopener">Polymarket · brazil-presidential-election</a> — preço de cada candidato reflete a probabilidade implícita atribuída pelos traders (ex: 60¢ = 60% de chance de vitória), não é pesquisa eleitoral. Mostra os <span id="elections-max-candidates">6</span> candidatos com maior probabilidade atual; os demais (várias dezenas) ficam perto de 0% e são omitidos.</div>
+ <div id="elections-status" class="close-status"></div>
+ <div id="elections-cards"></div>
+ <div class="pf-chart-box">
+ <div class="pf-chart-title">Probabilidade implícita de vitória · % de chance</div>
+ <canvas id="elections-chart"></canvas>
+ </div>
+ </div>
+</div><!-- /tab-elections -->
+
 <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this) closeChart()">
  <div class="modal-box">
  <button class="modal-close" onclick="closeChart()"></button>
@@ -1294,6 +1316,10 @@
  <div class="sources-section">
  <h3>Heatmap</h3>
  <p>Reaproveita os mesmos dados já buscados nas outras abas (cache de até 90s) — não gera chamadas extras às APIs. Tamanho dos blocos proporcional à magnitude da variação do dia.</p>
+ </div>
+ <div class="sources-section">
+ <h3>Eleições</h3>
+ <p>Polymarket (mercado de previsão, evento "brazil-presidential-election") — preço de cada candidato = probabilidade implícita atribuída pelos traders, chamado direto do navegador (API pública da Polymarket, sem proxy próprio). Mostra os 6 candidatos com maior probabilidade atual.</p>
  </div>
  <div class="sources-section">
  <h3>Notícias</h3>
@@ -2377,6 +2403,7 @@ let heatmapLoaded = false;
 let etfLoaded = false;
 let aiNewsLoaded = false;
 let bondsLoaded = false;
+let electionsLoaded = false;
 function switchTab(btn) {
  const name = btn.dataset.tab;
  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -2389,6 +2416,7 @@ function switchTab(btn) {
  if (name === 'heatmap' && !heatmapLoaded) { heatmapLoaded = true; loadHeatmap(); }
  if (name === 'ainews' && !aiNewsLoaded) { aiNewsLoaded = true; loadAiNews(); }
  if (name === 'bonds' && !bondsLoaded) { bondsLoaded = true; loadBonds(); }
+ if (name === 'elections' && !electionsLoaded) { electionsLoaded = true; loadElectionsChart('3mo'); }
 }
 
 let closeReportLoaded = false;
@@ -4604,6 +4632,137 @@ async function loadSingleNames() {
  setV(val, 'ERRO', 'err'); console.error(t, priceRes.reason);
  }
  }));
+}
+
+// ── Eleições · Polymarket ──────────────────────────────────────────────────────
+// Mercado de previsão público (evento "brazil-presidential-election") — SEM proxy próprio: as
+// APIs da Polymarket (gamma-api pra metadados/preço atual, clob pra histórico) respondem com
+// `Access-Control-Allow-Origin: *` (confirmado ao vivo), então dá pra chamar direto do
+// navegador — não gasta nenhuma das 12 funções serverless do Vercel Hobby (já ocupadas).
+const ELECTIONS_EVENT_SLUG = 'brazil-presidential-election';
+const ELECTIONS_MAX_CANDIDATES = 6; // o evento tem ~19 candidatos ativos; a maioria fica perto de 0%
+const ELECTIONS_COLORS = ['#1f5fd1', '#0a9b58', '#c98f00', '#c9368f', '#0f9aa4', '#d9530f'];
+
+let electionsChart = null;
+// Cache do histórico "max" de cada token (Map tokenId -> [{x,y}]) — buscado 1x por candidato
+// nessa sessão; trocar de range só refiltra localmente, sem bater na API de novo (mesmo
+// raciocínio do diHistoryCache já usado no DI Futuro/histórico de bonds).
+const electionsHistoryCache = new Map();
+
+async function fetchElectionsCandidates() {
+ const r = await fetch(`https://gamma-api.polymarket.com/events?slug=${ELECTIONS_EVENT_SLUG}`);
+ if (!r.ok) throw new Error(`Polymarket: ${r.status}`);
+ const events = await r.json();
+ const ev = events[0];
+ if (!ev) throw new Error('evento não encontrado');
+ return (ev.markets || [])
+ .filter(m => m.active && !m.closed && m.outcomePrices && m.clobTokenIds)
+ .map(m => {
+ // `outcomePrices`/`clobTokenIds` vêm como STRING contendo JSON (peculiaridade real da
+ // Gamma API da Polymarket, confirmada ao vivo) — precisa de um JSON.parse extra em cima
+ // do que a resposta já deu.
+ const prices = JSON.parse(m.outcomePrices);
+ const tokens = JSON.parse(m.clobTokenIds);
+ return { name: m.groupItemTitle || m.question, price: parseFloat(prices[0]), tokenId: tokens[0] };
+ })
+ .sort((a, b) => b.price - a.price)
+ .slice(0, ELECTIONS_MAX_CANDIDATES)
+ .map((c, i) => ({ ...c, color: ELECTIONS_COLORS[i % ELECTIONS_COLORS.length] }));
+}
+
+async function fetchElectionsHistory(tokenId) {
+ if (electionsHistoryCache.has(tokenId)) return electionsHistoryCache.get(tokenId);
+ const r = await fetch(`https://clob.polymarket.com/prices-history?market=${tokenId}&interval=max&fidelity=1440`);
+ if (!r.ok) throw new Error(`Polymarket histórico: ${r.status}`);
+ const d = await r.json();
+ // `t` já vem em segundos desde a época Unix — dividir por 86400 dá direto o dia-índice usado
+ // pelo gráfico da NTN-B (mesma convenção, reaproveita ntnbDayIdxToLabel pro eixo/tooltip e o
+ // modo "valor" do plugin dragRange, sem precisar duplicar nada disso aqui).
+ const series = (d.history || []).map(h => ({ x: h.t / 86400, y: h.p * 100 }));
+ electionsHistoryCache.set(tokenId, series);
+ return series;
+}
+
+async function loadElectionsChart(range) {
+ document.querySelectorAll('#tab-elections .range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === range));
+ const statusEl = document.getElementById('elections-status');
+ statusEl.textContent = 'carregando…';
+
+ try {
+ const candidates = await fetchElectionsCandidates();
+ document.getElementById('elections-max-candidates').textContent = String(candidates.length);
+ const histories = await Promise.all(candidates.map(c => fetchElectionsHistory(c.tokenId)));
+ statusEl.textContent = '';
+
+ const cutoffDays = { '1mo': 30, '3mo': 92, '6mo': 183, max: Infinity }[range] ?? 92;
+ const cutoff = Date.now() / 86400000 - cutoffDays;
+ const seriesPerCandidate = histories.map(h => h.filter(p => p.x >= cutoff));
+
+ const cardsEl = document.getElementById('elections-cards');
+ cardsEl.innerHTML = candidates.map((c, i) => {
+ const series = seriesPerCandidate[i];
+ const first = series[0]?.y;
+ const last = series[series.length - 1]?.y ?? c.price * 100;
+ const chg = first != null ? last - first : null;
+ const chgHtml = chg != null
+ ? `<div class="rchg ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '+' : ''}${num(chg, 1)} p.p.</div>`
+ : '';
+ return `<div class="row">
+ <div><div class="rname"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c.color};margin-right:6px;vertical-align:middle"></span>${esc(c.name)}</div><div class="rsub">Polymarket · Yes ${num(c.price * 100, 1)}¢</div></div>
+ <div class="rright"><div class="rval">${num(c.price * 100, 1)}%</div>${chgHtml}</div>
+ </div>`;
+ }).join('');
+
+ const datasets = candidates.map((c, i) => ({
+ label: c.name, data: seriesPerCandidate[i],
+ borderColor: c.color, backgroundColor: c.color, borderWidth: 1.5, fill: false,
+ pointRadius: 0, tension: .05, spanGaps: 20,
+ }));
+
+ const allX = datasets.flatMap(ds => ds.data.map(p => p.x));
+ const xMin = allX.length ? Math.min(...allX) : undefined;
+ const xMax = allX.length ? Math.max(...allX) : undefined;
+
+ if (electionsChart) electionsChart.destroy();
+ const ctx = document.getElementById('elections-chart').getContext('2d');
+ electionsChart = new Chart(ctx, {
+ type: 'line',
+ data: { datasets },
+ options: {
+ responsive: true, animation: false, maintainAspectRatio: false,
+ interaction: { mode: 'index', intersect: false },
+ events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
+ plugins: {
+ dragRange: { enabled: true },
+ legend: { display: true, labels: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 10, padding: 8 } },
+ tooltip: {
+ backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
+ titleColor: '#2b3140', bodyColor: '#2b3140',
+ titleFont: { family: 'JetBrains Mono', size: 9 }, bodyFont: { family: 'JetBrains Mono', size: 9 },
+ callbacks: {
+ title: items => items.length ? ntnbDayIdxToLabel(items[0].parsed.x, true) : '',
+ label: c => `${c.dataset.label}: ${num(c.parsed.y, 1)}%`,
+ },
+ },
+ },
+ scales: {
+ x: {
+ type: 'linear', min: xMin, max: xMax,
+ ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8, callback: v => ntnbDayIdxToLabel(v) },
+ grid: { color: '#9aa1ac' },
+ },
+ y: {
+ min: 0, max: 100,
+ ticks: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, callback: v => v.toFixed(0) + '%' },
+ grid: { color: '#9aa1ac' },
+ },
+ },
+ },
+ });
+ } catch (e) {
+ statusEl.textContent = 'erro ao carregar';
+ console.error('eleições', e);
+ }
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
