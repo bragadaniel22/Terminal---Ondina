@@ -2429,8 +2429,8 @@ function getHeatmapGroups() {
  { title: 'Single Names Portfolio', tickers: SINGLES.map(s => s.t), height: 260 },
  {
  title: 'Bolsa US', height: 160,
- tickers: ['^GSPC', '^SPXEW', '^DJI', '^IXIC'],
- labels: { '^GSPC': 'S&P500', '^SPXEW': 'S&P EW', '^DJI': 'DOW', '^IXIC': 'NASDAQ' },
+ tickers: ['^GSPC', '^SPXEW', 'SPMO', '^DJI', '^IXIC'],
+ labels: { '^GSPC': 'S&P500', '^SPXEW': 'S&P EW', 'SPMO': 'SPMO', '^DJI': 'DOW', '^IXIC': 'NASDAQ' },
  },
  {
  title: 'Índices Futuros', height: 140,
@@ -2709,7 +2709,14 @@ document.addEventListener('DOMContentLoaded', () => Chart.register(dragRangePlug
 // ── Portfolio Simulator ───────────────────────────────────────────────────────
 const PF_TICKERS = ['AMZN','MSFT','NVDA','ASML','SMH','DHR','V','VST','GLD','GOOGL'];
 const PF_COLORS = ['#1f5fd1','#0a9b58','#c98f00','#c9368f','#0f9aa4','#5c9a1c','#8a4fd1','#c9760f','#c94f7a','#1f8fc9'];
-const PF_BENCHMARK = { ticker: '^GSPC', label: 'S&P 500', color: '#14161c' };
+// Benchmarks comparados contra o PORTFÓLIO SN (média simples dos 10 papéis, igual peso) —
+// S&P 500 (cap-weighted), S&P Equal Weight (igual peso, o comparável mais justo pro portfólio
+// equal-weight) e SPMO (fator momentum, Invesco S&P 500 Momentum ETF).
+const PF_BENCHMARKS = [
+ { ticker: '^GSPC', label: 'S&P 500', color: '#14161c' },
+ { ticker: '^SPXEW', label: 'S&P EW', color: '#6b7280' },
+ { ticker: 'SPMO', label: 'SPMO', color: '#7c3aed' },
+];
 // ── Modal de gráfico individual (clique em índice) ────────────────────────────
 let modalChart = null;
 let modalTicker = null;
@@ -4431,11 +4438,11 @@ async function loadPortfolio(range) {
  document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === range));
 
  const cardsEl = document.getElementById('pf-cards');
- cardsEl.innerHTML = [...PF_TICKERS, 'PORTFÓLIO', PF_BENCHMARK.label].map(t =>
+ cardsEl.innerHTML = [...PF_TICKERS, 'PORTFÓLIO', ...PF_BENCHMARKS.map(b => b.label)].map(t =>
  `<div class="pf-card"><div class="rname">${t}</div><div class="pf-val dim2">…</div><div class="pf-stat">carregando</div></div>`
  ).join('');
 
- const results = await Promise.allSettled([...PF_TICKERS, PF_BENCHMARK.ticker].map(t => yahooHistory(t, range)));
+ const results = await Promise.allSettled([...PF_TICKERS, ...PF_BENCHMARKS.map(b => b.ticker)].map(t => yahooHistory(t, range)));
 
  const validData = [], validTickers = [], validColors = [];
  results.slice(0, PF_TICKERS.length).forEach((r, i) => {
@@ -4447,22 +4454,24 @@ async function loadPortfolio(range) {
  });
  if (!validData.length) return;
 
- const benchResult = results[PF_TICKERS.length];
- const hasBenchmark = benchResult.status === 'fulfilled' && benchResult.value.length > 4;
+ // Só entram os benchmarks que de fato devolveram dado — um que falhar não derruba os outros.
+ const validBenchmarks = PF_BENCHMARKS
+ .map((b, i) => ({ ...b, result: results[PF_TICKERS.length + i] }))
+ .filter(b => b.result.status === 'fulfilled' && b.result.value.length > 4);
 
- const { dates, series } = alignSeries(hasBenchmark ? [...validData, benchResult.value] : validData);
- const tickerSeries = hasBenchmark ? series.slice(0, -1) : series;
- const benchSeries = hasBenchmark ? series[series.length - 1] : null;
+ const { dates, series } = alignSeries([...validData, ...validBenchmarks.map(b => b.result.value)]);
+ const tickerSeries = series.slice(0, validData.length);
+ const benchSeriesList = series.slice(validData.length);
 
  const normalized = tickerSeries.map(s => s.map(p => (p / s[0]) * 100));
  const portNorm = dates.map((_, i) => normalized.reduce((a, n) => a + n[i], 0) / normalized.length);
- const benchNorm = benchSeries ? benchSeries.map(p => (p / benchSeries[0]) * 100) : null;
+ const benchNorms = benchSeriesList.map(s => s.map(p => (p / s[0]) * 100));
 
  // stats
  const stats = validTickers.map((t, i) => ({ ticker: t, color: validColors[i], ...calcStats(normalized[i]) }));
  const portStats = { ticker: 'PORTFÓLIO SN', color: '#d9530f', ...calcStats(portNorm) };
- const benchStats = benchNorm ? { ticker: PF_BENCHMARK.label, color: PF_BENCHMARK.color, ...calcStats(benchNorm) } : null;
- const allStats = benchStats ? [...stats, portStats, benchStats] : [...stats, portStats];
+ const benchStatsList = validBenchmarks.map((b, i) => ({ ticker: b.label, color: b.color, ...calcStats(benchNorms[i]) }));
+ const allStats = [...stats, portStats, ...benchStatsList];
 
  // build ticker→index map
  pfTickerIdx = {};
@@ -4494,7 +4503,7 @@ async function loadPortfolio(range) {
  pointRadius: 0, tension: 0,
  })),
  { label: 'PORTFÓLIO SN', data: portNorm, borderColor: '#d9530f', backgroundColor: '#d9530f', borderWidth: 2.5, borderDash: [5,3], fill: false, pointRadius: 0, tension: 0 },
- ...(hasBenchmark ? [{ label: PF_BENCHMARK.label, data: benchNorm, borderColor: PF_BENCHMARK.color, backgroundColor: PF_BENCHMARK.color, borderWidth: 2.5, borderDash: [5,3], fill: false, pointRadius: 0, tension: 0 }] : []),
+ ...validBenchmarks.map((b, i) => ({ label: b.label, data: benchNorms[i], borderColor: b.color, backgroundColor: b.color, borderWidth: 2.5, borderDash: [5,3], fill: false, pointRadius: 0, tension: 0 })),
  ],
  },
  options: {
