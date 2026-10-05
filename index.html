@@ -568,6 +568,11 @@
  <div class="rright"><div class="rval" id="ibov-val">…</div><div class="rchg" id="ibov-chg">—</div></div>
  </div>
 
+ <div class="row">
+ <div><div class="rname" id="ibovfut-name">IBOVESPA FUTURO</div><div class="rsub" id="ibovfut-sub">B3 · IND</div></div>
+ <div class="rright"><div class="rval" id="ibovfut-val">…</div><div class="rchg" id="ibovfut-chg">—</div></div>
+ </div>
+
  <div class="row row-click" onclick="openDiHistory('DI1F30','DI FUTURO JAN/30')">
  <div><div class="rname">DI FUTURO JAN/30</div><div class="rsub" id="di30-sub">B3 · DI1F30</div></div>
  <div class="rright"><div class="rval hl" id="di30-val">…</div><div class="rchg" id="di30-chg">% a.a.</div></div>
@@ -1718,6 +1723,62 @@ async function loadJuros() {
  }
  })(),
  ]);
+}
+
+// ── Ibovespa Futuro (B3) ─────────────────────────────────────────────────────
+// Contrato cheio (IND) — vencimentos nos meses pares (G fev, J abr, M jun, Q ago, V out, Z dez),
+// vencendo na quarta-feira mais próxima do dia 15. O código do contrato vigente é calculado em
+// vez de fixo (como o DI1F30, que é um vértice longo): um valor fixo morreria no próximo
+// vencimento. Não considera feriado no ajuste da data de vencimento — erro de no máximo 1 dia
+// útil na hora de rolar pro próximo contrato. Reaproveita o mesmo /api/b3?s= do DI (B3 com
+// fallback TradingView, o endpoint aceita qualquer símbolo B3 na cotação).
+function ibovFutContract(now = new Date()) {
+ const letters = { 2: 'G', 4: 'J', 6: 'M', 8: 'Q', 10: 'V', 12: 'Z' };
+ const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+ for (let i = 0; i < 14; i++) {
+ const ref = new Date(today.getFullYear(), today.getMonth() + i, 1);
+ const m = ref.getMonth() + 1;
+ if (!letters[m]) continue;
+ const d15 = new Date(ref.getFullYear(), ref.getMonth(), 15);
+ let diff = 3 - d15.getDay(); // quarta = 3
+ if (diff > 3) diff -= 7;
+ if (diff < -3) diff += 7;
+ const expiry = new Date(ref.getFullYear(), ref.getMonth(), 15 + diff);
+ if (expiry >= today) {
+ const yy = String(ref.getFullYear()).slice(-2);
+ return { symbol: `IND${letters[m]}${yy}` };
+ }
+ }
+ return null;
+}
+
+async function loadIbovFut() {
+ const c = ibovFutContract();
+ if (!c) return;
+ try {
+ const r = await fetch(`/api/b3?s=${c.symbol}`);
+ if (!r.ok) throw new Error(`B3: ${r.status}`);
+ const d = await r.json();
+ if (d.error) throw new Error(d.error);
+ cachePut('b3_ibovfut', { ...d, symbol: c.symbol });
+ renderIbovFut(d, false, c.symbol);
+ } catch (e) {
+ const cached = cacheGet('b3_ibovfut');
+ if (cached && cached.symbol === c.symbol) renderIbovFut(cached, true, c.symbol);
+ else { setV('ibovfut-val', 'ERRO', 'err'); console.error(c.symbol, e); }
+ }
+}
+
+function renderIbovFut(d, fromCache, symbol) {
+ // Δ % contra o AJUSTE DO DIA ANTERIOR (d.prevClose) — mesma convenção do DI Futuro acima.
+ const chg = (d.prevClose != null && d.price != null) ? (d.price / d.prevClose - 1) * 100 : null;
+ const cls = chg > 0 ? 'pos' : chg < 0 ? 'neg' : '';
+ setV('ibovfut-val', num(d.price, 0), cls);
+ setC('ibovfut-chg', chg != null ? pct(chg) : '—', cls);
+ let tag = fromCache ? ' · cache' : '';
+ if (!fromCache && d.date) tag = ` · ${d.date.slice(8,10)}/${d.date.slice(5,7)} ${d.date.slice(11,16)}`;
+ const src = !fromCache && d.source === 'tradingview' ? ' · via TradingView (B3 fora do ar)' : '';
+ setSub('ibovfut-sub', `B3 · ${symbol}` + tag + src);
 }
 
 // ── DI Futuro (B3) ───────────────────────────────────────────────────────────
@@ -4814,7 +4875,7 @@ async function loadElectionsChart() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function loadAll() {
- await Promise.allSettled([loadBrasil(), loadAmericas(), loadEurope(), loadAsia(), loadJuros(), loadCommodities(), loadEttj(), loadDI(), loadNtnb(), loadPreMarket()]);
+ await Promise.allSettled([loadBrasil(), loadAmericas(), loadEurope(), loadAsia(), loadJuros(), loadCommodities(), loadEttj(), loadDI(), loadIbovFut(), loadNtnb(), loadPreMarket()]);
  document.getElementById('last').textContent = new Date().toLocaleTimeString('pt-BR');
  if (heatmapLoaded) loadHeatmap();
 }
