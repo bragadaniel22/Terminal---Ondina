@@ -3540,6 +3540,7 @@ function alignSeries(allSeries) {
 // NTNB_MATURITIES já existente (seção "NTN-B · Histórico de Taxas") em vez de duplicar a
 // lista de vencimentos.
 const CLOSE_REPORT_CONFIG = [
+ { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F29', label: 'DI FUTURO JAN/29', unit: 'bps' },
  { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F30', label: 'DI FUTURO JAN/30', unit: 'bps' },
  { section: 'Renda fixa', region: 'Brasil', kind: 'di', symbol: 'DI1F35', label: 'DI FUTURO JAN/35', unit: 'bps' },
  ...NTNB_MATURITIES.map(m => ({ section: 'Renda fixa', region: 'Brasil', kind: 'ntnb', maturity: m.year, label: `NTN-B ${m.year}`, unit: 'bps' })),
@@ -3809,7 +3810,7 @@ async function computeCloseItem(item, refKey, ntnbBatchPromise) {
 // (instrumento adicionado/removido, campo novo no payload, etc). Sem isso, quem já tinha o
 // relatório em cache no navegador continuaria vendo a versão antiga (mesmo refKey, payload
 // desatualizado) até a data de referência virar sozinha — já aconteceu na prática.
-const CLOSE_REPORT_CACHE_KEY = 'close_report_v5';
+const CLOSE_REPORT_CACHE_KEY = 'close_report_v6';
 
 async function loadClosingReport(force = false) {
  const refKey = computeRefKey();
