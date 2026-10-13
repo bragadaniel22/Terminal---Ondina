@@ -3704,7 +3704,7 @@ async function closingTvYieldSeries(tvSymbol) {
 // estática "Taxas Antigas NTNB.xlsx" (Daniel mantém manualmente, 1x/mês e 1x/ano) — a ANBIMA só
 // retém ~5-6 meses de arquivo diário, então a base de Δ ano (31/dez do ano anterior) já não dá
 // mais pra buscar ao vivo depois de meados do ano seguinte.
-async function fetchNtnbBatch(refKey) {
+async function fetchNtnbBatch(refKey, force = false) {
  const r1 = await fetch(`/api/ntnb?dates=${encodeURIComponent(keyToBr(refKey))}`);
  const d1 = await r1.json();
  const todayResult = d1?.results?.[0];
@@ -3715,7 +3715,7 @@ async function fetchNtnbBatch(refKey) {
 
  const [r2, staticAnchors] = await Promise.all([
  fetch(`/api/ntnb?dates=${encodeURIComponent(prevDayAnchor)}`).then(r => r.json()),
- getNtnbStaticAnchorsCached(),
+ getNtnbStaticAnchorsCached(force),
  ]);
  const prevResult = r2?.results?.[0];
 
@@ -3751,10 +3751,14 @@ async function fetchNtnbBatch(refKey) {
 // Cache curto (1h) — a planilha é um arquivo que o Daniel atualiza manualmente a qualquer
 // momento (não um dado que "nunca muda" como o antigo fallback do Tesouro Direto), então não
 // faz sentido cache permanente; mas também não precisa buscar de novo a cada clique.
-async function getNtnbStaticAnchorsCached() {
- const cacheKey = 'ntnb_static_anchors';
+// `force` (botão "atualizar") ignora o cache — antes só o relatório era recalculado e as âncoras
+// continuavam vindo do cache de 1h, então um Δ mês "n/d" gravado enquanto o backend ainda estava
+// sem a correção (entre dois deploys) voltava igual a cada clique em "atualizar" (bug real).
+// Chave _v2: descarta as entradas velhas já gravadas nos navegadores.
+async function getNtnbStaticAnchorsCached(force = false) {
+ const cacheKey = 'ntnb_static_anchors_v2';
  const cached = cacheGet(cacheKey);
- if (cached && Date.now() - cached.fetchedAt < 3600_000) return cached.data;
+ if (!force && cached && Date.now() - cached.fetchedAt < 3600_000) return cached.data;
  try {
  const r = await fetch('/api/ntnb?staticAnchors=1');
  const d = await r.json();
@@ -3810,7 +3814,7 @@ async function computeCloseItem(item, refKey, ntnbBatchPromise) {
 // (instrumento adicionado/removido, campo novo no payload, etc). Sem isso, quem já tinha o
 // relatório em cache no navegador continuaria vendo a versão antiga (mesmo refKey, payload
 // desatualizado) até a data de referência virar sozinha — já aconteceu na prática.
-const CLOSE_REPORT_CACHE_KEY = 'close_report_v6';
+const CLOSE_REPORT_CACHE_KEY = 'close_report_v7';
 
 async function loadClosingReport(force = false) {
  const refKey = computeRefKey();
@@ -3824,7 +3828,7 @@ async function loadClosingReport(force = false) {
 
  // fetchNtnbBatch roda uma vez só e é compartilhado pelos 6 itens 'ntnb' via await — não
  // dispara 6 buscas independentes.
- const ntnbBatchPromise = fetchNtnbBatch(refKey).catch(e => { console.error('Fechamento NTN-B', e); return null; });
+ const ntnbBatchPromise = fetchNtnbBatch(refKey, force).catch(e => { console.error('Fechamento NTN-B', e); return null; });
  const settled = await Promise.allSettled(CLOSE_REPORT_CONFIG.map(item => computeCloseItem(item, refKey, ntnbBatchPromise)));
  const rows = settled.map((r, i) => {
  if (r.status === 'fulfilled') return r.value;
