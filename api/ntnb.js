@@ -207,6 +207,23 @@ async function handleStaticAnchors(res) {
       }
     }
 
+    // Base do Δ mês = último snapshot gravado (pela automação semanal ou à mão) até o último dia
+    // do mês anterior, DENTRO daquele mês — vem das abas de ano, que a automação alimenta sozinha.
+    // A aba manual "Mês Anterior" ficava parada no mês em que o Daniel atualizou por último
+    // (31/07 em out/2026) e o relatório de Fechamento mostrava Δ mês "n/d" nas 6 NTN-B; agora ela
+    // só entra como reserva quando as abas de ano não têm nenhum ponto naquele mês.
+    const now = new Date();
+    const lastPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    const fromSnapshots = getSpreadsheetHistory(wb)
+      .filter((s) => toDate(s.date) <= lastPrevMonth)
+      .pop();
+    if (fromSnapshots) {
+      const d = toDate(fromSnapshots.date);
+      if (d.getFullYear() === lastPrevMonth.getFullYear() && d.getMonth() === lastPrevMonth.getMonth()) {
+        month = fromSnapshots;
+      }
+    }
+
     const prevYearName = String(new Date().getFullYear() - 1);
     // A ordem de descoberta de parseYearSheet é a ordem das COLUNAS na planilha, não a ordem
     // cronológica (confirmado ao vivo: na aba "2025", a coluna mais à esquerda tem a data
