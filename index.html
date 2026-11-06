@@ -894,13 +894,13 @@
  <div class="rsub" id="sn-dhr-sub">DHR</div>
  <div class="rtgt" id="sn-dhr-tgt"></div>
  </div>
- <div class="ntnb-cell row-click" onclick="openChart('V','Visa')">
- <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('V','Visa')"></button>
- <div class="rname">VISA</div>
- <div class="rval" id="sn-v-val">…</div>
- <div class="rchg" id="sn-v-chg">—</div>
- <div class="rsub" id="sn-v-sub">V</div>
- <div class="rtgt" id="sn-v-tgt"></div>
+ <div class="ntnb-cell row-click" onclick="openChart('TSM','Taiwan Semiconductor')">
+ <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('TSM','Taiwan Semiconductor')"></button>
+ <div class="rname">TSMC</div>
+ <div class="rval" id="sn-tsm-val">…</div>
+ <div class="rchg" id="sn-tsm-chg">—</div>
+ <div class="rsub" id="sn-tsm-sub">TSM</div>
+ <div class="rtgt" id="sn-tsm-tgt"></div>
  </div>
  <div class="ntnb-cell row-click" onclick="openChart('VST','Vistra')">
  <button class="sn-search-btn" onclick="event.stopPropagation(); openTickerNews('VST','Vistra')"></button>
@@ -2752,7 +2752,7 @@ const dragRangePlugin = {
 document.addEventListener('DOMContentLoaded', () => Chart.register(dragRangePlugin));
 
 // ── Portfolio Simulator ───────────────────────────────────────────────────────
-const PF_TICKERS = ['AMZN','MSFT','NVDA','ASML','SMH','DHR','V','VST','GLD','GOOGL'];
+const PF_TICKERS = ['AMZN','MSFT','NVDA','ASML','SMH','DHR','TSM','VST','GLD','GOOGL'];
 const PF_COLORS = ['#1f5fd1','#0a9b58','#c98f00','#c9368f','#0f9aa4','#5c9a1c','#8a4fd1','#c9760f','#c94f7a','#1f8fc9'];
 // Benchmarks comparados contra o PORTFÓLIO SN (média simples dos 10 papéis, igual peso) —
 // S&P 500 (cap-weighted), S&P Equal Weight (igual peso, o comparável mais justo pro portfólio
@@ -4650,7 +4650,7 @@ const SINGLES_ENTRY_DATES = {
  NVDA: ['2024-02-20', '2024-02-23'],
  SMH: ['2026-07-23'],
  DHR: ['2024-11-12', '2025-02-06'],
- V: ['2025-08-13'],
+ TSM: ['2026-11-06'],
  VST: ['2025-11-04'],
  GLD: ['2025-10-22', '2026-01-30'],
  GOOGL: ['2026-01-29'],
@@ -4670,7 +4670,7 @@ const SINGLES = [
  { t: 'ASML', val: 'sn-asml-val', chg: 'sn-asml-chg', sub: 'sn-asml-sub', tgt: 'sn-asml-tgt', base: 'ASML · USD' },
  { t: 'SMH', val: 'sn-smh-val', chg: 'sn-smh-chg', sub: 'sn-smh-sub', tgt: 'sn-smh-tgt', base: 'SMH · USD' },
  { t: 'DHR', val: 'sn-dhr-val', chg: 'sn-dhr-chg', sub: 'sn-dhr-sub', tgt: 'sn-dhr-tgt', base: 'DHR · USD' },
- { t: 'V', val: 'sn-v-val', chg: 'sn-v-chg', sub: 'sn-v-sub', tgt: 'sn-v-tgt', base: 'V · USD' },
+ { t: 'TSM', val: 'sn-tsm-val', chg: 'sn-tsm-chg', sub: 'sn-tsm-sub', tgt: 'sn-tsm-tgt', base: 'TSM · USD' },
  { t: 'VST', val: 'sn-vst-val', chg: 'sn-vst-chg', sub: 'sn-vst-sub', tgt: 'sn-vst-tgt', base: 'VST · USD' },
  { t: 'GLD', val: 'sn-gld-val', chg: 'sn-gld-chg', sub: 'sn-gld-sub', tgt: 'sn-gld-tgt', base: 'GLD · USD' },
  { t: 'GOOGL', val: 'sn-googl-val', chg: 'sn-googl-chg', sub: 'sn-googl-sub', tgt: 'sn-googl-tgt', base: 'GOOGL · USD' },
