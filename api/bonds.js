@@ -169,7 +169,7 @@ function handleHistory(wb, kind, key, res) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800');
 
   try {
     const wb = await loadWorkbook();

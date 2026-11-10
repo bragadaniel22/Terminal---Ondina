@@ -634,9 +634,24 @@ async function fetchSource(source, homepagePaths) {
   return { items, error };
 }
 
+// Cache em memória, vivo enquanto a lambda estiver quente. Segunda camada depois do cache de
+// CDN abaixo: cobre o caso de uma requisição chegar com a CDN já expirada mas a função ainda
+// quente. Esta é de longe a função mais cara do projeto (12 fontes × várias páginas + raspagem
+// das homepages + clustering TF-IDF), e era chamada a cada 120s pelo ciclo de notificação —
+// principal responsável por estourar a cota de CPU do plano grátis em nov/2026.
+const NEWS_CACHE_TTL_MS = 5 * 60 * 1000;
+let newsCache = null; // { payload, ts }
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store');
+  // Cache na CDN do Vercel: dentro de 5 min, requisições iguais são servidas sem invocar a
+  // função (não gasta CPU). `stale-while-revalidate` deixa a CDN devolver a versão anterior na
+  // hora enquanto busca a nova por baixo, então ninguém espera.
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+
+  if (newsCache && Date.now() - newsCache.ts < NEWS_CACHE_TTL_MS) {
+    return res.json(newsCache.payload);
+  }
 
   const homepagePathsBySource = {};
   await Promise.all(Object.entries(SOURCE_HOMEPAGES).map(async ([name, url]) => {
@@ -669,5 +684,7 @@ export default async function handler(req, res) {
   const nacional = all.filter((it) => it.region === 'nacional');
   const internacional = all.filter((it) => it.region === 'internacional');
 
-  return res.json({ nacional, internacional, errors });
+  const payload = { nacional, internacional, errors };
+  newsCache = { payload, ts: Date.now() };
+  return res.json(payload);
 }

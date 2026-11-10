@@ -2,7 +2,8 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store');
+  // Resolver texto livre → ticker é praticamente estático.
+  res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=21600');
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: 'q obrigatório' });
 

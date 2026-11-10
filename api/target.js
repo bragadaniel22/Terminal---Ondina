@@ -1,6 +1,8 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store');
+  // Price target de analistas muda raramente (semanas) — cache longo é seguro e corta uma
+  // invocação por Single Name a cada abertura da aba.
+  res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=21600');
 
   const ticker = req.query.t;
   if (!ticker) return res.status(400).json({ error: 'ticker required' });

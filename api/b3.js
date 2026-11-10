@@ -88,7 +88,9 @@ async function fetchHistory(symbol, res) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store');
+  // DI Futuro já vem com ~15min de atraso da B3/TradingView — 45s de cache de CDN não tira
+  // atualidade nenhuma e dispensa a invocação quando há mais de uma aba/pessoa usando.
+  res.setHeader('Cache-Control', 'public, s-maxage=45, stale-while-revalidate=120');
 
   const symbol = req.query.s || 'DI1F30';
 

@@ -84,7 +84,8 @@ async function fetchCdi12mFallback(res) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store');
+  // Selic/CDI/BCE são taxas de referência diárias — não mudam durante o pregão.
+  res.setHeader('Cache-Control', 'public, s-maxage=900, stale-while-revalidate=3600');
 
   const source = req.query.source || 'ecb';
   try {

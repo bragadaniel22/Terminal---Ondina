@@ -1,6 +1,8 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store');
+  // ETTJ da ANBIMA é dado de fechamento diário — não muda durante o dia. Cache de CDN longo
+  // corta invocações (e CPU) sem nenhuma perda de atualidade.
+  res.setHeader('Cache-Control', 'public, s-maxage=900, stale-while-revalidate=3600');
 
   const dates = lastBusinessDays(5);
   for (const dt of dates) {

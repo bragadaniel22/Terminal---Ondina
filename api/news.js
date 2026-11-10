@@ -121,7 +121,10 @@ async function handleSummarize(req, res) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store');
+  // Notícias por ticker mudam devagar; o resumo de IA de um mesmo artigo é sempre o mesmo —
+  // cachear evita reinvocar (e, no caso do resumo, regastar cota do Gemini) quando o mesmo
+  // item é reaberto.
+  res.setHeader('Cache-Control', 'public, s-maxage=600, stale-while-revalidate=3600');
 
   if (req.query.action === 'summarize') return handleSummarize(req, res);
   return handleNewsList(req, res);

@@ -1438,12 +1438,54 @@ async function bcbRange(serie, from, to) {
  return d;
 }
 
-async function yahooFetch(ticker) {
- const t = encodeURIComponent(ticker);
- const r = await fetch(`/api/yahoo?t=${t}&range=5d`);
- if (!r.ok) throw new Error(`Yahoo ${ticker}: ${r.status}`);
+// ── Agrupamento das cotações num pedido só ───────────────────────────────────
+// O ciclo de 60s pede ~26 tickers. Antes cada um virava uma requisição (= uma invocação de
+// função no Vercel, cada uma pagando o próprio overhead de CPU) — isso estourou a cota de
+// CPU do plano grátis em nov/2026. Agora os pedidos feitos no mesmo instante entram numa
+// fila e saem num pedido só (`/api/yahoo?t=A,B,C`), que o backend resolve em paralelo.
+// As funções que chamam `yahoo(ticker)` não mudaram: a fila é interna aqui.
+const YAHOO_BATCH_WINDOW_MS = 20; // janela de coleta — loadAll() dispara tudo no mesmo tick
+let yahooQueue = new Map(); // ticker -> [{resolve, reject}]
+let yahooBatchTimer = null;
+
+function yahooChart(ticker) {
+ return new Promise((resolve, reject) => {
+ if (!yahooQueue.has(ticker)) yahooQueue.set(ticker, []);
+ yahooQueue.get(ticker).push({ resolve, reject });
+ if (!yahooBatchTimer) yahooBatchTimer = setTimeout(flushYahooBatch, YAHOO_BATCH_WINDOW_MS);
+ });
+}
+
+async function flushYahooBatch() {
+ const queue = yahooQueue;
+ yahooQueue = new Map();
+ yahooBatchTimer = null;
+
+ const tickers = [...queue.keys()];
+ if (!tickers.length) return;
+ const settle = (ticker, fn, arg) => queue.get(ticker).forEach(w => w[fn](arg));
+
+ try {
+ const qs = tickers.map(encodeURIComponent).join(',');
+ const r = await fetch(`/api/yahoo?t=${qs}&range=5d`);
+ if (!r.ok) throw new Error(`Yahoo: ${r.status}`);
  const d = await r.json();
  if (d.error) throw new Error(`Yahoo proxy: ${d.error}`);
+
+ // Um ticker só → o backend devolve o JSON cru do Yahoo (formato original, sem envelope).
+ const byTicker = d.batch ?? { [tickers[0]]: d };
+ tickers.forEach(ticker => {
+ const one = byTicker[ticker];
+ if (!one || one.error) settle(ticker, 'reject', new Error(`Yahoo ${ticker}: ${one?.error || 'sem dados'}`));
+ else settle(ticker, 'resolve', one);
+ });
+ } catch (e) {
+ tickers.forEach(ticker => settle(ticker, 'reject', e));
+ }
+}
+
+async function yahooFetch(ticker) {
+ const d = await yahooChart(ticker);
  const result = d?.chart?.result?.[0];
  if (!result) throw new Error(`Yahoo ${ticker}: sem dados`);
  const m = result.meta;
@@ -2281,7 +2323,9 @@ function renderAiNewsMagazine(items) {
 // "vistas" nesse navegador) também aparecem — por isso a primeira checagem roda no load da
 // página, não só depois que o usuário clica em algo.
 const NEWS_NOTIFY_THRESHOLD = 10; // só nota máxima — a pedido do usuário, reduzido de 8.5
-const NEWS_NOTIFY_POLL_SECONDS = 120; // não precisa da granularidade de 60s do resto do terminal
+// 300s: /api/ai-news é a função mais cara do projeto e o backend agora cacheia a resposta por
+// 5 min — checar mais rápido que isso só gastaria CPU pra receber o mesmo conteúdo de volta.
+const NEWS_NOTIFY_POLL_SECONDS = 300;
 const NEWS_NOTIFY_MAX_PER_CHECK = 5; // evita avalanche de pop-ups de uma vez (resto fica pro próximo ciclo)
 const NEWS_NOTIFY_STORAGE_KEY = 'tf_notified_news_links';
 const NEWS_NOTIFY_MAX_STORED = 500;
@@ -2420,6 +2464,10 @@ let cd = INTERVAL, timer;
 function startTimer() {
  clearInterval(timer);
  cd = INTERVAL;
+ // Escreve já o valor inicial: sem isso o contador ficaria até 1s mostrando o texto antigo
+ // (ex: "pausado") antes do primeiro tick do intervalo.
+ document.getElementById('cd').textContent = cd;
+ document.getElementById('prog').style.width = '100%';
  timer = setInterval(() => {
  cd--;
  document.getElementById('cd').textContent = cd;
@@ -2428,20 +2476,52 @@ function startTimer() {
  }, 1000);
 }
 
-// Aba em segundo plano (minimizada ou outra aba em foco) → pausa o countdown e para
-// de disparar loadAll(); ao voltar, atualiza na hora e reinicia o ciclo de 60s. Mesma lógica
-// pro ciclo de notificação de notícias (pausa/retoma junto).
-document.addEventListener('visibilitychange', () => {
- if (document.hidden) {
+// ── Pausa automática ──────────────────────────────────────────────────────────
+// Dois gatilhos param os ciclos de fundo: (1) aba em segundo plano (minimizada ou outra aba
+// em foco); (2) terminal aberto mas sem ninguém mexendo há IDLE_PAUSE_MINUTES. O segundo é o
+// que mais pesa na conta do Vercel: o terminal ficava atualizando a cada 60s o dia inteiro
+// mesmo com a janela só aberta num monitor de lado. Qualquer clique/tecla/scroll/foco retoma
+// na hora, com um loadAll() imediato — então na prática não se perde nada: quando você volta
+// a olhar, o dado já está fresco.
+const IDLE_PAUSE_MINUTES = 15;
+let idleTimeout = null;
+let paused = false;
+
+function pauseCycles(reason) {
+ if (paused) return;
+ paused = true;
  clearInterval(timer);
  clearInterval(notifyTimer);
- } else {
+ const el = document.getElementById('cd');
+ if (el && reason) el.textContent = reason;
+}
+
+function resumeCycles() {
+ if (paused) {
+ paused = false;
  loadAll();
  startTimer();
  checkAiNewsNotifications();
  startNotifyTimer();
  }
+ armIdleTimer();
+}
+
+function armIdleTimer() {
+ clearTimeout(idleTimeout);
+ idleTimeout = setTimeout(() => pauseCycles('pausado'), IDLE_PAUSE_MINUTES * 60 * 1000);
+}
+
+document.addEventListener('visibilitychange', () => {
+ if (document.hidden) { clearTimeout(idleTimeout); pauseCycles(null); }
+ else resumeCycles();
 });
+
+// `passive: true` — só observa a atividade, nunca interfere no scroll/clique da página.
+['pointerdown', 'keydown', 'wheel', 'touchstart', 'focus'].forEach(ev => {
+ window.addEventListener(ev, () => { if (!document.hidden) resumeCycles(); }, { passive: true });
+});
+armIdleTimer();
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 let snLoaded = false;

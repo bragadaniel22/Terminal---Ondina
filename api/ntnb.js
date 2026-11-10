@@ -323,7 +323,10 @@ async function handleHistory(daysParam, res) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store');
+  // Arquivo diário da ANBIMA — um por dia, não é intraday. Cache de CDN longo não atrasa nada
+  // e corta bastante CPU, principalmente nas rotas de histórico (?days=N faz uma requisição
+  // por pregão do período).
+  res.setHeader('Cache-Control', 'public, s-maxage=900, stale-while-revalidate=3600');
 
   if (req.query.staticAnchors != null) return handleStaticAnchors(res);
   if (req.query.dates != null) return handleDatesMode(req.query.dates, res);
