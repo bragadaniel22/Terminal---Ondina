@@ -632,6 +632,11 @@
  <div class="rright"><div class="rval" id="nasdaq-val">…</div><div class="rchg" id="nasdaq-chg">—</div></div>
  </div>
 
+ <div class="row row-click" onclick="openChart('^VIX','VIX (CBOE Volatility Index)')">
+ <div><div class="rname">VIX · VOLATILIDADE<span class="lock" id="vix-lock"></span></div><div class="rsub" id="vix-sub">^VIX · CBOE</div></div>
+ <div class="rright"><div class="rval" id="vix-val">…</div><div class="rchg" id="vix-chg">—</div></div>
+ </div>
+
  <div class="section-div">PRÉ-MERCADO · FUTUROS</div>
 
  <div class="row row-click" onclick="openChart('YM=F','Dow Futuro')">
@@ -1271,7 +1276,7 @@
  </div>
  <div class="sources-section">
  <h3>Bolsa US</h3>
- <p>Yahoo Finance: S&amp;P 500 (^GSPC), S&amp;P Equal Weight (^SPXEW), Invesco S&amp;P 500 Momentum ETF (SPMO), Dow Jones (^DJI), Nasdaq (^IXIC) e futuros (Dow, S&amp;P, Nasdaq).</p>
+ <p>Yahoo Finance: S&amp;P 500 (^GSPC), S&amp;P Equal Weight (^SPXEW), Invesco S&amp;P 500 Momentum ETF (SPMO), Dow Jones (^DJI), Nasdaq (^IXIC), VIX (^VIX, volatilidade implícita do S&amp;P 500, CBOE) e futuros (Dow, S&amp;P, Nasdaq).</p>
  </div>
  <div class="sources-section">
  <h3>Europa + Emerging Markets + Câmbio</h3>
@@ -1604,6 +1609,7 @@ async function loadAmericas() {
  { t: 'SPMO', val: 'spmo-val', chg: 'spmo-chg', sub: 'spmo-sub', base: 'SPMO · USD', d: 2 },
  { t: '^DJI', val: 'dow-val', chg: 'dow-chg', sub: 'dow-sub', base: '^DJI · EUA', d: 2 },
  { t: '^IXIC', val: 'nasdaq-val', chg: 'nasdaq-chg', sub: 'nasdaq-sub', base: '^IXIC · EUA', d: 2 },
+ { t: '^VIX', val: 'vix-val', chg: 'vix-chg', sub: 'vix-sub', base: '^VIX · CBOE', d: 2 },
  ];
  await Promise.all(list.map(async ({ t, val, chg, sub, base, d }) => {
  try { const data = await yahoo(t); renderMkt(val, chg, sub, data, d, base); }
