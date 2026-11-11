@@ -1,0 +1,17 @@
+# Arquivos que existem só para hospedar o terminal FORA da Vercel (Render, Fly, etc.).
+# Na Vercel cada arquivo de api/ já vira uma função serverless e o index.html é servido
+# estaticamente — nada disso aqui é usado lá, então não vai no deploy.
+#
+# Consequência proposital: sem data/bonds.json, o api/bonds.js cai no fallback e lê a
+# "Bonds Terminal.xlsx" direto, que é como sempre funcionou na Vercel (a planilha é embarcada
+# na função pelo includeFiles do vercel.json). Nada quebra.
+server.js
+scripts/
+data/
+
+# Arquivos de trabalho que nunca pertenceram ao site publicado
+*.ps1
+*.md
+!METODOLOGIA.md
+chrome-extension/
+Thumbs.db
