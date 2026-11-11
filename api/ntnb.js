@@ -117,16 +117,29 @@ async function handleDatesMode(datesParam, res) {
   return res.json({ results });
 }
 
+// Esta planilha tem ~31 MB — sete vezes a de bonds. Sem cache, cada requisição de
+// ?staticAnchors=1 pagava o XLSX.read inteiro, e como XLSX.read é síncrono isso travava o
+// event loop do Node e segurava TODAS as outras chamadas do terminal na fila.
+// Mesma lógica do cache em api/bonds.js: o arquivo só muda via upload no GitHub (que reinicia
+// o processo), e o mtime cobre a troca do arquivo no servidor local sem reiniciar.
+let taxasCache = null; // { wb, mtimeMs }
+
 async function loadTaxasAntigasWorkbook() {
-  const { readFileSync } = await import('node:fs');
+  const { readFileSync, statSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const path = await import('node:path');
-  const XLSX = await import('xlsx');
   const filePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'Taxas Antigas NTNB.xlsx');
+
+  const mtimeMs = statSync(filePath).mtimeMs;
+  if (taxasCache && taxasCache.mtimeMs === mtimeMs) return taxasCache.wb;
+
+  const XLSX = await import('xlsx');
   // Sem cellDates: true de propósito — a lib decide Date-vs-número pela FORMATAÇÃO da célula,
   // não pelo valor (bug real já documentado em api/bonds.js seção 16.1.8), então é mais seguro
   // ler tudo como número puro e converter as datas manualmente com excelSerialToBr acima.
-  return XLSX.read(readFileSync(filePath), { type: 'buffer' });
+  const wb = XLSX.read(readFileSync(filePath), { type: 'buffer' });
+  taxasCache = { wb, mtimeMs };
+  return wb;
 }
 
 // Cada "aba de ano" (nome com 4 dígitos, ex "2025", "2026") tem vários blocos de 2 colunas

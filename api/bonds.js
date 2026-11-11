@@ -60,13 +60,30 @@ function excelSerialToBr(serial) {
   return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
 }
 
+// A planilha tem ~4,3 MB e o XLSX.read dela custa ~2,3s de CPU. Sem cache, esse custo era pago
+// EM TODA requisição — de longe a coisa mais cara do projeto (o /api/ai-news, o segundo
+// colocado, gasta 843ms). Pior: XLSX.read é síncrono, então esses 2,3s travavam o event loop
+// do Node inteiro e faziam TODO o resto do terminal (gráficos inclusive) esperar na fila.
+//
+// O arquivo só muda quando o Daniel sobe uma planilha nova pelo GitHub, e isso reinicia o
+// processo de qualquer forma (novo deploy) — então guardar na memória pelo tempo de vida do
+// processo é seguro e dispensa invalidação. O mtime ainda é conferido para o caso do servidor
+// local, onde o arquivo pode ser trocado sem reiniciar o processo.
+let wbCache = null; // { wb, mtimeMs }
+
 async function loadWorkbook() {
-  const { readFileSync } = await import('node:fs');
+  const { readFileSync, statSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const path = await import('node:path');
-  const XLSX = await import('xlsx');
   const filePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'Bonds Terminal.xlsx');
-  return XLSX.read(readFileSync(filePath), { type: 'buffer' });
+
+  const mtimeMs = statSync(filePath).mtimeMs;
+  if (wbCache && wbCache.mtimeMs === mtimeMs) return wbCache.wb;
+
+  const XLSX = await import('xlsx');
+  const wb = XLSX.read(readFileSync(filePath), { type: 'buffer' });
+  wbCache = { wb, mtimeMs };
+  return wb;
 }
 
 // "Controle Duration 2": Bonds=A, Isin=B, Banco=C, Volume=D, Bid Yield=E, Cupom=F, Duration=G,
