@@ -69,20 +69,35 @@ function excelSerialToBr(serial) {
 // processo de qualquer forma (novo deploy) — então guardar na memória pelo tempo de vida do
 // processo é seguro e dispensa invalidação. O mtime ainda é conferido para o caso do servidor
 // local, onde o arquivo pode ser trocado sem reiniciar o processo.
-let wbCache = null; // { wb, mtimeMs }
+// Além do cache, há um segundo nível: scripts/build-bonds.mjs converte a planilha num
+// data/bonds.json enxuto em tempo de build. Ler esse JSON custa ~125ms contra ~2535ms do
+// XLSX.read — ~20x menos — e é isso que torna suportável a primeira abertura da aba Bonds
+// num servidor com fatia de CPU pequena. Se o JSON não existir ou estiver mais velho que a
+// planilha (build não rodou, ou xlsx trocado depois), caímos no xlsx como antes: o terminal
+// nunca depende do passo de build para funcionar, só fica mais lento sem ele.
+let wbCache = null; // { wb, mtimeMs, origem }
 
 async function loadWorkbook() {
-  const { readFileSync, statSync } = await import('node:fs');
+  const { readFileSync, statSync, existsSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const path = await import('node:path');
-  const filePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'Bonds Terminal.xlsx');
+  const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const xlsxPath = path.join(raiz, 'Bonds Terminal.xlsx');
+  const jsonPath = path.join(raiz, 'data', 'bonds.json');
 
-  const mtimeMs = statSync(filePath).mtimeMs;
+  const mtimeMs = existsSync(xlsxPath) ? statSync(xlsxPath).mtimeMs : 0;
   if (wbCache && wbCache.mtimeMs === mtimeMs) return wbCache.wb;
 
+  if (existsSync(jsonPath) && statSync(jsonPath).mtimeMs >= mtimeMs) {
+    // Formato { "<aba>": { "A1": { v } } } — mesma forma que os handlers já acessam.
+    const wb = { Sheets: JSON.parse(readFileSync(jsonPath, 'utf8')) };
+    wbCache = { wb, mtimeMs, origem: 'json' };
+    return wb;
+  }
+
   const XLSX = await import('xlsx');
-  const wb = XLSX.read(readFileSync(filePath), { type: 'buffer' });
-  wbCache = { wb, mtimeMs };
+  const wb = XLSX.read(readFileSync(xlsxPath), { type: 'buffer' });
+  wbCache = { wb, mtimeMs, origem: 'xlsx' };
   return wb;
 }
 
