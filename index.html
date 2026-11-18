@@ -388,6 +388,67 @@
  .row-click { cursor: pointer; }
  .row-click:hover { background: var(--page) !important; }
 
+ /* COMPARAR ATIVOS NO MESMO GRÁFICO */
+ .modal-compare { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 8px; }
+ .cmp-add {
+ font-family: var(--sans); font-size: 10.5px; font-weight: 600; cursor: pointer;
+ background: var(--page); color: var(--dim); border: 1px dashed var(--border-strong);
+ border-radius: 999px; padding: 3px 10px;
+ }
+ .cmp-add:hover { color: var(--accent); border-color: var(--accent); }
+ .cmp-chip {
+ display: inline-flex; align-items: center; gap: 6px;
+ font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+ border: 1px solid var(--border-strong); border-radius: 999px; padding: 3px 6px 3px 10px;
+ }
+ .cmp-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+ .cmp-x {
+ cursor: pointer; border: none; background: transparent; color: var(--dim);
+ font-size: 13px; line-height: 1; padding: 0 2px;
+ }
+ .cmp-x:hover { color: var(--red); }
+ .cmp-note { font-size: 10px; color: var(--dim); margin-left: 2px; }
+
+ /* BUSCA RÁPIDA (Ctrl+K) */
+ .cmdk-overlay {
+ position: fixed; inset: 0; background: rgba(15,23,42,.5);
+ display: none; align-items: flex-start; justify-content: center; z-index: 1200;
+ padding-top: 12vh;
+ }
+ .cmdk-overlay.active { display: flex; }
+ .cmdk-box {
+ background: var(--card); border: 1px solid var(--border-strong); border-radius: 12px;
+ width: min(560px, 92vw); overflow: hidden;
+ box-shadow: 0 24px 60px rgba(15,23,42,.28);
+ }
+ .cmdk-input {
+ width: 100%; border: none; outline: none; background: transparent;
+ padding: 16px 18px; font-family: var(--sans); font-size: 15px; color: var(--text);
+ border-bottom: 1px solid var(--border);
+ }
+ .cmdk-input::placeholder { color: var(--dim); }
+ .cmdk-list { max-height: 46vh; overflow-y: auto; }
+ .cmdk-item {
+ display: flex; align-items: center; gap: 10px; padding: 9px 18px; cursor: pointer;
+ border-left: 2px solid transparent;
+ }
+ .cmdk-item.sel { background: var(--accent-soft); border-left-color: var(--accent); }
+ .cmdk-name { font-weight: 600; font-size: 12.5px; color: var(--text); flex: 1; }
+ .cmdk-tick { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+ .cmdk-kind {
+ font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim);
+ background: var(--page); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px;
+ }
+ .cmdk-empty { padding: 18px; color: var(--dim); font-size: 12.5px; }
+ .cmdk-foot {
+ display: flex; gap: 14px; padding: 8px 18px; border-top: 1px solid var(--border);
+ font-size: 10.5px; color: var(--dim); background: var(--page);
+ }
+ .cmdk-hint-key {
+ font-family: var(--mono); background: var(--card); border: 1px solid var(--border);
+ border-radius: 4px; padding: 1px 5px; margin-right: 4px;
+ }
+
  /* MODAL */
  .modal-overlay {
  position: fixed; inset: 0; background: rgba(15,23,42,.5);
@@ -1082,6 +1143,19 @@
 </div>
 </div><!-- /tab-bonds -->
 
+<div class="cmdk-overlay" id="cmdk-overlay" onclick="if(event.target===this) closeCmdk()">
+ <div class="cmdk-box">
+ <input type="text" id="cmdk-input" class="cmdk-input" autocomplete="off" spellcheck="false"
+ placeholder="Buscar ativo, índice ou aba… (ex: nvda, ouro, notícias)">
+ <div class="cmdk-list" id="cmdk-list"></div>
+ <div class="cmdk-foot">
+ <span><span class="cmdk-hint-key">↑↓</span>navegar</span>
+ <span><span class="cmdk-hint-key">Enter</span>abrir</span>
+ <span><span class="cmdk-hint-key">Esc</span>fechar</span>
+ </div>
+ </div>
+</div>
+
 <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this) closeChart()">
  <div class="modal-box">
  <button class="modal-close" onclick="closeChart()"></button>
@@ -1100,6 +1174,7 @@
  <button class="range-btn" data-r="5y" onclick="loadModalChart('5y')">5A</button>
  <button class="range-btn" id="modal-inception-btn" data-r="inception" onclick="loadModalChart('inception')" style="display:none">DESDE O INÍCIO</button>
  </div>
+ <div class="modal-compare" id="modal-compare-bar"></div>
  <div class="modal-chart-box">
  <div class="modal-status" id="modal-chart-status"></div>
  <canvas id="modal-chart"></canvas>
@@ -2862,6 +2937,9 @@ let modalTicker = null;
 let modalRange = '3mo';
 
 function openChart(ticker, name) {
+ // Abrir outro ativo zera a comparação: comparar NVDA com SMH e depois abrir o ouro deixaria
+ // uma comparação herdada que o usuário não pediu.
+ if (ticker !== modalTicker) modalCompare = [];
  modalTicker = ticker;
  document.getElementById('modal-title').textContent = name;
  document.getElementById('modal-overlay').classList.add('active');
@@ -3497,6 +3575,62 @@ async function loadModalChartInception(ticker) {
  }
 }
 
+// ── Comparação de ativos no mesmo gráfico ────────────────────────────────────
+// Com um ou mais ativos em comparação, o gráfico troca de preço para BASE 100: ativos de
+// preços muito diferentes (ouro a 4.000 e um ETF a 80) só são comparáveis em desempenho
+// relativo. Sem comparação nenhuma, o gráfico segue mostrando o preço, como sempre.
+const CMP_CORES = ['#1d4ed8', '#c98f00', '#c9368f', '#0f9aa4'];
+const CMP_MAX = 4;
+let modalCompare = []; // [{ ticker, nome }]
+
+const diaISO = (ts) => new Date(ts * 1000).toISOString().slice(0, 10);
+
+// Projeta uma série sobre as datas da série base, repetindo o último valor conhecido nos dias
+// em que o ativo não negociou (feriado local, bolsa diferente). Antes do primeiro preço
+// conhecido fica null — buraco de verdade, não inventa dado.
+function alinharSerie(base, serie) {
+ const porDia = new Map();
+ serie.forEach(d => porDia.set(diaISO(d.ts), d.p));
+ let ultimo = null;
+ return base.map(b => {
+ const v = porDia.get(diaISO(b.ts));
+ if (v != null) ultimo = v;
+ return ultimo;
+ });
+}
+
+const base100 = (vals) => {
+ const ref = vals.find(v => v != null);
+ return ref ? vals.map(v => (v == null ? null : (v / ref) * 100)) : vals;
+};
+
+function renderCompareBar() {
+ const bar = document.getElementById('modal-compare-bar');
+ if (!bar) return;
+ const chips = modalCompare.map((c, i) => `<span class="cmp-chip">
+ <span class="cmp-dot" style="background:${CMP_CORES[i % CMP_CORES.length]}"></span>${escapeHtml(c.ticker)}
+ <button class="cmp-x" title="remover" onclick="removerComparacao(${i})">×</button>
+ </span>`).join('');
+ const podeAdicionar = modalCompare.length < CMP_MAX;
+ bar.innerHTML = chips
+ + (podeAdicionar ? `<button class="cmp-add" onclick="abrirBuscaComparacao()">+ comparar</button>` : '')
+ + (modalCompare.length ? `<span class="cmp-note">base 100 no início da janela</span>` : '');
+}
+
+function removerComparacao(i) {
+ modalCompare.splice(i, 1);
+ renderCompareBar();
+ loadModalChart(modalRange);
+}
+
+function adicionarComparacao(ticker, nome) {
+ if (ticker === modalTicker || modalCompare.some(c => c.ticker === ticker)) return;
+ if (modalCompare.length >= CMP_MAX) return;
+ modalCompare.push({ ticker, nome });
+ renderCompareBar();
+ loadModalChart(modalRange);
+}
+
 async function loadModalChart(range) {
  modalRange = range;
  const ticker = modalTicker;
@@ -3505,13 +3639,21 @@ async function loadModalChart(range) {
  const statusEl = document.getElementById('modal-chart-status');
  statusEl.textContent = 'carregando…';
 
- if (range === 'inception') { await loadModalChartInception(ticker); return; }
+ // "Desde o início" tem sua própria lógica de tranches e não combina com comparação.
+ if (range === 'inception') { modalCompare = []; renderCompareBar(); await loadModalChartInception(ticker); return; }
+ renderCompareBar();
 
  try {
  const series = await yahooHistory(ticker, range);
  // ignora resposta obsoleta: usuário já trocou de índice/janela enquanto esta requisição estava em voo
  if (ticker !== modalTicker || range !== modalRange) return;
  if (!series.length) throw new Error('sem dados');
+
+ const comparando = modalCompare.length > 0;
+ const extras = comparando
+ ? await Promise.all(modalCompare.map(c => yahooHistory(c.ticker, range).catch(() => [])))
+ : [];
+ if (ticker !== modalTicker || range !== modalRange) return;
  statusEl.textContent = '';
 
  const labels = series.map(d => fmtDate(new Date(d.ts * 1000)));
@@ -3522,24 +3664,39 @@ async function loadModalChart(range) {
  setV('modal-last', num(last, 2));
  setC('modal-chg', pct(chg), chg >= 0 ? 'pos' : 'neg');
 
- const lineColor = chg >= 0 ? '#0a9b58' : '#d92d3f';
+ const linha = (data, cor, label) => ({
+ label, data, borderColor: cor, backgroundColor: cor,
+ borderWidth: 1.5, pointRadius: 0, tension: .05, fill: false, spanGaps: false,
+ });
+
+ const datasets = comparando
+ ? [linha(base100(prices), '#0b0e14', ticker)].concat(
+ extras.map((s, i) => linha(
+ s.length ? base100(alinharSerie(series, s)) : [],
+ CMP_CORES[i % CMP_CORES.length],
+ modalCompare[i].ticker,
+ )))
+ : [linha(prices, chg >= 0 ? '#0a9b58' : '#d92d3f', ticker)];
+
  if (modalChart) modalChart.destroy();
  const ctx = document.getElementById('modal-chart').getContext('2d');
  modalChart = new Chart(ctx, {
  type: 'line',
- data: { labels, datasets: [{ data: prices, borderColor: lineColor, borderWidth: 1.5, pointRadius: 0, tension: .05, fill: false }] },
+ data: { labels, datasets },
  options: {
  responsive: true, animation: false, maintainAspectRatio: false,
  interaction: { mode: 'index', intersect: false },
  events: ['mousedown', 'mousemove', 'mouseup', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
  plugins: {
  dragRange: { enabled: true },
- legend: { display: false },
+ legend: { display: comparando, labels: { color: '#6b7280', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 10, padding: 8 } },
  tooltip: {
  backgroundColor: '#ffffff', borderColor: '#7d8794', borderWidth: 1,
  titleColor: '#2b3140', bodyColor: '#2b3140',
  titleFont: { family: 'JetBrains Mono', size: 9 }, bodyFont: { family: 'JetBrains Mono', size: 9 },
- callbacks: { label: c => num(c.parsed.y, 2) },
+ callbacks: comparando
+ ? { label: c => `${c.dataset.label}: ${num(c.parsed.y, 1)} (${pct(c.parsed.y - 100)})` }
+ : { label: c => num(c.parsed.y, 2) },
  },
  },
  scales: {
@@ -4802,6 +4959,139 @@ async function loadAll() {
 }
 
 tick();
+// ── Busca rápida (Ctrl+K) ─────────────────────────────────────────────────────
+// Um campo que abre por atalho e leva direto ao gráfico de qualquer ativo do terminal, ou
+// troca de aba, sem precisar caçar o card com o mouse.
+//
+// O catálogo é montado a partir do PRÓPRIO DOM a cada abertura, lendo os `onclick` que já
+// existem nos cards. Isso é de propósito: qualquer ativo novo adicionado ao HTML entra na
+// busca sozinho, sem precisar manter uma segunda lista em paralelo (que inevitavelmente
+// ficaria desatualizada).
+let cmdkItems = [];
+let cmdkSel = 0;
+// 'abrir' = uso normal (vai pro gráfico/aba). 'comparar' = chamado pelo botão "+ comparar"
+// do modal: lista só ativos com ticker do Yahoo e devolve a escolha pra sobrepor no gráfico.
+let cmdkModo = 'abrir';
+
+function cmdkNorm(s) {
+ return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+function buildCmdkIndex() {
+ const items = [];
+ const vistos = new Set();
+
+ document.querySelectorAll('[onclick*="openChart("]').forEach(el => {
+ const m = (el.getAttribute('onclick') || '').match(/openChart\('([^']+)'\s*,\s*'([^']*)'/);
+ if (!m || vistos.has(m[1])) return;
+ vistos.add(m[1]);
+ items.push({ nome: m[2] || m[1], ticker: m[1], tipo: 'ativo', abrir: () => openChart(m[1], m[2]) });
+ });
+
+ // O ano vem entre aspas no HTML — openNtnbHistory('2028') — e a função espera string.
+ // Sem argumento é o gráfico consolidado com todos os vencimentos.
+ document.querySelectorAll('[onclick*="openNtnbHistory("]').forEach(el => {
+ const m = (el.getAttribute('onclick') || '').match(/openNtnbHistory\(\s*'?(\d*)'?\s*\)/);
+ if (!m) return;
+ const ano = m[1];
+ const chave = 'ntnb' + ano;
+ if (vistos.has(chave)) return;
+ vistos.add(chave);
+ items.push(ano
+ ? { nome: 'NTN-B ' + ano, ticker: 'NTNB ' + ano, tipo: 'título', abrir: () => openNtnbHistory(ano) }
+ : { nome: 'NTN-B consolidado', ticker: '', tipo: 'título', abrir: () => openNtnbHistory() });
+ });
+
+ document.querySelectorAll('.tab-btn').forEach(btn => {
+ items.push({ nome: btn.textContent.trim(), ticker: '', tipo: 'aba', abrir: () => switchTab(btn) });
+ });
+
+ if (cmdkModo === 'comparar') {
+ // Só ativos com ticker do Yahoo: abas não são comparáveis, e as NTN-B vêm da ANBIMA em
+ // taxa (% a.a.), que não faz sentido sobrepor a uma série de preço em base 100.
+ const jaUsados = new Set([modalTicker, ...modalCompare.map(c => c.ticker)]);
+ return items.filter(it => it.tipo === 'ativo' && !jaUsados.has(it.ticker));
+ }
+ return items;
+}
+
+function abrirBuscaComparacao() {
+ openCmdk('comparar');
+}
+
+function renderCmdk() {
+ const termo = cmdkNorm(document.getElementById('cmdk-input').value).split(/\s+/).filter(Boolean);
+ const achados = cmdkItems.filter(it => {
+ const alvo = cmdkNorm(it.nome + ' ' + it.ticker + ' ' + it.tipo);
+ return termo.every(t => alvo.includes(t));
+ }).slice(0, 40);
+
+ cmdkSel = Math.min(cmdkSel, Math.max(0, achados.length - 1));
+ const lista = document.getElementById('cmdk-list');
+ lista.innerHTML = achados.length
+ ? achados.map((it, i) => `<div class="cmdk-item${i === cmdkSel ? ' sel' : ''}" data-i="${i}">
+ <span class="cmdk-name">${escapeHtml(it.nome)}</span>
+ ${it.ticker ? `<span class="cmdk-tick">${escapeHtml(it.ticker)}</span>` : ''}
+ <span class="cmdk-kind">${escapeHtml(it.tipo)}</span>
+ </div>`).join('')
+ : '<div class="cmdk-empty">Nada encontrado.</div>';
+
+ lista.querySelectorAll('.cmdk-item').forEach(el => {
+ el.onclick = () => cmdkRun(achados[Number(el.dataset.i)]);
+ el.onmouseenter = () => { cmdkSel = Number(el.dataset.i); renderCmdk(); };
+ });
+ const sel = lista.querySelector('.cmdk-item.sel');
+ if (sel) sel.scrollIntoView({ block: 'nearest' });
+ cmdkVisiveis = achados;
+}
+let cmdkVisiveis = [];
+
+function cmdkRun(item) {
+ if (!item) return;
+ const modo = cmdkModo;
+ closeCmdk();
+ if (modo === 'comparar') adicionarComparacao(item.ticker, item.nome);
+ else item.abrir();
+}
+
+function openCmdk(modo = 'abrir') {
+ cmdkModo = modo;
+ cmdkItems = buildCmdkIndex();
+ cmdkSel = 0;
+ const inp = document.getElementById('cmdk-input');
+ inp.value = '';
+ inp.placeholder = modo === 'comparar'
+ ? 'Comparar com… (ex: smh, ouro, s&p)'
+ : 'Buscar ativo, índice ou aba… (ex: nvda, ouro, notícias)';
+ document.getElementById('cmdk-overlay').classList.add('active');
+ renderCmdk();
+ inp.focus();
+}
+
+function closeCmdk() {
+ document.getElementById('cmdk-overlay').classList.remove('active');
+}
+
+document.getElementById('cmdk-input').addEventListener('input', () => { cmdkSel = 0; renderCmdk(); });
+
+document.addEventListener('keydown', (e) => {
+ const aberto = document.getElementById('cmdk-overlay').classList.contains('active');
+
+ // Ctrl+K (ou Cmd+K no Mac). Não captura quando o foco já está num campo de texto, pra não
+ // atrapalhar quem está digitando numa busca de notícias ou de ativos.
+ if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+ const emCampo = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+ if (!emCampo || aberto) { e.preventDefault(); aberto ? closeCmdk() : openCmdk(); }
+ return;
+ }
+ if (!aberto) return;
+
+ if (e.key === 'Escape') { e.preventDefault(); closeCmdk(); }
+ else if (e.key === 'ArrowDown') { e.preventDefault(); cmdkSel = Math.min(cmdkSel + 1, cmdkVisiveis.length - 1); renderCmdk(); }
+ else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkSel = Math.max(cmdkSel - 1, 0); renderCmdk(); }
+ else if (e.key === 'Enter') { e.preventDefault(); cmdkRun(cmdkVisiveis[cmdkSel]); }
+});
+
 setInterval(tick, 1000);
 loadAll();
 startTimer();
