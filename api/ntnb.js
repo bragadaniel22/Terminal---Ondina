@@ -191,6 +191,68 @@ function getSpreadsheetHistory(wb) {
   return all.sort((a, b) => toDate(a.date) - toDate(b.date));
 }
 
+// Aba manual "Mês Anterior": uma data em C2 e os pares rótulo/taxa em C5:D10.
+function parseMesAnteriorSheet(ws) {
+  if (!ws || typeof ws['C2']?.v !== 'number') return null;
+  const rates = {};
+  for (let row = 5; row <= 10; row++) {
+    const label = ws[`C${row}`]?.v;
+    const val = ws[`D${row}`]?.v;
+    if (label != null && typeof val === 'number') {
+      const year = String(label).replace(/\D/g, '');
+      if (year) rates[year] = Math.round(val * 100 * 10000) / 10000;
+    }
+  }
+  return Object.keys(rates).length ? { date: excelSerialToBr(ws['C2'].v), rates } : null;
+}
+
+// ── Fonte do histórico ────────────────────────────────────────────────────────
+// A FONTE DE VERDADE é data/ntnb-historico.json, gerado por scripts/build-ntnb.mjs. A planilha
+// continua no repo como arquivo histórico congelado e serve de fallback quando o JSON não
+// existe ou está mais velho que ela — assim nada depende do passo de build pra funcionar.
+//
+// Por que mudou: o XLSX.writeFile da automação semanal inflava o tema do .xlsx ~32x por
+// gravação (a cópia local chegou a 960 MB com 1.155 células de dado), e naquele tamanho o
+// arquivo não podia mais ser publicado. Tirando o código de cima do .xlsx, a causa some.
+let historicoCache = null; // { dados, chave }
+
+async function loadHistorico() {
+  const { readFileSync, statSync, existsSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const path = await import('node:path');
+  const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const jsonPath = path.join(raiz, 'data', 'ntnb-historico.json');
+  const xlsxPath = path.join(raiz, 'Taxas Antigas NTNB.xlsx');
+
+  // O JSON é a fonte de verdade quando existe — sem comparar datas de modificação, porque num
+  // checkout (Vercel, clone novo) todos os arquivos ganham a mesma data e a comparação não
+  // diria nada. A planilha só entra se o JSON faltar.
+  const temJson = existsSync(jsonPath);
+  const chave = temJson
+    ? 'json:' + statSync(jsonPath).mtimeMs
+    : 'xlsx:' + (existsSync(xlsxPath) ? statSync(xlsxPath).mtimeMs : 0);
+  if (historicoCache && historicoCache.chave === chave) return historicoCache.dados;
+
+  let dados;
+  if (temJson) {
+    const j = JSON.parse(readFileSync(jsonPath, 'utf8'));
+    dados = {
+      snapshots: (j.snapshots || []).slice().sort((a, b) => toDate(a.date) - toDate(b.date)),
+      mesAnterior: j.mesAnterior || null,
+      origem: 'json',
+    };
+  } else {
+    const wb = await loadTaxasAntigasWorkbook();
+    dados = {
+      snapshots: getSpreadsheetHistory(wb),
+      mesAnterior: parseMesAnteriorSheet(wb.Sheets['Mês Anterior']),
+      origem: 'xlsx',
+    };
+  }
+  historicoCache = { dados, chave };
+  return dados;
+}
+
 // Lê a planilha "Taxas Antigas NTNB.xlsx" (raiz do repo, ao lado de index.html) pras bases de
 // Δ mês/Δ ano do relatório de Fechamento. "Mês Anterior" continua sendo uma aba de ponto único
 // (data em C2, vencimentos em C5:C10/D5:D10) — inalterada. "Ano Anterior" não existe mais desde
@@ -200,25 +262,8 @@ function getSpreadsheetHistory(wb) {
 // bem perto de 31/dez — 30/12/2025 no momento em que isso foi escrito).
 async function handleStaticAnchors(res) {
   try {
-    const wb = await loadTaxasAntigasWorkbook();
-
-    const monthWs = wb.Sheets['Mês Anterior'];
-    let month = null;
-    if (monthWs) {
-      const serial = monthWs['C2']?.v;
-      if (typeof serial === 'number') {
-        const rates = {};
-        for (let row = 5; row <= 10; row++) {
-          const label = monthWs[`C${row}`]?.v;
-          const val = monthWs[`D${row}`]?.v;
-          if (label != null && typeof val === 'number') {
-            const year = String(label).replace(/\D/g, '');
-            if (year) rates[year] = Math.round(val * 100 * 10000) / 10000;
-          }
-        }
-        if (Object.keys(rates).length) month = { date: excelSerialToBr(serial), rates };
-      }
-    }
+    const { snapshots, mesAnterior } = await loadHistorico();
+    let month = mesAnterior;
 
     // Base do Δ mês = último snapshot gravado (pela automação semanal ou à mão) até o último dia
     // do mês anterior, DENTRO daquele mês — vem das abas de ano, que a automação alimenta sozinha.
@@ -227,7 +272,7 @@ async function handleStaticAnchors(res) {
     // só entra como reserva quando as abas de ano não têm nenhum ponto naquele mês.
     const now = new Date();
     const lastPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-    const fromSnapshots = getSpreadsheetHistory(wb)
+    const fromSnapshots = snapshots
       .filter((s) => toDate(s.date) <= lastPrevMonth)
       .pop();
     if (fromSnapshots) {
@@ -238,11 +283,10 @@ async function handleStaticAnchors(res) {
     }
 
     const prevYearName = String(new Date().getFullYear() - 1);
-    // A ordem de descoberta de parseYearSheet é a ordem das COLUNAS na planilha, não a ordem
-    // cronológica (confirmado ao vivo: na aba "2025", a coluna mais à esquerda tem a data
-    // 30/12/2025, e datas de novembro aparecem em colunas mais à direita) — sem ordenar por
-    // data antes de pegar "o último", pegaria o último bloco DESCOBERTO, não o mais recente.
-    const prevYearSnapshots = parseYearSheet(wb.Sheets[prevYearName]).sort((a, b) => toDate(a.date) - toDate(b.date));
+    // `snapshots` já vem ordenado por data (a ordem de descoberta na planilha era a das COLUNAS,
+    // não a cronológica — na aba "2025" a coluna mais à esquerda tinha 30/12/2025 e datas de
+    // novembro apareciam mais à direita), então aqui basta filtrar o ano e pegar o último.
+    const prevYearSnapshots = snapshots.filter((s) => s.date.endsWith('/' + prevYearName));
     const year = prevYearSnapshots.length ? prevYearSnapshots[prevYearSnapshots.length - 1] : null;
 
     if (!month && !year) return res.status(500).json({ error: 'Taxas Antigas NTNB.xlsx: nenhuma âncora reconhecida' });
@@ -312,8 +356,8 @@ async function handleHistory(daysParam, res) {
   // só fica sem o complemento, segue com o que a ANBIMA já trouxe ao vivo.
   if (!oldestLive || oldestLive > oldestRequested) {
     try {
-      const wb = await loadTaxasAntigasWorkbook();
-      const spreadsheetHistory = getSpreadsheetHistory(wb).filter((s) => {
+      const { snapshots } = await loadHistorico();
+      const spreadsheetHistory = snapshots.filter((s) => {
         const d = toDate(s.date);
         return d >= oldestRequested && (!oldestLive || d < oldestLive);
       });

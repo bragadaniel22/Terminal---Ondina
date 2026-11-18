@@ -7,7 +7,8 @@
 # na função pelo includeFiles do vercel.json). Nada quebra.
 server.js
 scripts/
-data/
+# data/ NÃO entra aqui: data/ntnb-historico.json é a fonte de verdade do histórico de NTN-B
+# (ver api/ntnb.js) e precisa ir pro deploy. O vercel.json o inclui no bundle da função.
 
 # Arquivos de trabalho que nunca pertenceram ao site publicado
 *.ps1
