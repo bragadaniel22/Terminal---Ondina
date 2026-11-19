@@ -388,6 +388,50 @@
  .row-click { cursor: pointer; }
  .row-click:hover { background: var(--page) !important; }
 
+ /* FICHA DA EMPRESA */
+ .co-box { width: min(900px, 94vw); max-height: 88vh; overflow-y: auto; }
+ .co-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 2px; }
+ .co-nome { font-family: var(--sans); font-size: 17px; font-weight: 700; color: var(--ink); }
+ .co-tick { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+ .co-preco { margin-left: auto; font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--bright); }
+ .co-chg { font-family: var(--mono); font-size: 12.5px; font-weight: 700; }
+ .co-acoes { display: flex; gap: 8px; margin: 12px 0 4px; flex-wrap: wrap; }
+ .co-btn {
+ font-family: var(--sans); font-size: 11px; font-weight: 600; cursor: pointer;
+ background: var(--ink); color: #fff; border: none; border-radius: 999px; padding: 7px 14px;
+ }
+ .co-btn.sec { background: var(--page); color: var(--text); border: 1px solid var(--border-strong); }
+ .co-btn:active { transform: scale(.97); }
+ .co-sec { margin-top: 18px; }
+ .co-sec h4 {
+ font-family: var(--sans); font-size: 10px; font-weight: 700; text-transform: uppercase;
+ letter-spacing: .08em; color: var(--dim); margin: 0 0 8px; padding-bottom: 5px;
+ border-bottom: 1px solid var(--border);
+ }
+ .co-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+ .co-cell { background: var(--card); padding: 8px 10px; }
+ .co-rot { font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); }
+ .co-val { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--bright); margin-top: 2px; }
+ .co-tabela { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+ .co-tabela th {
+ text-align: left; font-family: var(--sans); font-size: 9.5px; text-transform: uppercase;
+ letter-spacing: .04em; color: var(--dim); font-weight: 600; padding: 5px 8px;
+ border-bottom: 1px solid var(--border);
+ }
+ .co-tabela td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-family: var(--mono); }
+ .co-tabela td:first-child { font-family: var(--sans); font-weight: 600; }
+ .co-tabela .num { text-align: right; }
+ .co-resumo { font-size: 12px; line-height: 1.6; color: var(--text); }
+ .co-barra { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 6px 0 4px; }
+ .co-leg { display: flex; flex-wrap: wrap; gap: 12px; font-size: 10px; color: var(--dim); }
+ .co-leg span { display: inline-flex; align-items: center; gap: 4px; }
+ .co-pt { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+ .co-alvo { position: relative; height: 34px; margin: 10px 0 2px; }
+ .co-alvo-linha { position: absolute; top: 13px; left: 0; right: 0; height: 3px; background: var(--border-strong); border-radius: 2px; }
+ .co-alvo-faixa { position: absolute; top: 13px; height: 3px; background: var(--accent); border-radius: 2px; }
+ .co-alvo-marca { position: absolute; top: 7px; width: 2px; height: 15px; background: var(--ink); }
+ .co-alvo-rot { position: absolute; top: 20px; font-family: var(--mono); font-size: 9.5px; color: var(--dim); transform: translateX(-50%); white-space: nowrap; }
+
  /* LUPA NO CABEÇALHO — porta de entrada da busca que funciona no toque.
     O Ctrl+K segue existindo, mas como atalho de desktop, nunca como único caminho. */
  .hsearch {
@@ -1161,6 +1205,13 @@
  </div>
 </div>
 </div><!-- /tab-bonds -->
+
+<div class="modal-overlay" id="company-overlay" onclick="if(event.target===this) closeCompany()">
+ <div class="modal-box co-box">
+ <button class="modal-close" onclick="closeCompany()"></button>
+ <div id="company-body"></div>
+ </div>
+</div>
 
 <div class="cmdk-overlay" id="cmdk-overlay" onclick="if(event.target===this) closeCmdk()">
  <div class="cmdk-box">
@@ -4978,6 +5029,166 @@ async function loadAll() {
 }
 
 tick();
+// ── Ficha da empresa ──────────────────────────────────────────────────────────
+// Página de detalhe de um ativo: preço, múltiplos, alvo dos analistas, histórico de resultados,
+// composição dos detentores e perfil. Tudo de /api/company, que resolve numa chamada só.
+// Nem todo ativo tem tudo (um ETF não tem P/L, um índice não tem setor) — cada seção some
+// quando não há dado, em vez de mostrar campo vazio.
+let companyTicker = null;
+
+const coNum = (v, d = 2) => (v == null || isNaN(v) ? null : num(v, d));
+
+function coCell(rotulo, valor) {
+ return valor == null || valor === '' ? '' :
+ `<div class="co-cell"><div class="co-rot">${escapeHtml(rotulo)}</div><div class="co-val">${escapeHtml(String(valor))}</div></div>`;
+}
+
+function coSecao(titulo, html) {
+ return html ? `<div class="co-sec"><h4>${escapeHtml(titulo)}</h4>${html}</div>` : '';
+}
+
+// Régua do alvo dos analistas: mostra mínimo, médio e máximo, com o preço atual marcado.
+// Só faz sentido quando há faixa de verdade e o preço cabe nela.
+function coRegua(preco, alvo) {
+ const { alvoMin: lo, alvoMax: hi, alvoMedio: med } = alvo;
+ if (lo == null || hi == null || med == null || hi <= lo) return '';
+ const min = Math.min(lo, preco ?? lo), max = Math.max(hi, preco ?? hi);
+ const pos = (v) => ((v - min) / (max - min)) * 100;
+ return `<div class="co-alvo">
+ <div class="co-alvo-linha"></div>
+ <div class="co-alvo-faixa" style="left:${pos(lo)}%;width:${pos(hi) - pos(lo)}%"></div>
+ ${preco != null ? `<div class="co-alvo-marca" style="left:${pos(preco)}%"></div>
+ <div class="co-alvo-rot" style="left:${pos(preco)}%">atual ${coNum(preco)}</div>` : ''}
+ <div class="co-alvo-rot" style="left:${pos(med)}%;top:-2px">alvo ${coNum(med)}</div>
+ </div>`;
+}
+
+const REC_PT = { strong_buy: 'compra forte', buy: 'compra', hold: 'manter', sell: 'venda', strong_sell: 'venda forte' };
+const DIST_CORES = ['#166534', '#16a34a', '#c98f00', '#dc2626', '#991b1b'];
+const DIST_ROT = ['compra forte', 'compra', 'manter', 'venda', 'venda forte'];
+
+function coDistribuicao(d) {
+ if (!d) return '';
+ const vals = [d.compraForte, d.compra, d.manter, d.venda, d.vendaForte].map(v => v || 0);
+ const total = vals.reduce((a, b) => a + b, 0);
+ if (!total) return '';
+ return `<div class="co-barra">${vals.map((v, i) =>
+ v ? `<div style="width:${(v / total) * 100}%;background:${DIST_CORES[i]}"></div>` : '').join('')}</div>
+ <div class="co-leg">${vals.map((v, i) =>
+ v ? `<span><i class="co-pt" style="background:${DIST_CORES[i]}"></i>${DIST_ROT[i]}: ${v}</span>` : '').join('')}</div>`;
+}
+
+async function openCompany(ticker, nome) {
+ companyTicker = ticker;
+ const corpo = document.getElementById('company-body');
+ corpo.innerHTML = `<div class="co-head"><div class="co-nome">${escapeHtml(nome || ticker)}</div>
+ <div class="co-tick">${escapeHtml(ticker)}</div></div><div class="modal-status">carregando…</div>`;
+ document.getElementById('company-overlay').classList.add('active');
+
+ try {
+ const r = await apiFetch(`/api/company?t=${encodeURIComponent(ticker)}`, 15000);
+ const d = await r.json();
+ if (companyTicker !== ticker) return; // usuário já abriu outro ativo
+ if (d.error) throw new Error(d.error);
+
+ const pr = d.preco || {}, m = d.metricas || {}, a = d.analistas || {}, pf = d.perfil || {};
+ const cls = pr.variacaoPct > 0 ? 'pos' : pr.variacaoPct < 0 ? 'neg' : '';
+
+ const metricas = [
+ coCell('Capitalização', m.marketCap),
+ coCell('P/L (12m)', coNum(m.peTrailing, 1)),
+ coCell('P/L projetado', coNum(m.peForward, 1)),
+ coCell('LPA', coNum(m.eps)),
+ coCell('Dividend yield', m.dividendYield),
+ coCell('Beta', coNum(m.beta)),
+ coCell('Mín. 52 sem.', coNum(m.min52)),
+ coCell('Máx. 52 sem.', coNum(m.max52)),
+ coCell('Abertura', coNum(pr.abertura)),
+ coCell('Mín. do dia', coNum(pr.minDia)),
+ coCell('Máx. do dia', coNum(pr.maxDia)),
+ coCell('Volume', pr.volume ? num(pr.volume, 0) : null),
+ coCell('Receita', m.receita),
+ coCell('Margem líquida', m.margemLucro != null ? coNum(m.margemLucro, 1) + '%' : null),
+ coCell('Cresc. receita', m.crescReceita != null ? coNum(m.crescReceita, 1) + '%' : null),
+ coCell('Caixa', m.caixa),
+ coCell('Dívida', m.divida),
+ ].join('');
+
+ const temAlvo = a.alvoMedio != null;
+ const upside = temAlvo && pr.atual ? ((a.alvoMedio / pr.atual - 1) * 100) : null;
+ const analistas = temAlvo ? `
+ ${coRegua(pr.atual, a)}
+ <div class="co-grid" style="margin-top:10px">
+ ${coCell('Alvo médio', coNum(a.alvoMedio))}
+ ${coCell('Potencial', upside != null ? pct(upside) : null)}
+ ${coCell('Faixa', `${coNum(a.alvoMin)} – ${coNum(a.alvoMax)}`)}
+ ${coCell('Analistas', a.quantidade)}
+ ${coCell('Consenso', REC_PT[a.recomendacao] || a.recomendacao)}
+ </div>
+ ${coDistribuicao(a.distribuicao)}` : '';
+
+ const hist = (d.resultados?.historico || []);
+ const resultados = hist.length ? `<table class="co-tabela">
+ <tr><th>Trimestre</th><th class="num">LPA estimado</th><th class="num">LPA real</th><th class="num">Surpresa</th></tr>
+ ${hist.map(h => `<tr><td>${escapeHtml(h.trimestre || '—')}</td>
+ <td class="num">${coNum(h.epsEstimado) ?? '—'}</td>
+ <td class="num">${coNum(h.epsReal) ?? '—'}</td>
+ <td class="num ${h.surpresaPct > 0 ? 'pos' : h.surpresaPct < 0 ? 'neg' : ''}">${h.surpresaPct != null ? pct(h.surpresaPct) : '—'}</td></tr>`).join('')}
+ </table>` : '';
+
+ const det = d.detentores || {};
+ const detentores = (det.insidersPct != null || det.principais?.length) ? `
+ <div class="co-grid">
+ ${coCell('Insiders', det.insidersPct != null ? coNum(det.insidersPct, 1) + '%' : null)}
+ ${coCell('Instituições', det.instituicoesPct != null ? coNum(det.instituicoesPct, 1) + '%' : null)}
+ </div>
+ ${det.principais?.length ? `<table class="co-tabela" style="margin-top:10px">
+ <tr><th>Maiores detentores</th><th class="num">% do capital</th><th class="num">Valor</th></tr>
+ ${det.principais.map(o => `<tr><td>${escapeHtml(o.nome || '—')}</td>
+ <td class="num">${coNum(o.pct, 2) ?? '—'}%</td><td class="num">${escapeHtml(o.valor || '—')}</td></tr>`).join('')}
+ </table>` : ''}` : '';
+
+ const perfil = (pf.setor || pf.resumo) ? `
+ <div class="co-grid">
+ ${coCell('Setor', pf.setor)}
+ ${coCell('Indústria', pf.industria)}
+ ${coCell('Funcionários', pf.funcionarios ? num(pf.funcionarios, 0) : null)}
+ ${coCell('País', pf.pais)}
+ ${coCell('Próximo resultado', d.resultados?.proximaData)}
+ </div>
+ ${pf.resumo ? `<p class="co-resumo" style="margin-top:10px">${escapeHtml(pf.resumo)}</p>` : ''}
+ ${pf.site ? `<p style="margin-top:6px"><a href="${escapeHtml(pf.site)}" target="_blank" rel="noopener" class="sources-link">${escapeHtml(pf.site)}</a></p>` : ''}` : '';
+
+ corpo.innerHTML = `
+ <div class="co-head">
+ <div class="co-nome">${escapeHtml(d.nome)}</div>
+ <div class="co-tick">${escapeHtml(d.ticker)}${d.bolsa ? ' · ' + escapeHtml(d.bolsa) : ''}${d.moeda ? ' · ' + escapeHtml(d.moeda) : ''}</div>
+ <div class="co-preco">${coNum(pr.atual) ?? '—'}
+ <span class="co-chg ${cls}">${pr.variacaoPct != null ? pct(pr.variacaoPct) : ''}</span></div>
+ </div>
+ <div class="co-acoes">
+ <button class="co-btn" onclick="closeCompany(); openChart('${jsAttrSafe(d.ticker)}','${jsAttrSafe(d.nome)}')">Ver gráfico</button>
+ <button class="co-btn sec" onclick="closeCompany(); openTickerNews('${jsAttrSafe(d.ticker)}','${jsAttrSafe(d.nome)}')">Notícias</button>
+ </div>
+ ${coSecao('Indicadores', `<div class="co-grid">${metricas}</div>`)}
+ ${coSecao('Analistas', analistas)}
+ ${coSecao('Histórico de resultados', resultados)}
+ ${coSecao('Detentores', detentores)}
+ ${coSecao('Perfil', perfil)}`;
+ } catch (e) {
+ if (companyTicker !== ticker) return;
+ corpo.innerHTML = `<div class="co-head"><div class="co-nome">${escapeHtml(nome || ticker)}</div></div>
+ <div class="modal-status err">não foi possível carregar a ficha (${escapeHtml(e.message)})</div>
+ <div class="co-acoes"><button class="co-btn" onclick="closeCompany(); openChart('${jsAttrSafe(ticker)}','${jsAttrSafe(nome || ticker)}')">Ver gráfico</button></div>`;
+ console.error('company', ticker, e);
+ }
+}
+
+function closeCompany() {
+ companyTicker = null;
+ document.getElementById('company-overlay').classList.remove('active');
+}
+
 // ── Busca rápida (Ctrl+K) ─────────────────────────────────────────────────────
 // Um campo que abre por atalho e leva direto ao gráfico de qualquer ativo do terminal, ou
 // troca de aba, sem precisar caçar o card com o mouse.
@@ -5131,7 +5342,10 @@ function cmdkRun(item) {
  const modo = cmdkModo;
  closeCmdk();
  if (modo === 'comparar') adicionarComparacao(item.ticker, item.nome);
- else item.abrir();
+ // Resultado de busca abre a FICHA do ativo (não o gráfico direto): é o detalhe completo, e
+ // de lá há um botão pro gráfico. Abas e NTN-B seguem com a ação própria delas.
+ else if (item.tipo === 'aba' || item.tipo === 'título' || !item.ticker) item.abrir();
+ else openCompany(item.ticker, item.nome);
 }
 
 function openCmdk(modo = 'abrir') {
