@@ -15,8 +15,45 @@
 
 ## 0. Status Atual (leia isto primeiro)
 
-**Abas do terminal (6, nessa ordem):** ÍNDICES, SINGLE NAMES, PORTFÓLIO, ETFS INTERNOS, HEATMAP,
-NOTÍCIAS.
+**Abas do terminal (7, nessa ordem):** ÍNDICES, SINGLE NAMES, PORTFÓLIO, SETORES, HEATMAP,
+NOTÍCIAS, BONDS. BONDS é a mais nova (sessão bem posterior à repaginação abaixo — ver seção
+16.2 pra tudo em detalhe).
+
+### ⚠️ O MAIS IMPORTANTE: o projeto está no plano PRO (desde 18/11/2026)
+
+A conta Hobby foi **pausada em 11/11/2026** por estourar as 4h de Fluid Active CPU, e o
+despause não é automático. O Daniel assinou o **Pro (US$ 20/mês)**, o que resolveu na hora.
+
+Isso muda premissas que ditaram muita decisão de arquitetura no passado:
+
+| | Hobby | Pro |
+|---|---|---|
+| **Funções em `api/`** | **teto de 12** | **sem teto** |
+| Cron | 1x/dia, ±59min | **1x/minuto, preciso** |
+| Duração máx. | 300s | 800s |
+| Memória | 2 GB | 4 GB / 2 vCPU |
+
+**O teto de 12 funções acabou.** Ele é a razão de vários endpoints terem sido fundidos no
+passado (`b3.js` absorveu `di-history.js`, etc.). Endpoint novo não precisa mais ser espremido
+dentro de um existente — mas **as fusões antigas ficam como estão**, não há motivo pra desfazer.
+
+Consumo medido antes das otimizações: ~US$ 1,21/mês de recursos medidos contra US$ 20 de
+crédito. Existe um orçamento de **US$ 5 em Spend Management, mas só com notificação — não
+pausa nada**. Se quiser freio de verdade, tem que ligar "Pause production deployments".
+
+### O que entrou em 18-19/11/2026
+- **Ficha da empresa** (seção 23): clicar num resultado de busca abre uma página de detalhe do
+  ativo — múltiplos, alvo de analistas, histórico de resultados, detentores, perfil.
+- **Busca rápida** (seção 24): botão "Buscar" com lupa no cabeçalho (e Ctrl+K no desktop), que
+  consulta o catálogo do terminal **e o Yahoo**, então acha qualquer ticker do mundo.
+- **Comparação de ativos** (seção 25): sobrepor até 4 ativos no mesmo gráfico, em base 100.
+- **Captura de NTN-B por cron na Vercel** (seção 26) — substitui a tarefa do PC do Daniel.
+  **Depende de uma variável `CRON_SECRET` que ainda não foi criada**; enquanto isso não for
+  feito, a função responde 401 a tudo e o histórico fica congelado.
+- **Bug grave corrigido**: a planilha da NTN-B tinha inchado pra **1 GB** por um tema corrompido
+  (seção 26.1). O histórico migrou pra JSON e o Excel virou arquivo congelado.
+- Single Names: **Visa e TSMC removidas**, ASML ganhou datas de entrada, ouro ganhou 3ª tranche.
+  **VIX** entrou no card Bolsa US.
 
 ### Repaginação completa de design (essa sessão)
 O terminal deixou de ser um "terminal escuro estilo Bloomberg" e virou um **app claro,
@@ -26,10 +63,24 @@ mudou indentação, cores de gráfico e remoção de emojis dos textos gerados v
 um HTML de referência pronto (gerado por ele/outra ferramenta) e pediu pra virar "a nova base do
 terminal"; copiamos o arquivo inteiro por cima do `index.html` depois de validar a integridade.
 
-- **Tipografia**: `IBM Plex Sans` (textos/labels) + `IBM Plex Mono` (números, com
+- **Tipografia**: `IBM Plex Sans` (textos/labels) + `JetBrains Mono` (números, com
   `font-variant-numeric: tabular-nums`) — carregadas via Google Fonts (`<link>` no `<head>`,
   **primeira dependência de rede externa pro CSS/fontes** do projeto; precisa de internet pra
   renderizar com a fonte certa, cai pro fallback do sistema sem internet).
+
+  **Fonte mono trocada numa sessão seguinte** — era `IBM Plex Mono` originalmente. O Daniel
+  reportou que o "0" ficava parecido com "8" na extensão de Chrome (números pequenos, peso
+  700/bold). Tentativas descartadas: `font-variant-numeric: slashed-zero` e todas as variantes
+  `ss01`-`ss08` não mudam nada — Google Fonts entrega essas duas fontes sem os recursos
+  OpenType de zero alternativo, então o CSS não tem efeito nenhum (testado ao vivo, sem
+  diferença visual). Passo intermediário (revertido depois): reduzir `.rval` de peso 700 pra
+  600 melhorava a distinção mas não resolvia de vez. **Solução final**: trocar pra
+  `JetBrains Mono`, que tem um **ponto dentro do zero no glifo padrão** (não é recurso
+  OpenType opcional, é o desenho normal da fonte) — confirmado visualmente até no tamanho real
+  de 13-16px. Com a fonte certa, `.rval` voltou pro peso 700 original (a muleta do peso não era
+  mais necessária). Trocada em **todo lugar** que citava a fonte mono por nome literal, não só
+  a variável CSS — inclusive dentro dos `font: { family: ... }` do Chart.js e do desenho em
+  `<canvas>` do botão "baixar imagem" (seção 6.8.2), que não usam a variável `--mono`.
 - **Paleta**: header/rodapé em navy escuro (`--ink: #0f172a`), corpo **off-white** (não branco
   puro — ver variáveis exatas na seção 4), acento azul forte (`--accent: #1d4ed8`) em links,
   bordas de foco e no logo.
@@ -90,7 +141,7 @@ acima).
 **ÍNDICES ganhou uma sub-aba FECHAMENTO** (pílula HOJE/FECHAMENTO logo abaixo do seletor de
 abas) — relatório de fechamento de mercado (Δ dia/mês/ano) pros instrumentos que o usuário
 acompanha, calculado on-demand sem cron nem storage. `api/ntnb.js` ganhou um modo `?dates=`
-multi-data (sem gastar slot novo do teto de 12) — `api/anbima.js` teve um modo equivalente
+multi-data (na época, sem gastar slot novo do teto de 12) — `api/anbima.js` teve um modo equivalente
 adicionado e **depois removido** na mesma sessão, ver parágrafo abaixo. Ver seção 6.8 pra tudo em
 detalhe, incluindo dois bugs de fuso horário reais encontrados e corrigidos antes de publicar
 (data errada pra mercados asiáticos e câmbio com um corte ingênuo de epoch, e a suposição errada
@@ -136,17 +187,28 @@ bondterminal.com. Ver seção 16 (histórico).
 continua no repo só como registro histórico da matemática. Ver seção 12.
 
 **Pendências / decisões em aberto:**
-1. **`GEMINI_API_KEY` precisa estar configurada no Vercel** para o botão "resumir com IA"
-   funcionar em produção. Localmente, `$env:GEMINI_API_KEY`.
-2. **Otimização de chamadas de API não implementada.** Consolidar múltiplas chamadas de ticker
-   do Yahoo Finance numa única função por categoria reduziria invocações no Vercel em ~50%, mas
-   o usuário ainda não decidiu se quer. Ver seção 18.
+
+0. 🔴 **`CRON_SECRET` não foi criada** — a captura automática de NTN-B (seção 26) responde 401 a
+   tudo e **o histórico está congelado em 17/11/2026**. Pior: a tarefa do Windows ainda grava na
+   planilha, que deixou de ser lida. É a pendência mais urgente do projeto.
+0.1. **Sobrou um arquivo de 1 GB no disco do Daniel**: `Taxas Antigas NTNB.CORROMPIDA.bak`
+   (fora do repo). Pode apagar — os dados estão na planilha corrigida e em
+   `backup-ntnb-dados.json`. Ver seção 26.1.
+0.2. **`/api/company` e `/api/cron-ntnb` não estão no `server.ps1`** — dão 404 no dev local.
+   Decisão consciente (ver seção 27), não esquecimento.
+1. **`GEMINI_API_KEY`** está configurada no Vercel para o botão "resumir com IA". Localmente,
+   `$env:GEMINI_API_KEY`.
+2. ~~**Otimização de chamadas de API não implementada.**~~ **Feito em 10/11/2026**, depois de a
+   cota de CPU do plano grátis estourar (103%, conta a ser pausada em 24h): lote de cotações
+   numa invocação só, cache de CDN em todos os endpoints, cache em memória no `ai-news` e pausa
+   por inatividade. **Ver seção 18.0** — é a leitura obrigatória antes de mexer em `api/yahoo.js`
+   ou em qualquer `Cache-Control`.
 3. **Dados institucionais Reuters/LSEG**: pergunta em aberto de longa data, sem resposta se o
    usuário tem acesso via RDP (funcionaria) ou só Workspace (não funcionaria remotamente).
 4. **`api/summary.js`** (resumo diário de IA via OpenAI) é órfão — primeira tentativa, substituída
-   pelo resumo por notícia individual via Gemini. **Ainda está no repo** (10 arquivos em `api/`
-   no total, não 9 — ver seção 2), só não é chamado pelo front-end. Podia ser removido com
-   segurança se quiserem um slot a mais de folga no limite de 12 do Hobby.
+   pelo resumo por notícia individual via Gemini. **Ainda está no repo** (14 arquivos em `api/`
+   hoje — ver seção 2), só não é chamado pelo front-end. Pode ser removido sem risco; deixou de
+   ser urgente desde o Pro, que não tem teto de funções.
 5. **NOTÍCIAS depende de fontes de terceiros não controladas por nós** (RSS de vários veículos,
    scraping de homepage pra "manchete real") — pode quebrar/mudar sem aviso. Ver seção 15.1.
 6. **Favicons PNG e ícones da extensão de Chrome continuam com o logo antigo** (laranja) — só a
@@ -173,6 +235,14 @@ continua no repo só como registro histórico da matemática. Ver seção 12.
     bloqueava a renderização da página inteira; `loadBrasil()`/`loadJuros()` faziam 3 chamadas em
     série sem necessidade) — ver seção 22. Ainda não implementada: a otimização maior de
     consolidar chamadas de ticker do Yahoo (pendência 2 acima).
+12. **"TBILL 12-nov-26" (aba BONDS) continua sem preço e sem yield** — não é fundo, não é
+    duplicata de nenhum outro papel (sem alias disponível), e ainda não foi resolvido. Ver seção
+    16.2.7 pra lista completa e 16.2.3 pro mecanismo de alias, caso vire uma duplicata depois.
+13. **Regra de "qual cotação é a oficial" pra papéis duplicados por dealer (aba BONDS) não
+    existe** — cada linha da planilha aparece como entrada própria, sem dedup. Ver seção 16.2.3.
+14. **Pasta órfã `Bonds Terminal/`** (raiz do repo, sobra do primeiro upload da aba BONDS, antes
+    do código passar a esperar a planilha solta na raiz) — pode ser apagada do GitHub sem risco,
+    ver seção 2.
 
 ---
 
@@ -184,7 +254,7 @@ CDN pro Chart.js e outra pras fontes Google, ver seção 4). Os dados vêm de AP
 proxiadas por **Vercel Serverless Functions** (`api/`) pra contornar CORS. Uso real: até ~6
 pessoas (Daniel + colegas).
 
-Seis abas:
+Sete abas:
 - **ÍNDICES** — painel de mercado global (Brasil, Bolsa US, Europa+Emerging Markets+Câmbio —
   agora com USD/BRL e EUR/USD, Ásia&Pacífico incluindo KOSPI, Juros Globais, Commodities&Cripto,
   NTN-B com histórico)
@@ -203,10 +273,17 @@ Seis abas:
   economia) sobre 12 fontes, classificado em NACIONAL/INTERNACIONAL **por assunto** (não por
   veículo), com nota de relevância (1-10), Top Picks e sistema de notificação pop-up — ver
   seção 15.1
+- **BONDS** — ~69 papéis de renda fixa (soberano BR, corporativos, bancos, preferenciais, fundos
+  de bonds), agrupados por região, com cupom/duration/bid yield/spread do dia, histórico de
+  yield e preço, e comparação opcional contra treasuries americanos — ver seção 16.2. Criada numa
+  sessão bem posterior à remoção da BONDS (BETA) original (parágrafo abaixo); sem relação de
+  código, fonte de dados ou implementação com aquela tentativa.
 
-~~**SIMULADOR**~~, ~~**BONDS (BETA)**~~, ~~**BUSCAR**~~ e ~~**CNBC (BETA)**~~ — todas
-**removidas** em sessões anteriores/nessa sessão. Ver seções 12, 14, 15 e 16 pro histórico de
-cada uma. **Não recriar nenhuma sem pedido explícito do usuário.**
+~~**SIMULADOR**~~, ~~**BUSCAR**~~ e ~~**CNBC (BETA)**~~ — todas **removidas** em sessões
+anteriores. Ver seções 12, 14 e 15 pro histórico de cada uma. **Não recriar nenhuma sem pedido
+explícito do usuário.** (A antiga ~~**BONDS (BETA)**~~ também foi removida — seção 16 — mas
+**foi recriada** numa sessão seguinte com fonte de dados totalmente diferente; ver seção 16.2,
+já ativa hoje.)
 
 Além do site, existe uma **extensão de Chrome** (pasta `chrome-extension/`, não faz parte do
 deploy do Vercel) com um popup replicando ÍNDICES (5 principais), SINGLE NAMES e BUSCA — **também
@@ -237,6 +314,7 @@ como ele depende do HTML do relatório de Fechamento.
 ├── SIMULADOR_METODOLOGIA.md       # [HISTÓRICO] fórmulas do Simulador — aba removida, feature não existe mais
 ├── Bonds Carteira.xlsx            # [ÓRFÃO] planilha do usuário — fonte da extinta aba BONDS, sem uso agora
 ├── Taxas Antigas NTNB.xlsx        # Base de Δ mês/Δ ano da NTN-B no relatório de Fechamento — mantida À MÃO pelo Daniel (seção 6.8.1). PRECISA estar no repo/deploy, não é órfã
+├── Bonds Terminal.xlsx            # Fonte da aba BONDS (nova, seção 16.2) — mantida À MÃO pelo Daniel. PRECISA estar na RAIZ (não numa subpasta — ver seção 16.2.1 sobre a confusão real que isso já causou em produção)
 ├── assets/                        # Logo/favicon fonte
 │   ├── icon.svg                  # Logo vetor NOVA (quadrado azul arredondado + check branco) — trocada nessa sessão
 │   ├── icon-16.png, icon-32.png, icon-192.png, icon-512.png   # PNGs — AINDA COM A LOGO ANTIGA (raster, não regenerado)
@@ -246,27 +324,45 @@ como ele depende do HTML do relatório de Fechamento.
 │   ├── popup.js                   # JS inalterado na repaginação
 │   ├── icons/                    # ícones próprios (16/32/48/128px) — AINDA COM A LOGO ANTIGA
 │   └── README.md                 # passo a passo de instalação
-└── api/                            # 10 arquivos — ver seção 19.1.1 sobre o teto de 12 do Hobby
-    ├── yahoo.js                   # Proxy Yahoo Finance v8 chart (preço + histórico). Aceita &interval=. Tem fallback de fechamento anterior pra commodities/futuros (seção 6.6.1)
+├── server.js                       # Servidor Node único que monta os MESMOS api/*.js sem alterá-los — pra hospedar FORA da Vercel (Render/Fly). Ignorado no deploy da Vercel pelo .vercelignore. Ver seção 27
+├── .vercelignore                   # Mantém server.js e scripts/ fora do deploy da Vercel; data/ VAI (é fonte de dados)
+├── scripts/                        # Rodam em tempo de build, nunca em requisição
+│   ├── build-bonds.mjs           # "Bonds Terminal.xlsx" → data/bonds.json (seção 16.2.1)
+│   └── build-ntnb.mjs            # "Taxas Antigas NTNB.xlsx" → data/ntnb-historico.json (seção 26.1)
+├── data/                           # Dados prontos, lidos pelas funções
+│   ├── bonds.json                # Gerado no build; api/bonds.js cai no .xlsx se faltar
+│   └── ntnb-historico.json       # FONTE DE VERDADE do histórico de NTN-B — versionado no repo
+└── api/                            # 14 arquivos — o teto de 12 era do Hobby e NÃO existe mais no Pro
+    ├── yahoo.js                   # Proxy Yahoo Finance v8 chart (preço + histórico). Aceita &interval= e VÁRIOS tickers por vírgula (lote, seção 18.0.1). Fallback de fechamento anterior pra commodities/futuros (seção 6.6.1)
+    ├── company.js                 # Ficha da empresa: 10 módulos do quoteSummary numa chamada (seção 23)
+    ├── cron-ntnb.js               # Captura diária de NTN-B agendada, grava no GitHub (seção 26)
     ├── target.js                  # Proxy Yahoo Finance quoteSummary (price targets — crumb auth)
-    ├── quote-search.js            # Resolve texto livre → ticker(s) candidato(s) — usado pela busca de ativos em SINGLE NAMES
+    ├── quote-search.js            # Resolve texto livre → ticker(s) candidato(s) — usado pela busca de ativos em SINGLE NAMES e pela busca rápida (seção 24)
     ├── anbima.js                  # Proxy ANBIMA ETTJ (POST). Sem ?dates= → snapshot do dia; ?dates=DD/MM/YYYY,... → multi-data (relatório de Fechamento, seção 6.8)
     ├── b3.js                      # Cotação B3 (fallback TradingView) + histórico DI Futuro. ?s=X → cotação; ?s=X&history=1 → histórico
-    ├── ecb.js                     # Proxy ECB taxa de juros
+    ├── bonds.js                   # Aba BONDS (nova, seção 16.2): snapshot de "Controle Duration" + histórico de yield/preço/treasury de "Bonds Terminal.xlsx"
+    ├── rates.js                   # Taxas de referência: ?source=ecb | selic | cdi12m (substituiu o antigo ecb.js)
+    ├── treasury.js                # Yield de treasuries via TradingView. ?symbol=TVC:US02Y; &history=1 → histórico
     ├── ntnb.js                    # Snapshot + histórico NTN-B. Sem query → snapshot; ?days=N → histórico; ?dates=DD/MM/YYYY,... → datas específicas (Δ dia); ?staticAnchors=1 → lê "Taxas Antigas NTNB.xlsx" (Δ mês/Δ ano, seção 6.8.1)
-    ├── news.js                    # Notícias por ticker (busca de Single Names) + resumo por IA. Sem ?action → lista por ticker; ?action=summarize&url=...&title=... → resumo Gemini
+    ├── news.js                    # Notícias por ticker + resumo por IA. ?t=TICKER&n=Nome → filtra por relatedTickers/título (seção 23.5); ?action=summarize&url=... → resumo Gemini
     ├── ai-news.js                 # Aba NOTÍCIAS: recorte por palavra-chave, 12 fontes, classificação por assunto, nota de relevância — seção 15.1
     └── summary.js                 # [ÓRFÃO] resumo diário via OpenAI, não usado pelo front-end (pendência 4 da seção 0)
 ```
 
-`api/cnbc-news.js`, `api/bonds.js`, `api/bonds-history.js` **foram apagados** nas remoções das
-abas CNBC e BONDS. `api/di-history.js`, `api/ntnb-history.js` e `api/summarize-news.js` **foram
-fundidos** em `b3.js`/`ntnb.js`/`news.js` respectivamente, pelo motivo descrito na seção 19.1.1
-(limite de 12 funções do plano Hobby).
+`api/cnbc-news.js` e `api/bonds-history.js` **foram apagados** nas remoções das abas CNBC e
+BONDS (a antiga, seção 16 — sem relação com o `api/bonds.js` atual, criado do zero numa sessão
+bem posterior com fonte de dados totalmente diferente, ver seção 16.2). `api/di-history.js`,
+`api/ntnb-history.js` e `api/summarize-news.js` **foram fundidos** em
+`b3.js`/`ntnb.js`/`news.js` respectivamente, pelo motivo descrito na seção 19.1.1 (limite de 12
+funções do plano Hobby).
 
 Arquivos na raiz que **não pertencem ao site em produção**: `CONTEXT.md`, `terminal-financeiro.html`,
 `PLANEJAMENTO APP PROJETO.md`, `Terminal financeiro logo.zip`, `Terminal-Financeiro-Extensao.zip`,
-`Thumbs.db`, `Bonds Carteira.xlsx` (órfã desde a remoção da aba Bonds).
+`Thumbs.db`, `Bonds Carteira.xlsx` (órfã desde a remoção da aba Bonds antiga). **`Bonds Terminal/`**
+(subpasta, não confundir com o arquivo `Bonds Terminal.xlsx` da raiz) também é órfã — sobrou de
+uma tentativa inicial de upload que colocou a planilha numa subpasta; hoje só guarda a cópia de
+trabalho do Daniel e `papeis_sem_precos.txt` (lista de referência gerada por análise, não lida
+por nenhum código — ver seção 16.2.7). Pode ser apagada sem risco.
 
 **Regra de ouro:** tudo em `api/` roda server-side no Vercel. O `server.ps1` replica esses mesmos
 endpoints localmente. O navegador nunca chama APIs externas diretamente (exceto BCB, que é
@@ -362,12 +458,14 @@ paleta inteira (cards, fundo, bordas).
 ### Tipografia
 ```css
 --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;   /* textos, labels */
---mono: 'IBM Plex Mono', Consolas, Monaco, monospace;                     /* números */
+--mono: 'JetBrains Mono', Consolas, Monaco, monospace;                    /* números */
 ```
 Carregadas via Google Fonts (`<link>` no `<head>`, com `preconnect`) — **dependência de rede
 externa nova**; sem internet, cai pro fallback do sistema (ainda funciona, só não fica idêntico).
 `html { font-variant-numeric: tabular-nums; }` garante que números fiquem alinhados em coluna
-(dígitos de largura fixa) mesmo em fontes proporcionais.
+(dígitos de largura fixa) mesmo em fontes proporcionais. **`--mono` trocou de `IBM Plex Mono`
+pra `JetBrains Mono` numa sessão seguinte** (zero parecendo oito — ver seção 0 pro raciocínio
+completo e as tentativas descartadas antes da fonte).
 
 ### Logo e favicon
 Logo nova em `assets/icon.svg` (quadrado azul `--accent` com cantos arredondados + check branco)
@@ -710,8 +808,8 @@ mudar onde o script roda:
    com Vercel) em vez do arquivo local `.baileys_auth/` — função serverless não tem disco
    persistente entre execuções. Isso exige **reautenticar o WhatsApp do zero** (novo QR Code)
    nesse formato novo.
-4. Consumiria **1 dos 2 slots de função serverless de folga** no teto de 12 do plano Hobby
-   (seção 19.1.1) — atualmente ainda 2 de folga.
+4. ~~Consumiria 1 dos 2 slots de função serverless de folga no teto de 12 do Hobby.~~
+   **Não vale mais**: no Pro não há teto de funções (seção 19.1.1).
 
 Se essa ideia for retomada, começar revalidando esses 4 pontos (limites atuais do Vercel Cron/
 Hobby podem ter mudado) antes de implementar.
@@ -778,6 +876,17 @@ primeiro.
 Grid de equities (composição evolui — ver `SINGLES` no código pra lista atual). Cada célula
 mostra preço, variação, price target de analistas (via `/api/target.js`) quando disponível.
 
+> **Mudanças de composição em nov/2026**: **Visa saiu** (06/11, substituída por TSMC) e **TSMC
+> saiu** (19/11), deixando **9 ativos**. Atenção: o ticker `TSM` **continua existindo** no
+> projeto como holding do *AI Chips / Semis ETF* na aba SETORES, com peso de 19,76% — coisa
+> totalmente diferente, não apagar junto.
+>
+> As datas de entrada (`SINGLES_ENTRY_DATES`) foram conferidas contra a tabela do Daniel em
+> 19/11: **ASML passou a ter datas** (antes o "Desde o início" dizia "sem data de entrada
+> cadastrada"), o **ouro ganhou uma 3ª tranche** e o **ETF de semicondutores uma 2ª**; Danaher
+> ficou com uma só. Sempre que essa lista mudar, conferir a paleta de cores do gráfico "Desde o
+> início" (seção 25) — ela precisa ter pelo menos tantas cores quanto o ativo com mais tranches.
+
 ### 9.1 Busca de ativos (herdada da extinta aba BUSCAR)
 Card no topo da aba, acima da grade de equities: campo de texto livre (`asset-search-input`) que
 resolve pra ticker via `/api/quote-search` e mostra cotação com gráfico clicável
@@ -786,7 +895,12 @@ oculto até a primeira busca. Mesma função que existia na sub-aba ATIVOS de BU
 
 ### 9.2 Gráfico e busca de notícias por ativo
 Mesmo modal da seção 8. Botão (`.sn-search-btn`) abre notícias específicas daquele ativo via
-`openTickerNews()` (modal dedicado, usa `/api/news?t=TICKER`).
+`openTickerNews()` (modal dedicado, usa `/api/news?t=TICKER&n=Nome` — o nome importa muito pro
+filtro, ver seção 23.5). `openTickerNews()` aceita um 3º argumento com a origem: vindo da ficha
+da empresa, aparece um botão "Voltar para a ficha" (antes era um beco sem saída).
+
+A busca rápida da seção 24 cobre o mesmo terreno com mais alcance, incluindo ativos fora do
+terminal — a busca desta aba ficou por compatibilidade, não é mais o caminho principal.
 
 ---
 
@@ -1134,8 +1248,244 @@ problema estrutural na fonte de dados (bondterminal.com). Causa raiz final: **co
 cálculos esgotada** de forma persistente na conta/plano da API, mesmo depois de corrigido um bug
 real de concorrência no código (pool sem limite de requisições simultâneas, estourando o limite
 de 4 in-flight da API). Diante da persistência do problema, o usuário optou por remover a aba.
-`Bonds Carteira.xlsx` ficou órfã no repo. **Não recriar sem pedido explícito** — e se pedir,
-checar primeiro se o problema de cota/plano do bondterminal.com foi resolvido.
+`Bonds Carteira.xlsx` ficou órfã no repo.
+
+**Recriada numa sessão bem posterior (ver seção 16.2)** — não usando bondterminal.com nem
+nenhuma API paga. Fonte de dados nova: planilha `Bonds Terminal.xlsx` mantida manualmente pelo
+Daniel (mesmo padrão já usado pra NTN-B). Sem relação de código com a implementação antiga —
+tudo escrito do zero.
+
+---
+
+## 16.2 Aba BONDS
+
+Nova aba (7ª, depois de NOTÍCIAS), criada numa sessão bem posterior à remoção da BONDS (BETA)
+antiga (seção 16) — sem relação de código, dado ou fonte com aquela tentativa. Lista ~69 papéis
+de renda fixa (soberano BR, corporativos BR e internacionais, bancos, preferenciais, fundos de
+bonds) com cupom, duration, bid yield e spread over treasury do dia, agrupados por região, cada
+um clicável pra abrir histórico de yield e/ou preço, com comparação opcional contra treasuries
+americanos.
+
+### 16.2.1 Fonte de dados: `Bonds Terminal.xlsx`
+
+Mesmo padrão já usado pra NTN-B (seção 6.8.1): planilha na **raiz do repo**, mantida à mão pelo
+Daniel, subida pelo fluxo normal de upload no GitHub. **Real confusão de deploy nessa sessão**:
+a primeira versão do código esperava o arquivo dentro de uma subpasta `Bonds Terminal/Bonds
+Terminal.xlsx` (o Daniel tinha organizado a planilha assim localmente) — mas ele subiu o
+`.xlsx` solto na raiz do GitHub (como já faz com a NTN-B), gerando `ENOENT` em produção porque
+`vercel.json`/`api/bonds.js` procuravam no caminho errado. **Corrigido trocando o código pra
+esperar a raiz** (igual à NTN-B) em vez de pedir pro Daniel reorganizar o upload — a subpasta
+`Bonds Terminal/` ficou órfã (seção 2).
+
+Quatro abas usadas, todas mantidas manualmente pelo Daniel (sem API externa nenhuma):
+
+| Aba | Conteúdo | Cobertura |
+|---|---|---|
+| **Controle Duration** | Foto do dia por papel: nome, ISIN, banco/dealer, volume, bid yield, cupom, duration, spread over treasury. Data de referência do snapshot inteiro na célula **D1** (serial do Excel). | Todos os ~69 papéis |
+| **Bid Yield** | Histórico diário de bid yield, ~5 anos | 53 dos 69 (faltam os 15 Fundos de Bonds + TBILL — ver 16.2.7) |
+| **Preços** | Histórico diário de preço (Bid Close), ~5 anos | 53 dos 69 (mesma lista da coluna anterior — ver 16.2.7) |
+| **Treasury** | Histórico diário de yield de treasury americano por vencimento (3M/6M/1Y/2Y/3Y/5Y/7Y/10Y) | pra comparação, não por papel |
+
+As três abas de histórico usam o **mesmo layout de blocos de 3 colunas** (rótulo | valor |
+vazio) repetidos lado a lado — nome do papel (ou vencimento do treasury) na linha 1, alinhado
+com a coluna de VALOR (não a de timestamp); ticker RIC na linha 2; uma linha de status
+("#NOME?" ou "Updated at HH:MM:SS", resíduo de fórmula do Eikon que não resolve fora do
+terminal de origem — inofensivo, o dado histórico abaixo é valor fixo) na linha 3; sub-cabeçalho
+"Timestamp"/"Bid Yield Close" na linha 4. **"Preços" não tem a linha de status** — cabeçalho e
+dados começam uma linha antes das outras duas (dados a partir da linha 4, não 5).
+
+### 16.2.2 `api/bonds.js` — endpoints
+
+```
+GET /api/bonds                              → snapshot (Controle Duration) + data de referência
+GET /api/bonds?history=yield&name=...       → histórico de Bid Yield
+GET /api/bonds?history=price&name=...       → histórico de preço (PU)
+GET /api/bonds?history=treasury&maturity=2Y → histórico de yield do treasury (3M/6M/1Y/2Y/3Y/5Y/7Y/10Y)
+```
+
+Snapshot devolve `{ asOf: "18/08/2026", bonds: [...] }` — `asOf` vem da célula D1 de "Controle
+Duration" (ver 16.2.1). Cada item de `bonds` tem `section`
+(ver 16.2.4) além dos campos crus da planilha. Localiza um bloco de histórico varrendo a linha 1
+de cada aba em blocos de 3 colunas até achar o rótulo procurado (texto exato, trim) — sem
+depender de posição fixa de coluna, então sobrevive a novos papéis sendo adicionados no meio ou
+no fim da planilha.
+
+Espelho completo em `server.ps1` (`Get-BondsSnapshot`/`Get-BondsBlockSeries`/
+`Get-XlsxSheetMap`/`ConvertTo-XlsxCellMap`/`ConvertTo-ColLetter`/`ConvertTo-BrDateFromSerial`),
+seguindo a Regra de ouro nº 3 (seção 2). Parse manual do `.xlsx` via zip/XML, igual à NTN-B
+(`Get-NtnbStaticAnchors`) — sem depender de nenhuma lib de Excel no PowerShell.
+
+### 16.2.3 Papéis duplicados por dealer + alias manual
+
+Alguns papéis aparecem **2x** em "Controle Duration" com bancos/dealers diferentes mas o mesmo
+ISIN (ex: "Banco do Brasil 26" banco C e "Banco do Brasil" banco B) — parecem ser cotações de
+corretoras diferentes pro mesmo papel. Cada linha da planilha é tratada como uma **entrada
+própria** no snapshot (não agrupamos por ISIN) — sem regra ainda de qual cotação é "a oficial",
+mostra como vem. XP 29/XP 29 2, Santander 33 e JP Morgan 33 (banco C/G/D/C respectivamente) são
+exemplos desse padrão que já têm dado próprio nas abas de histórico hoje.
+
+**"Rede Dor 30 2" é diferente**: é o mesmo bond que "Rede Dor 30" (confirmado pelo Daniel), mas
+**não tem bloco próprio** nem em "Bid Yield" nem em "Preços". Resolvido via
+`HISTORY_NAME_ALIASES` (`api/bonds.js`) / `$BONDS_HISTORY_ALIASES` (`server.ps1`) — um mapa
+curado manualmente, papel por papel (não é regra automática por ISIN, porque nem toda duplicata
+de ISIN é esse caso — ver parágrafo acima), que troca o nome pedido pelo nome do papel-fonte antes
+de procurar o bloco de histórico. Hoje só tem `'Rede Dor 30 2' → 'Rede Dor 30'`; se aparecer
+outro caso igual, é só adicionar uma linha nos dois arquivos.
+
+### 16.2.4 Seções geográficas + ordenação por duration
+
+A própria planilha já organiza "Controle Duration" com **linhas divisórias** (nome na coluna D,
+ISIN vazio): Brasil, Europa, US Consolidado, Preferred, África/Ásia/Latam, Fundos de Bonds.
+Detectadas por uma **lista fixa de 6 rótulos exatos** (`BONDS_SECTIONS` em `api/bonds.js`,
+`Test-BondsSectionDivider` em `server.ps1`) — não por "tem nome sem ISIN" genérico, porque
+alguns papéis de verdade também não têm ISIN preenchido (ex: "CLN Volkswagen") e não devem virar
+seção por engano. Cada papel do snapshot carrega o `section` do último divisor visto antes dele.
+
+**"África/Ásia/Latam" tem acento** — no `server.ps1`, comparar contra esse literal diretamente
+teria o mesmo risco de corrupção já documentado pra "Mês Anterior" (seção 3: Windows PowerShell
+5.1 lê `.ps1` sem BOM no codepage do sistema, não UTF-8). Resolvido casando só pelo sufixo
+seguro `-like '*Latam'` em vez do texto inteiro — mesma técnica já usada em
+`Get-XlsxSheetMap` pra resolver o nome da aba "Preços" (`ç`) por padrão (`'Pre*'`) em vez de
+igualdade exata.
+
+**Ordenação**: dentro de cada seção, os papéis vêm ordenados por **duration crescente**
+(front-end, `sortBondsWithinSections()` em `index.html` — a ordem de seções em si segue a ordem
+de aparição na planilha). **Exceto "Fundos de Bonds"**, que fica na ordem original da planilha
+sem reordenar — a pedido explícito do Daniel.
+
+### 16.2.5 Tabela e modal de histórico
+
+Tabela reaproveita as classes `.close-table`/`.close-row`/`.close-region` já usadas no relatório
+de Fechamento (seção 6.8) — região aparece como cabeçalho em destaque azul entre grupos.
+Clique numa linha abre um modal (mesmo padrão do histórico de NTN-B/DI Futuro, seção 8) com:
+
+- **Alternador YIELD/PREÇO** — troca a série mostrada. **Escondido pra papéis de "Fundos de
+  Bonds"**: fundos nunca vão ter preço (a pedido do Daniel — funds não são cotados por preço
+  igual bond individual), então o botão simplesmente não aparece pra eles em vez de oferecer um
+  modo que nunca carrega nada (`openBondHistory()` verifica `bond.section` e escode o botão via
+  `style.display`).
+- **Combo "comparar com treasury"** (3M/6M/1Y/2Y/3Y/5Y/7Y/10Y) — só habilitado no modo Yield
+  (preço vs. yield de treasury não são comparáveis, unidades diferentes). Sobrepõe uma segunda
+  linha pontilhada cinza no mesmo gráfico, mesmas datas.
+- **Spread calculado e mostrado no cabeçalho** quando um treasury está selecionado: yield do
+  papel − yield do treasury, no último dia em que os dois têm dado (não necessariamente o último
+  ponto da série do papel — as duas fontes podem atualizar em dias diferentes).
+- Seletor de período **1M/3M/6M/1A/2A** (sem "DESDE O INÍCIO" — removido a pedido do Daniel).
+- Labels do eixo X com **dia/mês/ano** (`DD/MM/AA`), não só dia/mês como os outros gráficos do
+  terminal — pedido explícito, porque o histórico cobre ~5 anos e dia/mês sozinho fica ambíguo.
+
+### 16.2.6 Filtros por Duration, Cupom e Spread
+
+Três grupos de filtro (faixa mín/máx) acima da tabela — Duration, Cupom (%), Spread (p.p.) — com
+link "limpar filtros". Os `<input>` ficam **fora** de `#bonds-body` de propósito: esse `<div>` é
+reconstruído inteiro a cada render (`renderBondsTable()`), então inputs *dentro* dele perderiam
+foco/valor a cada filtro aplicado. O contador no topo mostra "X de Y papéis" quando algum filtro
+reduz a lista, ou só "Y papéis" quando não há filtro ativo.
+
+### 16.2.7 Papéis sem preço e/ou yield (pendência viva)
+
+Lista de referência gerada por análise (não lida por nenhum código) em
+`Bonds Terminal/papeis_sem_precos.txt`. Estado em 19/08/2026, depois de o Daniel completar dado
+pra XP 29/XP 29 2/Santander 33/JP Morgan 33: sobram **16 de 69** sem preço e sem yield — os
+**15 Fundos de Bonds** (esperado, não vamos ter mesmo — ver 16.2.5) e **"TBILL 12-nov-26"**
+(seção "US Consolidado", não é fundo — único caso real ainda sem tratamento, sem alias
+disponível porque não é duplicata de nenhum outro papel da lista).
+
+### 16.2.8 Bugs reais corrigidos nessa sessão
+
+Cinco bugs reais, encontrados construindo e testando essa aba — os 3 primeiros valem como lição
+geral pra qualquer parser de XML/planilha escrito à mão em PowerShell daqui pra frente, não só
+pra bonds:
+
+1. **Regex numa passada só sobre XML grande perde células silenciosamente.** Rodar o regex de
+   célula (`<c r="...">...</c>`) direto sobre a string XML inteira de uma aba grande (~5MB,
+   "Bid Yield" tem ~300 mil células) fazia alguns matches desaparecerem sem erro nenhum —
+   confirmado ao vivo (célula A10 saía do mapa mesmo com XML idêntico a outras que funcionavam).
+   O mesmo padrão, testado isolado num trecho pequeno, casava certo — o problema só aparece em
+   documentos muito grandes. **Corrigido em duas passadas**: separa por `<row>...</row>` primeiro
+   (bem menor cada), casa células dentro de cada linha depois (`ConvertTo-XlsxCellMap`).
+2. **Tags autofechadas (`<c r="C1" s="138"/>`) vazam pra célula vizinha.** Excel escreve células
+   vazias-mas-estilizadas (só formatação, sem valor) como tag autofechada, sem `</c>`. Um regex
+   que só reconhece a forma aberta+conteúdo+fechamento tenta casar a autofechada como se fosse
+   aberta, e o `(.*?)` não-greedy "vaza" através dela (e de outras autofechadas em sequência) até
+   achar o primeiro `</c>` de verdade — atribuindo o valor de uma célula à frente pra célula
+   errada (confirmado: "C1" recebia o valor real de "E1"). **Corrigido com alternância** no
+   regex: casa a forma autofechada primeiro (ignora, sem valor) OU a forma aberta normalmente.
+3. **`[int]` em PowerShell arredonda, não trunca.** `ConvertTo-ColLetter` (número de coluna →
+   letra) fazia `$N = [int](($N-1)/26)` a cada iteração, assumindo truncamento — mas `[int]`
+   aplicado a um `double` em PowerShell **arredonda pro inteiro mais próximo**
+   (`[int]4.538` = 5, não 4), diferente de `Math.floor()` (JS) ou `int()` (Python). Corrompia a
+   letra calculada pra qualquer coluna cuja divisão intermediária caísse em fração ≥ 0,5 —
+   silenciosamente, sem erro. Só não apareceu nos primeiros testes porque os papéis testados
+   ficavam em colunas baixas o suficiente pra nunca bater nesse caso ("JP Morgan 33", adicionado
+   depois numa coluna mais à direita, expôs o bug). **Corrigido com `[math]::Floor()`**
+   explícito. Só afetava o `server.ps1` (dev local) — `api/bonds.js` (produção) já usava
+   `Math.floor()` corretamente desde o início.
+4. **`xlsx` (Node) decide Date vs. número pelo FORMATO da célula, não pelo valor.** Com
+   `cellDates: true`, a lib olha o **estilo de número aplicado à célula** pra decidir se converte
+   pra `Date`. O bloco de preço de "JP Morgan 33" em "Preços" tinha formatação de data aplicada
+   por engano numa coluna de preço normal (confirmado no Excel pelo Daniel: exibia "102,0762", um
+   preço, não uma data) — a lib lia isso como um objeto `Date` bizarro de 1900 em vez do número,
+   e a série toda parecia vazia. **Só afetava produção** (`api/bonds.js`, via `xlsx`) — o
+   `server.ps1` nunca teve esse problema, porque o parser manual de XML nunca olha formatação,
+   só o valor bruto. **Corrigido removendo `cellDates: true`** — toda célula numérica volta como
+   número puro, independente do formato exibido — e convertendo a coluna de Timestamp
+   manualmente a partir do serial do Excel (`excelSerialToBr()`).
+5. **Mesma classe do bug de "Mês Anterior" (seção 3), duas vezes novas**: nome de aba "Preços"
+   (`ç`) e rótulo de seção "África/Ásia/Latam" (`Á`) — literais acentuados no próprio `.ps1` não
+   dão pra comparar diretamente contra texto extraído do `.xlsx` (esse sim lido como UTF-8 de
+   verdade). Resolvido casando por padrão ASCII-safe (`'Pre*'`, `-like '*Latam'`) em vez de
+   igualdade exata — ver 16.2.1 e 16.2.4.
+
+**Lição geral pra manutenção futura**: ao escrever ou estender um parser manual de `.xlsx` em
+PowerShell, (a) nunca rodar regex de célula sobre o XML da aba inteira de uma vez em planilhas
+grandes — separar por linha primeiro; (b) sempre tratar tags autofechadas de `<c>` como um caso
+explícito, nunca assumir que toda célula tem conteúdo entre tags; (c) nunca usar `[int]` pra
+truncar um `double` — usar `[math]::Floor()`. E ao ler `.xlsx` no Node via `xlsx`, ter em mente
+que `cellDates: true` confia na formatação da célula, não no valor — se uma coluna deveria ser
+sempre numérica independente de como a célula foi formatada, ler sem `cellDates` e converter só
+as colunas que você sabe que são data, manualmente.
+
+---
+
+## 16.1 [REMOVIDO] Aba ELEIÇÕES — Polymarket (metodologia preservada)
+
+**Removida a pedido do usuário (26/10/2026)**: botão de navegação, painel `#tab-elections`, bloco JS
+`// ── Eleições · Polymarket`, variável `electionsLoaded` + linha em `switchTab`, e a seção "Eleições" do
+modal de Fontes. Era "Presidencial Brasil 2026" — gráfico de probabilidade implícita por candidato. **Esta seção
+guarda a receita pra recriar sem reinvestigar a API. Não recriar sem pedido explícito.**
+
+**Sem proxy, sem função serverless**: as APIs públicas da Polymarket respondem com
+`Access-Control-Allow-Origin: *` (confirmado ao vivo), então o navegador chamava direto — não gastava nenhum dos
+12 slots de função do Vercel Hobby.
+
+**Endpoints**
+1. **Candidatos + preço atual** — `GET https://gamma-api.polymarket.com/events?slug=brazil-presidential-election`
+   → array; usar `[0].markets`. Filtrar `active && !closed && outcomePrices && clobTokenIds`.
+   - **Pegadinha**: `outcomePrices` e `clobTokenIds` vêm como **string contendo JSON** — precisa de `JSON.parse`
+     extra. `outcomePrices[0]` = preço do "Yes" (0–1, ×100 = % de chance); `clobTokenIds[0]` = token do "Yes".
+   - Nome do candidato: `m.groupItemTitle || m.question`.
+   - Evento tinha ~19 candidatos ativos, a maioria perto de 0% → ordenar por preço desc e manter só os **6** maiores.
+2. **Histórico** — `GET https://clob.polymarket.com/prices-history?market=<tokenId>&interval=max&fidelity=1440`
+   → `{history:[{t (segundos Unix), p (0–1)}]}`. `fidelity=1440` = 1 ponto/dia. Buscado 1× por token (cache em
+   `Map`), nunca refiltrado por range.
+
+**Decisões de UI (a pedido do usuário)**
+- **Sem seletor de horizonte** ("não faz sentido" pra mercado com data de resolução fixa): sempre história completa.
+- Card por candidato: bolinha de cor, nome, `Yes XX,X¢`, probabilidade em %, e Δ em **p.p. vs 30 dias atrás**.
+- Aviso permanente: preço = probabilidade implícita dos traders (60¢ = 60%), **não é pesquisa eleitoral**.
+
+**Bugs reais do gráfico (Chart.js linha) e correções**
+- Snapshots de candidatos diferentes **não têm os mesmos horários**, e podia haver 2 por dia no mesmo candidato →
+  tooltip duplicava candidatos. **Correção**: chavear o histórico por **dia inteiro** (`Math.floor(t/86400)`,
+  ficando com o último do dia) e usar **uma grade de dias única** (união de todos os dias de todos os candidatos)
+  em todos os datasets; com isso `interaction.mode: 'index'` é seguro. (`mode: 'x'` casa 2 pontos do mesmo
+  candidato quando o dado é mais denso que os pixels.)
+- **Carregar pra frente** o último preço conhecido nos dias sem snapshot (preço sem negociação nova = último preço
+  negociado); antes do 1º preço conhecido fica `null` (buraco real). `spanGaps: 20`.
+- Eixo X linear em dia-índice, reaproveitando `ntnbDayIdxToLabel` (mesmo do gráfico da NTN-B — **essa função
+  continua em uso pela NTN-B, não apagar**). Eixo Y fixo 0–100%. Plugin `dragRange` ativo (com `events` incluindo
+  `mousedown`/`mouseup`, ver seção 8.3). 6 cores fixas pros candidatos.
 
 ---
 
@@ -1151,19 +1501,134 @@ Dois modais distintos:
 
 A sub-aba FECHAMENTO (seção 6.8) **não** usa nenhum desses modais — a explicação de fontes/MTD-
 YTD/limitação da ETTJ fica numa nota fixa (`.close-note`) dentro do próprio card, por ser curta o
-suficiente pra não precisar de modal dedicado.
+suficiente pra não precisar de modal dedicado. **A aba BONDS (seção 16.2) segue o mesmo padrão**
+— nota fixa própria abaixo da tabela, sem entrada em `#sources-overlay`.
 
 ---
 
 ## 18. Otimização de Custo do Vercel
 
-Plano **Hobby**: limite de 1M invocações/mês. Auto-refresh (60s) só dispara enquanto uma aba está
-aberta e em foco (`visibilitychange` pausa o timer em segundo plano). **NOTÍCIAS não entra no
-ciclo de 60s** — carrega ao abrir a aba e tem seu próprio ciclo de notificação de 120s (seção
-15.1.7), então não pesa no limite de invocação do mesmo jeito que os cards que atualizam
-automaticamente. Mesmo assim, o ciclo de notificação roda em background o tempo todo que o
-terminal estiver aberto (mesmo fora da aba NOTÍCIAS) — vale ter em mente se o uso de invocações
-subir de forma inesperada no futuro.
+> **O projeto está no PRO desde 18/11/2026** (ver seção 0). Tudo abaixo foi feito sob a cota do
+> Hobby e **continua valendo** — as otimizações seguem boas — mas **deixaram de ser restrição**.
+> No Pro há US$ 20 de crédito contra um consumo medido de ~US$ 1,21/mês, e o teto de 12 funções
+> acabou. Antes de recusar algo "por custo", confira se a premissa ainda vale.
+
+Plano **Hobby** (histórico): 1M invocações/mês **e 4 horas de "Fluid Active CPU" por janela de
+30 dias**. Auto-refresh (60s) só dispara enquanto uma aba está aberta e em foco
+(`visibilitychange` pausa o timer em segundo plano). **NOTÍCIAS não entra no ciclo de 60s** —
+carrega ao abrir a aba e tem seu próprio ciclo de notificação (seção 15.1.7).
+
+### 18.0 Incidente real: cota de CPU estourada (10/11/2026) — e as otimizações que entraram
+**O que aconteceu**: e-mail do Vercel avisando que o time grátis tinha usado **103% das 4h de
+Fluid Active CPU**, com a conta a ser **pausada em 24h**. 99,3% do consumo era do
+`terminal-financeiro`.
+
+**Diagnóstico** (as duas causas somadas):
+1. **Uma invocação por ticker.** Cada ciclo de 60s pedia ~26 tickers ao Yahoo em ~26 requisições
+   separadas. Cada invocação de função paga o próprio overhead fixo de CPU (boot do módulo,
+   parse/serialize) — esse overhead, multiplicado por 26 × 60 ciclos/hora, era o grosso da conta.
+2. **`/api/ai-news` sem cache nenhum.** É de longe a função mais cara do projeto (12 fontes ×
+   várias páginas + raspagem das homepages + clustering TF-IDF ≈ 3s de trabalho real por
+   chamada), e o ciclo de notificação a chamava **a cada 120s** o tempo todo que o terminal
+   estivesse aberto, em qualquer aba. Todos os endpoints estavam com `Cache-Control: no-store`.
+
+#### 18.0.0 Como a cota do Hobby realmente funciona (pesquisado na fonte, 10/11/2026)
+**Não existe data de reset.** A doc oficial do plano Hobby diz, literalmente, que *"as the Hobby
+plan is a free tier there are no billing cycles"* e que, ao estourar, *"you will have to wait
+until 30 days have passed before you can use the feature again"*. Um mantenedor da Vercel
+descreveu como **janela móvel de 30 dias** ("rolling 30 day period, so it's always looking at
+the past 30 days"). A interface confirma: só oferece janelas móveis (7/14/30 dias, 3/12 meses),
+sem a opção "ciclo de cobrança atual" que contas pagas têm.
+
+> **Consequência prática que muda tudo**: o uso **não zera num dia** — ele cai aos poucos,
+> conforme cada dia pesado completa 30 dias e sai da janela. E, se o consumo diário continuar no
+> mesmo patamar que estourou a cota, a janela **nunca** volta pra baixo do limite. Reduzir o
+> consumo não é opcional: é o que torna a recuperação possível.
+
+**O despause NÃO é automático.** A KB da Vercel diz que projetos pausados voltam *"one at a
+time, never automatically"*. Relatos recorrentes na comunidade confirmam: mesmo com o uso já
+dentro do limite, a conta segue pausada até você **pedir o despause em vercel.com/help**.
+
+**Atenção — `vercel-usage.ps1` está errado**: ele soma "do dia 1 do mês atual até agora", o que
+**não corresponde** à janela móvel de 30 dias que a Vercel usa de fato. Os números dele não batem
+com o painel. Se for usado pra monitorar a cota, precisa ser reescrito pra janela móvel.
+
+**Outros tetos do Hobby** (não só o de CPU): Provisioned Memory 360 GB-hrs, Invocations 1M, Fast
+Data Transfer 100 GB, Fast Origin Transfer 10 GB, CDN Requests 1M. Diferença importante:
+**Active CPU só conta enquanto o código roda** (pausa durante I/O — esperar o Yahoo responder não
+conta), enquanto **Provisioned Memory conta a vida inteira da instância, I/O incluído**. Pro
+perfil deste projeto (proxies I/O-bound), a medição de 10/11/2026 foi CPU 4h11m/4h (**105%**, o
+gargalo) contra memória 50,5/360 GB-hrs (14%) e invocações 226K/1M (23%) — ou seja, só a CPU
+apertava.
+
+**O que foi implementado:**
+
+| # | Mudança | Onde |
+|---|---|---|
+| 1 | **Lote de cotações**: `/api/yahoo?t=A,B,C` resolve vários tickers numa invocação só. ~26 invocações/ciclo → **1**. | `api/yahoo.js`, `index.html`, `server.ps1` |
+| 2 | **Cache de CDN** (`s-maxage`) em todos os endpoints, no lugar de `no-store` — requisição repetida dentro da janela é servida pela CDN **sem invocar a função**. | todos os `api/*.js` |
+| 3 | **Cache em memória** no `ai-news` (5 min), 2ª camada pra quando a CDN expira mas a lambda está quente. | `api/ai-news.js` |
+| 4 | **Ciclo de notificação 120s → 300s**, alinhado ao cache de 5 min do backend. | `index.html` |
+| 5 | **Pausa por inatividade (15 min)** — ver 18.0.2. | `index.html` |
+
+#### 18.0.1 Lote de cotações — como funciona
+`/api/yahoo` aceita `t` com **um** ticker (resposta = JSON cru do Yahoo, **formato original
+preservado**, que os gráficos/histórico/intraday já esperam) ou **vários separados por vírgula**
+(resposta = `{ batch: { "<ticker>": <JSON cru> } }`).
+
+No front-end **as funções que chamam `yahoo(ticker)` não mudaram**. O agrupamento é interno:
+`yahooChart()` põe o pedido numa fila (`yahooQueue`) e um `setTimeout` de 20ms
+(`YAHOO_BATCH_WINDOW_MS`) dispara o `flushYahooBatch()`, que manda tudo que caiu na janela num
+pedido só. Como `loadAll()` dispara todos os `load*()` no mesmo tick, os ~26 tickers caem
+naturalmente no mesmo lote. **Ao adicionar um card novo que chame `yahoo()`, não é preciso fazer
+nada** — ele entra no lote sozinho.
+
+Detalhes que importam:
+- **Concorrência limitada a 8** (`MAX_CONCURRENT` em `api/yahoo.js`): 26 requisições simultâneas
+  ao Yahoo saindo do mesmo IP tendem a levar 429. Em ondas de 8 o lote sai em ~1-2s.
+- **Cookie+crumb compartilhados** (`cachedAuth`, TTL 10 min): o fallback de fechamento anterior
+  (seção 6.6.1) custa 2 requisições de autenticação; sem compartilhar, um lote com 3 commodities
+  pagaria 6. Espelhado em `Get-YahooAuth` no `server.ps1`.
+- **Contrapartida honesta**: um ticker lento agora atrasa o lote inteiro, e se o pedido falhar de
+  vez, todos caem juntos (cada um ainda cai no seu cache de `localStorage`, então degrada bem).
+  Com 8 em paralelo isso não apareceu nos testes.
+
+#### 18.0.2 Pausa por inatividade
+O terminal atualizava a cada 60s o dia inteiro mesmo largado aberto num monitor de lado —
+`visibilitychange` só cobre aba minimizada/em segundo plano, não "janela visível e ninguém
+olhando". Agora, **15 min** (`IDLE_PAUSE_MINUTES`) sem `pointerdown`/`keydown`/`wheel`/
+`touchstart`/`focus` → `pauseCycles()` para o ciclo de 60s **e** o de notificação, e o contador
+no rodapé mostra **"pausado"**. Qualquer interação chama `resumeCycles()`, que dispara um
+`loadAll()` **imediato** — então, na prática, quando você volta a olhar o dado já está fresco.
+
+#### 18.0.3 Tabela de cache por endpoint
+| Endpoint | `s-maxage` | Por quê |
+|---|---|---|
+| `ai-news` | 300s | função mais cara do projeto; + cache em memória de 5 min |
+| `yahoo` | 30s | abaixo do ciclo de 60s — não atrasa nada, dedupe entre abas/pessoas |
+| `b3`, `treasury` | 45s | DI Futuro já vem com ~15min de atraso da origem |
+| `anbima`, `ntnb`, `rates` | 900s | dado de fechamento **diário**, não muda durante o pregão |
+| `news` | 600s | resumo de IA do mesmo artigo é sempre o mesmo (poupa cota do Gemini) |
+| `target`, `quote-search` | 3600s | price target muda em semanas; resolver texto→ticker é estático |
+
+**Regra pra endpoint novo**: `no-store` só se o dado mudar a cada segundo *e* não puder atrasar.
+Em qualquer outro caso, escolher um `s-maxage` ≤ à frequência real de mudança da fonte.
+
+#### 18.0.4 Lição de performance do `server.ps1` (só dev local)
+Ao espelhar o lote, a primeira versão fazia `ConvertFrom-Json` em cada ticker e
+`ConvertTo-Json -Depth 15` no conjunto: o lote de 26 levava **~25s**. O gargalo era o
+`ConvertTo-Json` do PS 5.1 sobre ~370KB. A versão atual (`Get-YahooChartRaw`/`Get-YahooChartBatch`)
+**trabalha com o JSON cru como string**, só procurando o campo do fechamento anterior por regex e
+injetando o valor no texto quando falta — **lote caiu pra ~4,4s**. Também foi preciso subir
+`[System.Net.ServicePointManager]::DefaultConnectionLimit` (padrão .NET = **2 conexões por
+host**, o que serializava tudo).
+
+> **Atenção ao medir o servidor local**: o `HttpListener` do `server.ps1` é **mono-thread** —
+> atende uma requisição por vez. Se o navegador estiver com o terminal aberto, qualquer medição
+> por `curl`/`Invoke-WebRequest` entra na fila atrás dele e dá número inflado (chegamos a medir
+> 27s pro que na verdade levava 1,8s). Pra medir, suba uma instância própria noutra porta
+> (`$env:PORT`) **sem** nenhuma aba aberta nela. No Vercel isso não existe: cada endpoint é uma
+> lambda paralela.
 
 ### 18.1 Incidente real: `FUNCTION_INVOCATION_FAILED`
 Todas as funções falharam simultaneamente com `500`. **Não foi limite de invocação**. Causa raiz
@@ -1179,15 +1644,19 @@ reais do deployment antes de qualquer suposição.
 ### 19.1 `package.json` é obrigatório
 Todo `api/*.js` usa ES Module. `package.json` declara `"type": "module"`. **Nunca** usar
 `module.exports` num arquivo novo. Também declara as dependências `ws` (cliente WebSocket, usado
-pelo histórico de DI Futuro) e `xlsx` (lê "Taxas Antigas NTNB.xlsx", seção 6.8.1) — precisam
-estar de fato no repositório pro build funcionar.
+pelo histórico de DI Futuro) e `xlsx` (lê "Taxas Antigas NTNB.xlsx" e "Bonds Terminal.xlsx",
+seções 6.8.1 e 16.2) — precisam estar de fato no repositório pro build funcionar.
 
-### 19.1.1 Limite de 12 funções serverless no plano Hobby
-O Vercel Hobby limita a **12 Serverless Functions por deployment** (1 função = 1 arquivo em
-`api/*.js`). Já batemos nesse limite antes — resolvido fundindo pares de endpoints da mesma
-fonte de dados numa função só cada (`b3.js`+`di-history.js`, `ntnb.js`+`ntnb-history.js`,
-`news.js`+`summarize-news.js`). **Atualmente 10 arquivos em `api/`** (incluindo o órfão
-`summary.js`, seção 0 pendência 4) — ainda com 2 de folga.
+### 19.1.1 Limite de funções serverless — HISTÓRICO, não vale mais
+> **No Pro não há teto** (doc da Vercel: "Hobby: 12, Pro e Enterprise: No limit"). Hoje são
+> **14 arquivos** em `api/` e isso está OK. O texto abaixo é o histórico, porque explica por
+> que vários endpoints são multi-rota em vez de arquivos separados.
+
+O Vercel **Hobby** limitava a **12 Serverless Functions por deployment** (1 função = 1 arquivo
+em `api/*.js`). Batemos nesse limite — resolvido fundindo pares de endpoints da mesma fonte de
+dados numa função só cada (`b3.js`+`di-history.js`, `ntnb.js`+`ntnb-history.js`,
+`news.js`+`summarize-news.js`). **Essas fusões ficam como estão**: funcionam, e desfazer seria
+mexer em código testado sem ganho.
 
 **Lição real**: apagar um arquivo localmente **não remove ele do repositório remoto** se o
 próximo upload não incluir a remoção explicitamente — já virou órfão contando pro limite antes.
@@ -1195,14 +1664,27 @@ Sempre que remover uma aba/feature que tinha arquivo(s) próprio(s) em `api/`, *
 deletar esses arquivos no GitHub também**. Ao criar uma função nova, considerar primeiro se ela
 pode virar uma rota dentro de um arquivo já existente da mesma fonte de dados.
 
-### 19.1.2 `vercel.json` → `functions.api/ntnb.js`
-Duas configs adicionadas pro modo `?staticAnchors=1` (seção 6.8.1):
+### 19.1.2 `vercel.json` → `functions.api/ntnb.js` e `functions.api/bonds.js`
+Duas configs adicionadas pro modo `?staticAnchors=1` do `api/ntnb.js` (seção 6.8.1), e as mesmas
+duas pro `api/bonds.js` (seção 16.2):
 - `"maxDuration": 15` — ler e parsear o `.xlsx` é rápido, mas deixa uma margem sobre o timeout
   default do Hobby.
-- `"includeFiles": "Taxas Antigas NTNB.xlsx"` — **obrigatório**. Sem isso o Vercel pode não
-  incluir esse arquivo no bundle da função (ele não é código, é um dado estático fora de `api/`),
-  e `?staticAnchors=1` funcionaria local mas quebraria em produção com "arquivo não encontrado".
-  Se a planilha for renomeada, esse campo precisa acompanhar.
+- `"includeFiles"` — **obrigatório**. Sem isso o Vercel pode não incluir esse arquivo no bundle
+  da função (ele não é código, é um dado estático fora de `api/`), e o modo que depende dele
+  funcionaria local mas quebraria em produção com "arquivo não encontrado". Se a planilha for
+  renomeada ou movida, esse campo precisa acompanhar.
+
+**Incidente real (BONDS)**: o código do `api/bonds.js` foi corrigido numa sessão pra ler
+`Bonds Terminal.xlsx` da raiz do repo, mas o `vercel.json` não foi atualizado no mesmo upload —
+continuou apontando `includeFiles` pro caminho antigo (`Bonds Terminal/Bonds Terminal.xlsx`,
+subpasta). Resultado: `ENOENT` em produção mesmo com o `.xlsx` certo já presente na raiz do
+GitHub, porque o Vercel simplesmente não empacotava esse arquivo na função (o `includeFiles`
+errado não "encontra por perto" — se o caminho não bate exatamente, o arquivo não entra no bundle
+nem existe pro `/var/task/...` da função em runtime). **Lição**: `api/*.js` e `vercel.json` são
+dois arquivos que descrevem a mesma dependência de arquivo estático de dois jeitos diferentes —
+mudar o caminho num sem mudar no outro quebra em produção mesmo que localmente (`server.ps1`)
+funcione, porque o `server.ps1` lê o arquivo direto do disco, sem depender de `includeFiles`
+nenhum.
 
 ### 19.2 Fluxo do Daniel (não é git CLI)
 Sobe arquivos manualmente pela interface web do GitHub ("Add files via upload"), que dispara
@@ -1211,12 +1693,26 @@ cada tarefa, e avisar explicitamente quando um arquivo precisa ser **deletado** 
 (não só criado/atualizado). A pasta `chrome-extension/` **nunca** vai pro GitHub/Vercel.
 
 ### 19.3 Variáveis de ambiente necessárias no Vercel
-| Variável | Usada por | Obrigatória? |
+| Variável | Usada por | Situação |
 |---|---|---|
-| `GEMINI_API_KEY` | `api/news.js` (`?action=summarize`) | Sim, pro botão "resumir com IA" |
+| `GEMINI_API_KEY` | `api/news.js` (`?action=summarize`) | **configurada** — botão "resumir com IA" |
+| `GITHUB_TOKEN` | `api/cron-ntnb.js` | **configurada** em 18/11/2026 (Production/Preview/Development) |
+| `CRON_SECRET` | `api/cron-ntnb.js` | **FALTA CRIAR** — sem ela o cron responde 401 a tudo (seção 26) |
 
 `BONDS_API_KEY` não é mais usada — pode ser removida do Vercel (Settings → Environment
 Variables).
+
+**Sobre o `CRON_SECRET`**: a Vercel manda o valor como `Authorization: Bearer` nas chamadas
+agendadas. Só letras e números, 16+ caracteres — a doc avisa que vai como cabeçalho HTTP, e um
+espaço ou quebra de linha colado junto faz toda invocação virar 401. **E é obrigatório
+redeployar depois de salvar**: o deploy captura a variável no momento em que é construído, então
+editar sem redeployar não muda nada.
+
+**O `GITHUB_TOKEN` é o mesmo** que está em `Sync Bonds GitHub/config.json` (fine-grained,
+permissão Contents: Read and write, só no repo `Terminal---Ondina`). Ele **venceu em 18/11** e
+foi renovado — e vale a lição: *"renovar" um token no GitHub gera um valor NOVO e invalida o
+antigo na hora*. O painel mostra o token como ativo com validade nova, mas o valor guardado no
+arquivo já morreu. Depois de renovar, tem que colar o valor novo nos dois lugares.
 
 ---
 
@@ -1246,7 +1742,8 @@ Notícias/Ativos). Reaproveita os mesmos endpoints de `api/*.js` do domínio pub
 
 **Redesenhada nessa sessão** pra bater com o visual novo do terminal principal: mesmas variáveis
 de cor (`--ink`, `--page`, `--card`, `--accent`, off-white ajustado), mesma tipografia (IBM Plex
-Sans/Mono, via Google Fonts), abas e sub-abas em pílula (fundo navy quando ativa) em vez do
+Sans + mono, via Google Fonts — a fonte mono trocou de IBM Plex Mono pra JetBrains Mono junto
+com o `index.html`, seção 0), abas e sub-abas em pílula (fundo navy quando ativa) em vez do
 padrão antigo escuro com sublinhado laranja. **`popup.js` não mudou** — só o CSS/HTML de
 `popup.html`, mesma lógica de sempre.
 
@@ -1332,3 +1829,235 @@ usa inline livremente).
   (instrumento removido/adicionado) até o dia virar sozinho. **Bump o `v2`→`v3` etc. sempre que
   `CLOSE_REPORT_CONFIG` mudar de forma relevante** (instrumento novo, campo novo no payload) —
   isso invalida o cache de todo mundo automaticamente, sem exigir nenhuma ação manual do usuário.
+- **Parser manual de `.xlsx` em PowerShell (zip + regex de XML, sem lib) tem três armadilhas
+  reais** (encontradas construindo a aba BONDS, seção 16.2.8, detalhe completo lá):
+  (1) rodar o regex de célula sobre a string XML **inteira** de uma aba grande perde matches
+  silenciosamente — separar por `<row>...</row>` primeiro; (2) células autofechadas
+  (`<c r="X" s="N"/>`, comuns em colunas só-formatação) "vazam" pro conteúdo da célula seguinte
+  num regex que só reconhece a forma aberta+fechamento — casar a forma autofechada
+  explicitamente antes; (3) `[int]` aplicado a um `double` **arredonda**, não trunca — nunca usar
+  pra dividir/truncar índice de coluna ou algo parecido, usar `[math]::Floor()`.
+- **Ao ler `.xlsx` no Node via `xlsx` com `cellDates: true`, a lib decide Date-vs-número pela
+  FORMATAÇÃO da célula, não pelo valor** — uma célula numérica com estilo de data aplicado por
+  engano vira um objeto `Date` sem sentido em vez do número (bug real, seção 16.2.8). Se uma
+  coluna deveria ser sempre numérica independente de como alguém formatou a célula na planilha,
+  ler sem `cellDates` e converter manualmente só as colunas que você sabe que são data.
+- **Trocar a fonte mono (ou qualquer fonte) por nome literal**: procurar TODAS as ocorrências do
+  nome antigo no arquivo, não só a variável CSS — `font: { family: '...' }` do Chart.js e
+  qualquer `ctx.font = "...px 'Nome'"` de `<canvas>` (seção 6.8.2) citam o nome direto, sem
+  passar pela variável `--mono`/`--sans`.
+
+---
+
+## 23. Ficha da Empresa (`/api/company`)
+
+Página de detalhe de um ativo, inspirada na página de ação da **Perplexity Finance**, que o
+Daniel apontou como referência. Entrou em 19/11/2026.
+
+**Como se chega**: clicar num resultado da busca rápida (seção 24) abre a ficha — **não** o
+gráfico. Os cards do terminal continuam abrindo o gráfico direto, como sempre. Dentro da ficha
+há botões "Ver gráfico" e "Notícias".
+
+### 23.1 De onde vêm os dados
+Uma única chamada ao `quoteSummary` do Yahoo com **10 módulos de uma vez** (`price`,
+`summaryDetail`, `defaultKeyStatistics`, `financialData`, `assetProfile`, `earningsHistory`,
+`calendarEvents`, `recommendationTrend`, `majorHoldersBreakdown`, `institutionOwnership`).
+Autenticação por cookie+crumb, igual a `api/target.js`, com o par em cache por 10 min.
+
+**A resposta crua passa de 190 KB** — o endpoint reduz ao que a tela usa (**3,3 KB** no NVDA).
+Mandar o resto pro navegador seria desperdício.
+
+Cache de CDN de 15 min: fundamentos mudam em trimestres, não em segundos.
+
+### 23.2 O que a ficha mostra
+Preço e variação, 17 indicadores (P/L 12m e projetado, LPA, capitalização, dividend yield, beta,
+faixa de 52 semanas, abertura, mín/máx do dia, volume, receita, margem, crescimento, caixa,
+dívida), régua visual do alvo dos analistas com o preço atual marcado, distribuição das
+recomendações em barra, histórico de LPA estimado × real com a surpresa, detentores e perfil.
+
+### 23.3 Nem todo ativo tem tudo
+Um ETF não tem P/L nem setor; um índice tem só preço e faixa. **Cada seção some quando não há
+dado**, em vez de mostrar campo vazio. Verificado com NVDA (completo), PETR4.SA (B3, em BRL),
+GLD (ETF, parcial) e ^GSPC (índice, mínimo).
+
+### 23.4 "De quando são os dados" — por que existe essa linha
+A ficha mistura informações de idades **bem diferentes**: o preço é do momento da captura, mas
+os múltiplos e o balanço vêm do último trimestre FECHADO, que pode ter semanas. Mostrar junto
+sem avisar dá a impressão de que tudo é de agora. Por isso o endpoint devolve `capturadoEm`,
+`trimestreRef` e `exercicioRef`, e a ficha exibe:
+
+> preço de 19/11/2026 16:27 · fundamentos do trimestre encerrado em 31/08/26
+
+### 23.5 Notícias da empresa — filtro por citação
+`/api/news?t=TICKER&n=Nome` mudou bastante nessa sessão. Antes perguntava ao Yahoo só pelo
+ticker e **aceitava tudo que voltasse** — numa busca por NKE vinham notícias de McDonald's.
+
+Duas descobertas que moldaram a solução:
+
+1. **A busca do Yahoo é sensível ao formato.** Testado ao vivo: `PETR4.SA` e `PETR4` devolvem
+   **ZERO** notícias, e o nome formal "Petróleo Brasileiro" também — mas **"Petrobras" devolve
+   20**. Por isso a consulta manda o ticker E **cada palavra significativa do nome
+   separadamente**, nunca o nome formal inteiro.
+2. **O Yahoo já marca cada matéria com `relatedTickers`** — a lista de empresas citadas,
+   inclusive quando o nome não aparece no título. É o que permite saber que "Dow drops 800
+   points" fala da Nvidia **sem baixar e varrer o texto do artigo**.
+
+Uma matéria entra se o `relatedTickers` inclui o ticker **ou** se o título cita nome/ticker.
+Palavras vazias demais pra filtrar (Inc, Corp, Group, Holdings…) ficam fora dos termos. Se o
+filtro zerar tudo, devolve o que veio em vez de lista vazia.
+
+Medido: NVDA 3 → **18**, Nike 16 → **20**, Petrobras **0 → 9**, Tesla 19.
+
+> **Limite conhecido**: ações da B3 vêm marcadas pelo **ADR** (`PBR`, `PBR-A`), não por
+> `PETR4.SA` — nenhuma das 9 da Petrobras casa por ticker, todas passam pelo filtro de título.
+> Os dois critérios se complementam de propósito.
+>
+> E isto **não é** varredura literal do texto: é a marcação do Yahoo. Se um dia for preciso ler
+> o artigo inteiro, o extrator de texto já existe em `api/news.js` (usado no "resumir com IA"),
+> ao custo de ~20 requisições HTTP e o parse do HTML por consulta.
+
+---
+
+## 24. Busca Rápida (lupa no cabeçalho / Ctrl+K)
+
+Botão **"Buscar"** com ícone de lupa no cabeçalho. Digitar leva ao gráfico ou à ficha de
+qualquer ativo, ou troca de aba.
+
+### 24.1 Duas versões — e por que a primeira estava errada
+A primeira versão tinha **Ctrl+K como única porta de entrada**. O Daniel reportou três
+problemas, todos legítimos:
+
+1. **Não funcionava no iPhone** — não existe Ctrl+K num celular, então a busca era simplesmente
+   inacessível. Foi a falha mais séria: um atalho de teclado como único caminho.
+2. **Escolher exigia teclado** (setas + Enter).
+3. **Só encontrava o que já estava no terminal.**
+
+Correções: o botão visível virou a porta principal (Ctrl+K ficou como atalho de desktop); um
+**toque** no resultado abre, com itens de **44px** de altura (alvo de toque do iOS); e o realce
+por `hover` só é ligado em quem tem mouse — no toque ele fica "grudado" no último item tocado.
+
+### 24.2 O catálogo se monta sozinho
+O índice é construído **a partir do próprio DOM** a cada abertura, lendo os `onclick` que já
+existem nos cards (`openChart`, `openNtnbHistory`, `.tab-btn`). **Ativo novo no HTML entra na
+busca sozinho** — não há segunda lista pra manter sincronizada. Hoje indexa 49 itens.
+
+### 24.3 Busca no Yahoo
+O que não está no terminal vem de `/api/quote-search` — o mesmo endpoint que a busca de ativos
+em SINGLE NAMES já usava. Então Tesla, `PETR4.SA`, qualquer ticker aparece.
+
+Detalhes que importam: **300ms de atraso** pra não disparar uma chamada por tecla; um número de
+sequência descarta resposta que chegue fora de ordem; **timeout de 12s** (nos cards do ciclo
+automático 6s está certo, porque lá há cache pra onde cair — numa busca, desistir cedo significa
+não achar nada). Resultados remotos entram depois dos locais e sem repetir ticker existente.
+
+---
+
+## 25. Comparação de Ativos no Mesmo Gráfico
+
+Botão **"+ comparar"** no modal do gráfico sobrepõe até **4** ativos.
+
+**Com comparação ativa o gráfico troca de preço para BASE 100** — ouro a 4.000 e um ETF a 80 só
+são comparáveis em desempenho relativo. Sem comparação, segue mostrando preço, como sempre.
+
+Séries de bolsas diferentes são alinhadas **por dia calendário**, repetindo o último preço
+conhecido nos dias sem negociação e deixando `null` antes do primeiro preço (buraco de verdade,
+não inventa dado) — mesma lição da seção 13.2.
+
+Abrir outro ativo **zera** a comparação. "Desde o início" não aceita comparação, por ter lógica
+própria de tranches.
+
+> **Pegadinha real**: a paleta do gráfico "Desde o início" tinha só 2 cores, e o ouro passou a
+> ter 3 tranches — a terceira linha sairia sem `borderColor`. A paleta precisa ter pelo menos
+> tantas cores quanto o ativo com mais datas em `SINGLES_ENTRY_DATES`.
+
+---
+
+## 26. Captura de NTN-B por Cron na Vercel
+
+`api/cron-ntnb.js`, agendado em `vercel.json` para **segunda a sexta às 18:00 UTC** (15:00 de
+Brasília, ~3h depois do corte de coleta da ANBIMA).
+
+Substitui a tarefa `SalvarNtnbSemanal` do PC do Daniel, que dependia da máquina ligada (dias
+perdidos em viagem) e abria uma janela de console a cada boot.
+
+> ### ESTÁ INERTE ATÉ ALGUÉM CRIAR O `CRON_SECRET`
+> O endpoint **grava no repositório**, então exige o `Authorization: Bearer <CRON_SECRET>` que a
+> Vercel envia nas chamadas agendadas. Sem a variável nas Environment Variables, ele responde
+> **401 a tudo** — inclusive ao próprio cron. É o comportamento seguro, mas significa que o
+> histórico está **congelado em 17/11/2026**.
+>
+> Pior: a tarefa do Windows ainda grava na planilha, que **deixou de ser lida** (seção 26.1).
+> Então hoje as capturas vão para um arquivo que ninguém usa. Uma destas precisa acontecer:
+> criar o `CRON_SECRET` (e redeployar — a variável só é capturada no build), ou adaptar a tarefa
+> local pra gravar o JSON.
+
+**Como grava**: função serverless não tem disco. O dado vai pro próprio repositório pela API do
+GitHub (variável `GITHUB_TOKEN`, já configurada), e **o commit dispara o redeploy — que é
+justamente o que coloca o dado novo no ar**. Custo: ~20 deploys automáticos por mês na lista.
+
+**Idempotente de propósito**, porque a doc da Vercel avisa que a entrega do cron é "best effort"
+e pode disparar a mesma execução mais de uma vez ou nenhuma: a janela de 12 dias úteis é
+reprocessada inteira, só os dias **ausentes** são acrescentados, e sem novidade não há commit.
+Rodar duas vezes tem o mesmo efeito de rodar uma; um dia pulado é recuperado na corrida seguinte
+(12 dias úteis cobrem com folga a retenção de ~9 da ANBIMA).
+
+O `PUT` manda o `sha` do arquivo lido, então alteração feita entre a leitura e a escrita faz a
+gravação falhar em vez de sobrescrever.
+
+### 26.1 Bug grave: a planilha de NTN-B inchou pra 1 GB
+
+Descoberto em 19/11/2026. O arquivo em disco estava com **1.006.693.706 bytes (960 MB)**, tendo
+**31,5 MB** oito dias antes.
+
+**Causa**: o `XLSX.writeFile` do `salvar-mes.mjs` reescrevia o `xl/theme/theme1.xml` inflado a
+cada gravação semanal, multiplicando por ~32. O arquivo de 1 GB era **99,996% tema** — as abas
+de dados somavam ~45 KB, com **1.155 células** no total.
+
+**Consequências que isso já causava**, sem ninguém perceber:
+- O arquivo **nunca mais conseguiria ser publicado** (GitHub recusa acima de 100 MB) — as
+  capturas semanais estavam presas no disco local.
+- Inflava o bundle da função `api/ntnb.js` (limite de 250 MB).
+
+**Correção**: o `.xlsx` foi reescrito copiando todas as entradas do zip e trocando **só** o
+`theme1.xml` por um tema Office mínimo (1,9 KB). As abas passaram byte a byte. Resultado:
+**1 GB → 53 KB**, com as 1.155 células verificadas uma a uma (0 faltando, 0 divergentes).
+
+**A causa raiz some com a migração pro JSON**: `data/ntnb-historico.json` virou a fonte de
+verdade (76 snapshots em 12,5 KB), e a planilha ficou como **arquivo histórico congelado**, sem
+código escrevendo nela. `api/ntnb.js` prefere o JSON e só cai no `.xlsx` se ele faltar — **sem
+comparar data de modificação**, porque num checkout (Vercel, clone novo) todos os arquivos
+ganham a mesma data e a comparação não diria nada.
+
+Verificado: `?staticAnchors=1`, `?days=30` e `?days=120` produzem saída byte a byte idêntica
+pelos dois caminhos. `staticAnchors` caiu de **242ms para 11ms** de CPU.
+
+---
+
+## 27. Hospedar Fora da Vercel (`server.js`)
+
+Criado em 11/11/2026, quando a conta Hobby foi pausada e foi preciso um plano B. **Não é usado
+hoje** (o Pro resolveu), mas fica pronto e testado.
+
+`server.js` serve o `index.html` e monta os **mesmos** `api/*.js` **sem alterar nenhum deles**.
+Isso é possível porque os handlers usam a mesma assinatura (`handler(req, res)`) e só quatro
+coisas: `req.query`, `res.status`, `res.setHeader` e `res.json`. Um shim de ~15 linhas entrega
+essas quatro sobre o `req`/`res` cru do `node:http`. **Sem dependência nova.**
+
+Rodar local: `node server.js .` e abrir `http://localhost:8080`.
+
+**Render**: Build `npm install && node scripts/build-bonds.mjs`, Start `node server.js`. O plano
+Free hiberna após 15 min e leva ~1 min pra acordar; são 750 horas/mês por workspace, que cabem
+num mês inteiro ligado (720h). O plano de US$ 7 não hiberna.
+
+> **Não ligue um ping pra manter o serviço acordado**: a resposta do lote de cotações tem 374 KB,
+> e chamando 24h/dia daria ~16 GB/mês contra uma franquia de banda de ~5 GB no Free.
+
+O `.vercelignore` mantém `server.js` e `scripts/` fora do deploy da Vercel, e o `vercel.json`
+tem `"framework": null` e `"buildCommand": ""` — a auto-detecção da Vercel pode mudar de
+comportamento ao ver scripts ou dependências novas no `package.json`, e já houve casos de
+projeto estático virar app Node por isso.
+
+> **Atenção**: `/api/company` e `/api/cron-ntnb` **não foram espelhados** no `server.ps1` nem
+> são exercitados pelo `server.js` sem a rota correspondente — `/api/company` dá 404 no dev
+> local. A regra de espelhar segue valendo pros demais; essas duas ficaram de fora
+> conscientemente, porque o `server.ps1` responde em ~26s desde que o projeto voltou pra Vercel.
