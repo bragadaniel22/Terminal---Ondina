@@ -47,7 +47,7 @@ async function buscarNoYahoo(q) {
 // O Yahoo devolve o que acha parecido, sem garantir que a manchete seja sobre a empresa — numa
 // busca por NKE vinham notícias de McDonald's. Com os termos, só passa o que cita a empresa no
 // título. Sem termos (o feed geral de mercado), o comportamento antigo é mantido.
-export async function fetchNewsForTickers(consultas, termos = null) {
+export async function fetchNewsForTickers(consultas, termos = null, tickersAlvo = null) {
   const results = await Promise.all(consultas.map(buscarNoYahoo));
 
   const seen = new Set();
@@ -61,16 +61,26 @@ export async function fetchNewsForTickers(consultas, termos = null) {
         publisher: n.publisher,
         link: n.link,
         time: n.providerPublishTime ?? null,
+        // O Yahoo marca cada matéria com os tickers que ela cita — inclusive quando o nome não
+        // aparece no título. É o que permite saber que "Dow drops 800 points" fala da Nvidia
+        // sem precisar baixar e varrer o texto do artigo.
+        tickers: Array.isArray(n.relatedTickers) ? n.relatedTickers : [],
       });
     }
   }
 
   let saida = items;
-  if (termos?.length) {
+  if (termos?.length || tickersAlvo?.length) {
+    // Duas formas de dizer que a matéria é sobre a empresa:
+    // 1. relatedTickers do Yahoo — pega a citação DENTRO do texto, não só no título. É o sinal
+    //    mais forte, e sai de graça na mesma resposta.
+    // 2. o nome/ticker no título — cobre quando o Yahoo não marcou a relação.
+    const alvo = new Set((tickersAlvo || []).map((x) => x.toUpperCase()));
     const casa = (it) => {
+      if (alvo.size && (it.tickers || []).some((x) => alvo.has(String(x).toUpperCase()))) return true;
       const t = String(it.title || '').toLowerCase();
       // \b não funciona para acento; a fronteira é verificada com classes explícitas.
-      return termos.some((termo) => new RegExp(`(^|[^\\p{L}\\p{N}])${termo}([^\\p{L}\\p{N}]|$)`, 'u').test(t));
+      return (termos || []).some((termo) => new RegExp(`(^|[^\\p{L}\\p{N}])${termo}([^\\p{L}\\p{N}]|$)`, 'u').test(t));
     };
     const relevantes = saida.filter(casa);
     // Se o filtro zerar tudo (empresa de nome incomum, manchete que só cita o setor), é melhor
@@ -100,7 +110,11 @@ async function handleNewsList(req, res) {
     // significativa do nome separadamente, em vez do nome formal inteiro.
     const termos = termosDaEmpresa(ticker, nome);
     const consultas = [...new Set([ticker, ...termos.slice(0, 3)])];
-    const items = await fetchNewsForTickers(consultas, termos);
+    // Variações do ticker pra casar com o relatedTickers do Yahoo, que usa o símbolo cru:
+    // uma notícia de PETR4.SA vem marcada como "PETR4.SA" ou pelo ADR; aceitar as duas formas
+    // (com e sem sufixo de bolsa) evita perder matéria por detalhe de formatação.
+    const tickersAlvo = [...new Set([ticker, String(ticker).split('.')[0]].filter(Boolean))];
+    const items = await fetchNewsForTickers(consultas, termos, tickersAlvo);
     return res.json({ items });
   } catch (e) {
     return res.status(500).json({ error: e.message });
