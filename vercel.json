@@ -5,6 +5,9 @@
   "routes": [
     { "src": "/", "dest": "/index.html" }
   ],
+  "crons": [
+    { "path": "/api/cron-ntnb", "schedule": "0 18 * * 1-5" }
+  ],
   "functions": {
     "api/ntnb.js": { "maxDuration": 15, "includeFiles": "{data/ntnb-historico.json,Taxas Antigas NTNB.xlsx}" },
     "api/bonds.js": { "maxDuration": 15, "includeFiles": "Bonds Terminal.xlsx" }
