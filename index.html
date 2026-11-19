@@ -402,6 +402,7 @@
  }
  .co-btn.sec { background: var(--page); color: var(--text); border: 1px solid var(--border-strong); }
  .co-btn:active { transform: scale(.97); }
+ .co-quando { font-size: 10px; color: var(--dim); margin: 2px 0 2px; }
  .co-sec { margin-top: 18px; }
  .co-sec h4 {
  font-family: var(--sans); font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -1481,6 +1482,7 @@
  <div class="modal-header">
  <div class="modal-title">Notícias · <span id="ticker-news-title">—</span></div>
  </div>
+ <div class="co-acoes" id="ticker-news-voltar"></div>
  <div class="sources-body">
  <div class="news-list" id="ticker-news-list">
  <div class="row"><div class="rname dim2">carregando…</div></div>
@@ -3040,13 +3042,36 @@ function closeAiNewsMethodology() {
  document.getElementById('ainews-methodology-overlay').classList.remove('active');
 }
 
-async function openTickerNews(ticker, label) {
+// `voltarPara` guarda de onde a janela de notícias foi aberta. Vindo da ficha da empresa,
+// aparece um botão de voltar — antes era um beco sem saída: fechar as notícias fechava tudo.
+let newsVoltarPara = null;
+
+function renderNewsVoltar() {
+ const alvo = document.getElementById('ticker-news-voltar');
+ if (!alvo) return;
+ alvo.innerHTML = newsVoltarPara
+ ? `<button class="co-btn sec" onclick="voltarParaFicha()">← Voltar para a ficha</button>`
+ : '';
+}
+
+function voltarParaFicha() {
+ const { ticker, nome } = newsVoltarPara || {};
+ closeTickerNews();
+ if (ticker) openCompany(ticker, nome);
+}
+
+async function openTickerNews(ticker, label, voltarPara = null) {
+ newsVoltarPara = voltarPara;
  document.getElementById('ticker-news-title').textContent = label;
  document.getElementById('ticker-news-overlay').classList.add('active');
+ renderNewsVoltar();
  const list = document.getElementById('ticker-news-list');
  list.innerHTML = '<div class="row"><div class="rname dim2">carregando…</div></div>';
  try {
- const r = await fetch(`/api/news?t=${encodeURIComponent(ticker)}`);
+ // O nome vai junto: a busca do Yahoo por "NKE" e por "Nike" devolve conjuntos diferentes, e
+ // o backend usa os dois pra filtrar manchetes que não são sobre a empresa.
+ const nome = label && label !== ticker ? `&n=${encodeURIComponent(label)}` : '';
+ const r = await fetch(`/api/news?t=${encodeURIComponent(ticker)}${nome}`);
  const d = await r.json();
  if (d.error) throw new Error(d.error);
  renderTickerNewsList(d.items || []);
@@ -3057,6 +3082,7 @@ async function openTickerNews(ticker, label) {
 }
 
 function closeTickerNews() {
+ newsVoltarPara = null;
  document.getElementById('ticker-news-overlay').classList.remove('active');
 }
 
@@ -5043,6 +5069,20 @@ function coCell(rotulo, valor) {
  `<div class="co-cell"><div class="co-rot">${escapeHtml(rotulo)}</div><div class="co-val">${escapeHtml(String(valor))}</div></div>`;
 }
 
+// De quando é o que está na tela. Preço e fundamentos têm idades bem diferentes — os múltiplos
+// e o balanço vêm do último trimestre FECHADO, que pode ter semanas — e misturar os dois sem
+// avisar dá a impressão de que tudo é de agora.
+function coQuando(d) {
+ const partes = [];
+ if (d.capturadoEm) {
+ const t = new Date(d.capturadoEm);
+ partes.push(`preço de ${t.toLocaleDateString('pt-BR')} ${t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`);
+ }
+ if (d.trimestreRef) partes.push(`fundamentos do trimestre encerrado em ${fmtEntryDate(d.trimestreRef)}`);
+ else if (d.exercicioRef) partes.push(`exercício encerrado em ${fmtEntryDate(d.exercicioRef)}`);
+ return partes.join(' · ');
+}
+
 function coSecao(titulo, html) {
  return html ? `<div class="co-sec"><h4>${escapeHtml(titulo)}</h4>${html}</div>` : '';
 }
@@ -5168,8 +5208,9 @@ async function openCompany(ticker, nome) {
  </div>
  <div class="co-acoes">
  <button class="co-btn" onclick="closeCompany(); openChart('${jsAttrSafe(d.ticker)}','${jsAttrSafe(d.nome)}')">Ver gráfico</button>
- <button class="co-btn sec" onclick="closeCompany(); openTickerNews('${jsAttrSafe(d.ticker)}','${jsAttrSafe(d.nome)}')">Notícias</button>
+ <button class="co-btn sec" onclick="closeCompany(); openTickerNews('${jsAttrSafe(d.ticker)}','${jsAttrSafe(d.nome)}',{ticker:'${jsAttrSafe(d.ticker)}',nome:'${jsAttrSafe(d.nome)}'})">Notícias</button>
  </div>
+ <div class="co-quando">${escapeHtml(coQuando(d))}</div>
  ${coSecao('Indicadores', `<div class="co-grid">${metricas}</div>`)}
  ${coSecao('Analistas', analistas)}
  ${coSecao('Histórico de resultados', resultados)}

@@ -79,6 +79,13 @@ export default async function handler(req, res) {
     }));
 
     return res.json({
+      // De quando é cada coisa. Preço é do momento da captura (a função pode ter rodado há até
+      // 15 min, pelo cache de CDN); os múltiplos e o balanço são do último trimestre fechado,
+      // que costuma ser bem mais antigo — misturar os dois sem avisar engana.
+      capturadoEm: new Date().toISOString(),
+      trimestreRef: fmt(k.mostRecentQuarter),
+      exercicioRef: fmt(k.lastFiscalYearEnd),
+
       ticker: p.symbol || t,
       nome: p.longName || p.shortName || t,
       bolsa: p.exchangeName || p.exchange || null,

@@ -10,12 +10,45 @@
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 const MARKET_TICKERS = ['^GSPC', '^DJI', '^IXIC'];
 
-export async function fetchNewsForTickers(tickers) {
-  const results = await Promise.all(tickers.map(t =>
-    fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(t)}&newsCount=12&quotesCount=0`, {
-      headers: { 'User-Agent': UA, 'Accept': 'application/json' },
-    }).then(r => r.json()).catch(() => ({}))
-  ));
+// Palavras genéricas demais pra servir de filtro — "Inc", "Corporation" e afins aparecem em
+// metade das manchetes do mercado e deixariam passar qualquer coisa.
+const PALAVRAS_VAZIAS = new Set([
+  'inc', 'corp', 'corporation', 'company', 'co', 'ltd', 'limited', 'plc', 'sa', 'ag', 'nv',
+  'group', 'holdings', 'holding', 'the', 'and', 'class', 'common', 'stock', 'shares',
+]);
+
+// Termos que identificam a empresa numa manchete: o ticker (sem sufixo de bolsa, ex. PETR4.SA
+// → PETR4) e as palavras úteis do nome.
+function termosDaEmpresa(ticker, nome) {
+  const termos = [];
+  if (ticker) {
+    const base = String(ticker).replace(/\^/g, '').split('.')[0].trim();
+    if (base.length >= 2) termos.push(base.toLowerCase());
+  }
+  for (const w of String(nome || '').split(/[^\p{L}\p{N}]+/u)) {
+    const t = w.toLowerCase();
+    if (t.length >= 3 && !PALAVRAS_VAZIAS.has(t)) termos.push(t);
+  }
+  return [...new Set(termos)];
+}
+
+async function buscarNoYahoo(q) {
+  try {
+    const r = await fetch(
+      `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&newsCount=20&quotesCount=0`,
+      { headers: { 'User-Agent': UA, 'Accept': 'application/json' } });
+    return await r.json();
+  } catch {
+    return {};
+  }
+}
+
+// `consultas` são os textos mandados ao Yahoo; `termos`, quando presente, filtra o resultado.
+// O Yahoo devolve o que acha parecido, sem garantir que a manchete seja sobre a empresa — numa
+// busca por NKE vinham notícias de McDonald's. Com os termos, só passa o que cita a empresa no
+// título. Sem termos (o feed geral de mercado), o comportamento antigo é mantido.
+export async function fetchNewsForTickers(consultas, termos = null) {
+  const results = await Promise.all(consultas.map(buscarNoYahoo));
 
   const seen = new Set();
   const items = [];
@@ -31,8 +64,22 @@ export async function fetchNewsForTickers(tickers) {
       });
     }
   }
-  items.sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
-  return items.slice(0, 20);
+
+  let saida = items;
+  if (termos?.length) {
+    const casa = (it) => {
+      const t = String(it.title || '').toLowerCase();
+      // \b não funciona para acento; a fronteira é verificada com classes explícitas.
+      return termos.some((termo) => new RegExp(`(^|[^\\p{L}\\p{N}])${termo}([^\\p{L}\\p{N}]|$)`, 'u').test(t));
+    };
+    const relevantes = saida.filter(casa);
+    // Se o filtro zerar tudo (empresa de nome incomum, manchete que só cita o setor), é melhor
+    // devolver o que veio do que uma lista vazia — com os relevantes na frente.
+    saida = relevantes.length ? relevantes : saida;
+  }
+
+  saida.sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
+  return saida.slice(0, 20);
 }
 
 export async function fetchMarketNews() {
@@ -42,7 +89,18 @@ export async function fetchMarketNews() {
 async function handleNewsList(req, res) {
   try {
     const ticker = req.query.t;
-    const items = ticker ? await fetchNewsForTickers([ticker]) : await fetchMarketNews();
+    const nome = req.query.n; // nome da empresa, quando a ficha souber — melhora muito o filtro
+    if (!ticker) return res.json({ items: await fetchMarketNews() });
+
+    // Pergunta pelo ticker E pelo nome: a busca do Yahoo por "NKE" e por "Nike" traz conjuntos
+    // bem diferentes, e o que interessa é a união das duas.
+    // Quais textos mandar ao Yahoo. Testado ao vivo: a busca dele é sensível ao formato —
+    // "PETR4.SA" e "PETR4" devolvem ZERO notícias, e o nome formal "Petróleo Brasileiro"
+    // também, mas "Petrobras" devolve 20. Por isso mandamos o ticker E cada palavra
+    // significativa do nome separadamente, em vez do nome formal inteiro.
+    const termos = termosDaEmpresa(ticker, nome);
+    const consultas = [...new Set([ticker, ...termos.slice(0, 3)])];
+    const items = await fetchNewsForTickers(consultas, termos);
     return res.json({ items });
   } catch (e) {
     return res.status(500).json({ error: e.message });
