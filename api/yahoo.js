@@ -73,6 +73,53 @@ async function fetchChart(ticker, range, interval) {
 // custo no Vercel: o ciclo de 60s do terminal pede ~26 tickers, e cada invocação de função
 // separada paga o próprio overhead de CPU. Em lote é 1 invocação só, com as buscas ao Yahoo
 // rodando em paralelo dentro dela.
+// Cotação com pré/pós-mercado, vários tickers numa chamada: /api/yahoo?quote=1&t=A,B,C
+//
+// Usa o v7/finance/quote (não o chart), porque ele é o único que traz preMarketPrice e
+// marketState — e traz pra todos os tickers de uma vez. O parâmetro `fields` é obrigatório na
+// prática: sem ele, testado ao vivo, os campos de pré-mercado simplesmente não vêm na resposta,
+// mesmo existindo.
+const CAMPOS_QUOTE = [
+  'symbol', 'shortName', 'marketState', 'hasPrePostMarketData',
+  'regularMarketPrice', 'regularMarketPreviousClose', 'regularMarketTime',
+  'preMarketPrice', 'preMarketChange', 'preMarketChangePercent', 'preMarketTime',
+  'postMarketPrice', 'postMarketChange', 'postMarketChangePercent', 'postMarketTime',
+].join(',');
+
+async function handleQuote(tickers, res) {
+  const { cookie, crumb } = await getYahooAuth();
+  const url = `https://query2.finance.yahoo.com/v7/finance/quote`
+    + `?symbols=${encodeURIComponent(tickers.join(','))}&fields=${CAMPOS_QUOTE}`
+    + `&crumb=${encodeURIComponent(crumb)}`;
+  const r = await fetch(url, { headers: { 'User-Agent': UA, Cookie: cookie, Accept: 'application/json' } });
+  if (!r.ok) throw new Error(`Yahoo ${r.status}`);
+  const d = await r.json();
+
+  const cotacoes = (d?.quoteResponse?.result || []).map((q) => ({
+    ticker: q.symbol,
+    nome: q.shortName || q.symbol,
+    estado: q.marketState || null, // PRE | REGULAR | POST | POSTPOST | CLOSED
+    temPrePos: q.hasPrePostMarketData === true,
+    fechamentoAnterior: q.regularMarketPreviousClose ?? null,
+    regular: { preco: q.regularMarketPrice ?? null, hora: q.regularMarketTime ?? null },
+    pre: q.preMarketPrice != null ? {
+      preco: q.preMarketPrice,
+      variacao: q.preMarketChange ?? null,
+      // Diferente do quoteSummary (que manda fração), aqui já vem em pontos percentuais.
+      variacaoPct: q.preMarketChangePercent ?? null,
+      hora: q.preMarketTime ?? null,
+    } : null,
+    pos: q.postMarketPrice != null ? {
+      preco: q.postMarketPrice,
+      variacao: q.postMarketChange ?? null,
+      variacaoPct: q.postMarketChangePercent ?? null,
+      hora: q.postMarketTime ?? null,
+    } : null,
+  }));
+
+  return res.json({ capturadoEm: Date.now(), cotacoes });
+}
+
 export default async function handler(req, res) {
   const { t, range = '5d', interval = '1d' } = req.query;
   if (!t) return res.status(400).json({ error: 'ticker obrigatório' });
@@ -87,6 +134,14 @@ export default async function handler(req, res) {
   const tickers = String(t).split(',').map((s) => s.trim()).filter(Boolean);
 
   try {
+    // Pré/pós-mercado é pedido sob demanda (sub-aba PRÉ-MERCADO, não entra no ciclo de 60s),
+    // então não faz sentido cachear por 30s como as cotações do ciclo: quem aperta "atualizar"
+    // quer o dado de agora. 15s só evita martelada em cliques seguidos.
+    if (req.query.quote != null) {
+      res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=60');
+      return await handleQuote(tickers, res);
+    }
+
     if (tickers.length === 1) {
       const { status, data } = await fetchChart(tickers[0], range, interval);
       return res.status(status).json(data);

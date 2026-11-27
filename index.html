@@ -388,6 +388,34 @@
  .row-click { cursor: pointer; }
  .row-click:hover { background: var(--page) !important; }
 
+ /* PRÉ-MERCADO (sub-aba de SINGLE NAMES) */
+ .pm-topo { padding: 10px 14px 4px; }
+ .pm-estado { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--text); }
+ .pm-badge {
+ display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+ letter-spacing: .05em; border-radius: 999px; padding: 2px 8px; margin-right: 7px;
+ }
+ .pm-badge.aberto { background: #dcfce7; color: #166534; }
+ .pm-badge.pre { background: var(--accent-soft-2); color: var(--accent); }
+ .pm-badge.fechado { background: var(--page); color: var(--dim); border: 1px solid var(--border); }
+ .pm-linha {
+ display: grid; grid-template-columns: 1fr 100px 110px 92px;
+ align-items: center; gap: 8px; padding: 9px 14px; border-top: 1px solid var(--border);
+ }
+ .pm-linha.cab {
+ border-top: none; padding-top: 4px; padding-bottom: 6px;
+ font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); font-weight: 600;
+ }
+ .pm-nome { font-family: var(--sans); font-size: 12.5px; font-weight: 700; color: var(--bright); }
+ .pm-tick { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+ .pm-val { font-family: var(--mono); font-size: 13px; font-weight: 700; text-align: right; }
+ .pm-sem { color: var(--dim); font-weight: 400; }
+ .pm-hora { font-family: var(--mono); font-size: 10px; color: var(--dim); text-align: right; }
+ @media (max-width: 640px) {
+ .pm-linha { grid-template-columns: 1fr 86px 90px; }
+ .pm-linha > :nth-child(4) { display: none; }
+ }
+
  /* FICHA DA EMPRESA */
  .co-box { width: min(900px, 94vw); max-height: 88vh; overflow-y: auto; }
  .co-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 2px; }
@@ -962,6 +990,13 @@
 </div><!-- /tab-indices -->
 
 <div id="tab-single-names" class="tab-panel">
+
+<div class="subtabs">
+ <button class="subtab-btn active" data-sub="cotacoes" onclick="switchSingleSub(this)">COTAÇÕES</button>
+ <button class="subtab-btn" data-sub="premarket" onclick="switchSingleSub(this)">PRÉ-MERCADO</button>
+</div>
+
+<div id="single-cotacoes" class="subtab-panel active">
 <div class="grid">
  <div class="card card-wide">
  <div class="card-head"><h2>Single Names · Equities</h2><span>Yahoo Finance · USD</span></div>
@@ -1051,6 +1086,24 @@
  </div>
  </div>
 </div>
+</div><!-- /single-cotacoes -->
+
+<div id="single-premarket" class="subtab-panel">
+<div class="grid">
+ <div class="card card-wide">
+ <div class="card-head">
+ <h2>Pré-mercado · Single Names</h2>
+ <span class="sources-link" onclick="loadPreMarketSingles()">atualizar</span>
+ </div>
+ <div class="pm-topo">
+ <div id="pm-estado" class="pm-estado"></div>
+ <div id="pm-quando" class="co-quando"></div>
+ </div>
+ <div id="pm-lista"></div>
+ </div>
+</div>
+</div><!-- /single-premarket -->
+
 </div><!-- /tab-single-names -->
 
 <div id="tab-portfolio" class="tab-panel">
@@ -5055,6 +5108,78 @@ async function loadAll() {
 }
 
 tick();
+// ── Pré-mercado · sub-aba de SINGLE NAMES ────────────────────────────────────
+// Sob demanda de propósito: carrega ao abrir a sub-aba e só volta a buscar quando se clica em
+// "atualizar". NÃO entra no ciclo de 60s — pré-mercado é informação que se olha de vez em
+// quando, e manter isso rodando o dia todo seria gasto à toa.
+let preMarketCarregado = false;
+
+function switchSingleSub(btn) {
+ const nome = btn.dataset.sub;
+ document.querySelectorAll('#tab-single-names .subtab-btn').forEach(b => b.classList.remove('active'));
+ document.querySelectorAll('#tab-single-names .subtab-panel').forEach(p => p.classList.remove('active'));
+ btn.classList.add('active');
+ document.getElementById('single-' + nome).classList.add('active');
+ if (nome === 'premarket' && !preMarketCarregado) { preMarketCarregado = true; loadPreMarketSingles(); }
+}
+
+// Como o Yahoo nomeia a fase do pregão, e o que isso significa pro dado mostrado.
+const PM_ESTADOS = {
+ PRE: ['pre', 'Pré-mercado agora', 'cotações ao vivo da sessão pré-abertura'],
+ REGULAR: ['aberto', 'Mercado aberto', 'o pré-mercado abaixo é de hoje cedo, já encerrado'],
+ POST: ['pre', 'After-market', 'o pré-mercado abaixo é de hoje cedo'],
+ POSTPOST: ['fechado', 'Mercado fechado', 'o pré-mercado abaixo é do último pregão'],
+ CLOSED: ['fechado', 'Mercado fechado', 'o pré-mercado abaixo é do último pregão'],
+ PREPRE: ['fechado', 'Antes do pré-mercado', 'ainda sem negociação hoje'],
+};
+
+const pmHora = (ts) => (ts
+ ? new Date(ts * 1000).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+ : '—');
+
+async function loadPreMarketSingles() {
+ const lista = document.getElementById('pm-lista');
+ const estadoEl = document.getElementById('pm-estado');
+ const quandoEl = document.getElementById('pm-quando');
+ lista.innerHTML = '<div class="pm-linha"><div class="pm-nome dim2">carregando…</div></div>';
+
+ try {
+ const tickers = SINGLES.map(s => s.t).join(',');
+ const r = await apiFetch(`/api/yahoo?quote=1&t=${encodeURIComponent(tickers)}`, 15000);
+ const d = await r.json();
+ if (d.error) throw new Error(d.error);
+
+ const cot = d.cotacoes || [];
+ const estado = cot.find(c => c.estado)?.estado || 'CLOSED';
+ const [cls, titulo, explica] = PM_ESTADOS[estado] || ['fechado', estado, ''];
+ estadoEl.innerHTML = `<span class="pm-badge ${cls}">${escapeHtml(titulo)}</span>${escapeHtml(explica)}`;
+ quandoEl.textContent = `consultado às ${new Date(d.capturadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+
+ // Mantém a ordem dos cards da aba, não a que o Yahoo devolveu.
+ const porTicker = new Map(cot.map(c => [c.ticker, c]));
+ const linhas = SINGLES.map(s => {
+ const c = porTicker.get(s.t);
+ const pre = c?.pre;
+ const clsVar = pre?.variacaoPct > 0 ? 'pos' : pre?.variacaoPct < 0 ? 'neg' : '';
+ const nome = (document.querySelector(`#${s.val}`)?.closest('.ntnb-cell')?.querySelector('.rname')?.textContent) || s.t;
+ return `<div class="pm-linha">
+ <div><div class="pm-nome">${escapeHtml(nome)}</div><div class="pm-tick">fech. ant. ${c?.fechamentoAnterior != null ? num(c.fechamentoAnterior, 2) : '—'}</div></div>
+ <div class="pm-val">${pre ? num(pre.preco, 2) : '<span class="pm-sem">sem dado</span>'}</div>
+ <div class="pm-val ${clsVar}">${pre?.variacaoPct != null ? pct(pre.variacaoPct) : ''}</div>
+ <div class="pm-hora">${pre ? pmHora(pre.hora) : ''}</div>
+ </div>`;
+ }).join('');
+
+ lista.innerHTML = `<div class="pm-linha cab">
+ <div>Ativo</div><div style="text-align:right">Pré-mercado</div>
+ <div style="text-align:right">Variação</div><div style="text-align:right">Hora</div>
+ </div>` + linhas;
+ } catch (e) {
+ lista.innerHTML = '<div class="pm-linha"><div class="pm-nome err">erro ao carregar o pré-mercado</div></div>';
+ console.error('pré-mercado', e);
+ }
+}
+
 // ── Ficha da empresa ──────────────────────────────────────────────────────────
 // Página de detalhe de um ativo: preço, múltiplos, alvo dos analistas, histórico de resultados,
 // composição dos detentores e perfil. Tudo de /api/company, que resolve numa chamada só.
